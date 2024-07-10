@@ -1,0 +1,5 @@
+#pragma once
+#include <string>
+
+std::string VERSION = "${PROJECT_VERSION}";
+std::string APP_NAME = "${APP_NAME}";
