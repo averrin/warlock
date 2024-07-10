@@ -14,7 +14,8 @@ void MetaDataEditor::render() {
     return;
   }
   auto &metaData = entt::locator<MetaData>::value();
-  ImGui::Begin(name.c_str());
+  // ImGui::Begin(name.c_str());
+  ImGui::Begin("Meta Data Editor");
 
   if (ImGui::Button("Apply")) {
     // emitter.publish(regen_event{});
@@ -32,7 +33,7 @@ void MetaDataEditor::render() {
     gm.saveData();
   }
 
-  //TODO: add a way to add new stores
+  // TODO: add a way to add new stores
 
   ImGui::Separator();
 
@@ -50,7 +51,9 @@ void MetaDataEditor::render() {
                 ImGui::SetNextItemWidth(80);
                 ImGui::InputFloat(f.c_str(), &data->mapFeatures[k][f]);
                 ImGui::SameLine();
-                if (ImGui::Button(fmt::format(ICON_FA_XMARK"##Del feat {} {}", k, f).c_str())) {
+                if (ImGui::Button(
+                        fmt::format(ICON_FA_XMARK "##Del feat {} {}", k, f)
+                            .c_str())) {
                   data->mapFeatures[k].erase(f);
                   break;
                 }
@@ -85,7 +88,8 @@ void MetaDataEditor::render() {
             ImGui::SetNextItemWidth(80);
             ImGui::InputFloat(k.c_str(), &data->probability[k]);
             ImGui::SameLine();
-            if (ImGui::Button(fmt::format(ICON_FA_XMARK"##Del prob {}", k).c_str())) {
+            if (ImGui::Button(
+                    fmt::format(ICON_FA_XMARK "##Del prob {}", k).c_str())) {
               data->probability.erase(data->probability.find(k));
             }
             ImGui::Unindent();

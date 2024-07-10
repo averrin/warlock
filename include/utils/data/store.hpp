@@ -1,14 +1,14 @@
 #pragma once
 
-#include <cereal/types/string.hpp>
-#include <cereal/types/map.hpp>
-#include <cereal/types/vector.hpp>
-#include <cereal/types/memory.hpp>
 #include <cereal/archives/binary.hpp>
+#include <cereal/types/map.hpp>
+#include <cereal/types/memory.hpp>
+#include <cereal/types/string.hpp>
+#include <cereal/types/vector.hpp>
+#include <filesystem>
 #include <map>
 #include <string>
 #include <vector>
-#include <filesystem>
 namespace fs = std::filesystem;
 
 class Store {
@@ -42,5 +42,6 @@ public:
   std::map<std::string, std::string> attributes = {};
 
   Store(int8_t type, std::string name, fs::path path, int version)
-      : expected_type(type), path(path), expected_version(version), name(name) {}
+      : expected_type(type), path(path), expected_version(version), name(name) {
+  }
 };

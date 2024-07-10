@@ -9,7 +9,7 @@ _init:
 
 [no-cd]
 init: _init
-  cd ./build/bin && ln -s ../../tilesets ../../imgui.ini ../../game.bin ../../fonts ../../scripts .
+  cd ./build/bin && ln -s ../../tilesets ../../imgui.ini ../../game.bin ../../fonts ../../scripts ../../data .
 
 [no-cd]
 build:
@@ -18,4 +18,4 @@ build:
 
 [no-cd]
 run args="": build
-  ./build/bin/{{bin_name}} {{args}}
+  nixGL ./build/bin/{{bin_name}} {{args}}

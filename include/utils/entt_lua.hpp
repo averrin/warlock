@@ -4,9 +4,9 @@
 #define SOL_SAFE_NUMERICS 1
 #include <sol/sol.hpp>
 
-#include <cereal/types/string.hpp>
-#include <cereal/types/memory.hpp>
 #include <cereal/archives/binary.hpp>
+#include <cereal/types/memory.hpp>
+#include <cereal/types/string.hpp>
 
 struct lua_event {
   std::string event;
@@ -30,11 +30,7 @@ struct script {
   bool enabled = true;
 
   friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const {
-    ar(path, enabled);
-  };
-  template <class Archive> void load(Archive &ar) {
-    ar(path, enabled);
-  };
+  template <class Archive> void save(Archive &ar) const { ar(path, enabled); };
+  template <class Archive> void load(Archive &ar) { ar(path, enabled); };
 };
 } // namespace hf

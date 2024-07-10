@@ -2,8 +2,8 @@ require("scripts/controls")
 require("scripts/gui")
 
 settings = {
-	meta_data_files = { "main.meta" },
-	proto_files = { "main.proto" },
+	meta_data_files = { "data/main.meta" },
+	proto_files = { "data/main.proto" },
 	init_script = "scripts/init.lua",
 	tileset = "boxy",
 	seed = 873130520,
