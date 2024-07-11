@@ -10,16 +10,16 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <app/gui.hpp>
 #include <app/scene.hpp>
-#include <game_manager.hpp>
+#include <game/game_manager.hpp>
 #include <utils/entt.hpp>
 
 #include <IconsFontAwesome6.h>
 #include <argparse/argparse.hpp>
 #include <imgui.h>
 
+#include <editors/entity_tree_editor.hpp>
 #include <editors/meta_data_editor.hpp>
-// #include <editors/entity_tree_editor.hpp>
-#include <prototypes.hpp>
+#include <game/prototypes.hpp>
 
 namespace backward {
 backward::SignalHandling sh;
@@ -84,12 +84,14 @@ int main(int argc, char *argv[]) {
 
   if (!noeditor) {
     gui.renders.push_back([&]() { ImGui::ShowDemoWindow(); });
-    auto md_editor = std::make_shared<MetaDataEditor>("Meta Data Editor");
-    gui.renders.push_back([&]() { md_editor->render(); });
-    // auto et_editor = EntityTreeEditor("Prototype Editor");
-    // gui.renders.push_back([&]() {
-    // et_editor.render<Prototypes, entt::tag<"proto"_hs>>();
-    // });
+    // auto md_editor = std::make_shared<MetaDataEditor>("Meta Data Editor");
+    auto md_editor = MetaDataEditor("Meta Data Editor");
+    gui.renders.push_back([&]() { md_editor.render(); });
+    auto et_editor = EntityTreeEditor("Prototype Editor");
+    gui.renders.push_back([&]() {
+      // et_editor.render<Prototypes, entt::tag<"proto"_hs>>();
+      et_editor.render();
+    });
 
     gui.renders.push_back([&]() {
       ImGui::Begin("Test window");

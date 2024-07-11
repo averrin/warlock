@@ -1,7 +1,7 @@
+#include <game/meta_data_store.hpp>
 #include <utils/data/container.hpp>
-#include <meta_data_store.hpp>
 
-class MetaData: public Container<MetaDataStore> {
+class MetaData : public Container<MetaDataStore> {
 public:
   int8_t version = 1;
   int8_t type = 1;
@@ -19,5 +19,5 @@ public:
     }
   }
 
-  MetaData(): Container<MetaDataStore>(type, version) {}
+  MetaData() : Container<MetaDataStore>(type, version) {}
 };

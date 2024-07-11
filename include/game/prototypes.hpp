@@ -1,6 +1,6 @@
-#include <components.hpp>
+#include <game/components.hpp>
+#include <game/registry_store.hpp>
 #include <iostream>
-#include <registry_store.hpp>
 #include <utils/data/container.hpp>
 #include <utils/entt.hpp>
 

@@ -1,9 +1,9 @@
 #include <IconsFontAwesome6.h>
 #include <editors/meta_data_editor.hpp>
 #include <fmt/format.h>
-#include <game_manager.hpp>
+#include <game/game_manager.hpp>
+#include <game/meta_data.hpp>
 #include <imgui.h>
-#include <meta_data.hpp>
 #include <misc/cpp/imgui_stdlib.h>
 #include <mutex>
 #include <utils/entt.hpp>

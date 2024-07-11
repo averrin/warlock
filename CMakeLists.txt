@@ -9,20 +9,14 @@ configure_file (
 )
 
 file(GLOB_RECURSE SOURCE "src/*.cpp")
-file(GLOB_RECURSE GAME_SOURCE "game/src/*.cpp")
 add_executable(${PROJECT_NAME}
   ${SOURCE}
-  ${GAME_SOURCE}
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_EXTENSIONS OFF)
 include(cmake/common.cmake)
 include(cmake/deps.cmake)
-
-include_directories(
-  "${PROJECT_PATH}/game/include"
-)
 
 # set(THREADS_PREFER_PTHREAD_FLAG ON)
 # find_package(Threads REQUIRED)

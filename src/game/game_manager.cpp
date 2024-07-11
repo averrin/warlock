@@ -1,6 +1,6 @@
 #include <chrono>
 #include <filesystem>
-#include <game_manager.hpp>
+#include <game/game_manager.hpp>
 #include <mutex>
 #include <thread>
 #include <utils/entt.hpp>
@@ -9,8 +9,8 @@ namespace fs = std::filesystem;
 using namespace std::this_thread;     // sleep_for, sleep_until
 using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
-#include <meta_data.hpp>
-#include <prototypes.hpp>
+#include <game/meta_data.hpp>
+#include <game/prototypes.hpp>
 #include <utils/data/loader.hpp>
 
 GameManager::GameManager() {

@@ -34,7 +34,7 @@ FetchContent_MakeAvailable(imgui-sfml)
 find_package(OpenGL REQUIRED)
 
 file(GLOB IMGUI_SOURCE "${IMGUI_DIR}/*.cpp")
-file(GLOB IMGUI_SOURCE_STDLIB "${IMGUI_DIR}/misc/cpp/*.cpp")
+file(GLOB IMGUI_SOURCE_STDLIB "include/3rdparty/imgui-stl.cpp")
 list(APPEND DEPS_SOURCES ${IMGUI_SOURCE_STDLIB})
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${OPENGL_INCLUDE_DIR})
 

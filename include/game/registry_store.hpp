@@ -11,9 +11,10 @@
 #include <vector>
 namespace fs = std::filesystem;
 
+#include <game/specs/light.hpp>
 #include <utils/data/store.hpp>
 #include <utils/entt.hpp>
-#include <specs/light.hpp>
+#include <utils/entt_lua.hpp>
 
 class RegistryStore : public Store {
   friend class cereal::access;
@@ -46,12 +47,12 @@ class RegistryStore : public Store {
     //   fmt::print("Entity: {}\n", (int)entity);
     // }
 
-    // fmt::print("Loading prototypes: {}\n", registry.storage<hf::meta>().size());
-
+    // fmt::print("Loading prototypes: {}\n",
+    // registry.storage<hf::meta>().size());
   };
   template <class Archive> void save(Archive &ar) const {
     ar(cereal::base_class<Store>(this));
-    //TODO: make view configurable
+    // TODO: make view configurable
     auto view = registry.view<entt::tag<"proto"_hs>, hf::meta>();
     entt::snapshot{registry}
         .get<entt::entity>(ar)
@@ -81,4 +82,3 @@ public:
 
   using Store::Store;
 };
-

@@ -1,4 +1,5 @@
 #pragma once
+#include <game/registry_store.hpp>
 #include <map>
 #include <memory>
 #include <string>
@@ -14,9 +15,12 @@ struct tree_node {
 class EntityTreeEditor {
 public:
   std::string name;
-  EntityTreeEditor(std::string name) : name(name) {}
+  EntityTreeEditor(std::string name);
 
   template <typename ContainerType, typename... T> void render();
+  void render();
+
+  void drawEntityInfo(std::shared_ptr<RegistryStore> data, entt::entity e);
 
   // std::map<std::string, std::string> cache = {};
   // std::map<std::string, float> cache_f = {};

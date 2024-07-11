@@ -16,8 +16,8 @@
       let pkgs = import nixpkgs { inherit overlays system; };
       in rec
       {
-
-        nixpkgs.config.allowUnfree = true;
+        packages.${system}.default =
+          { };
         devShells.default =
           pkgs.mkShell {
             packages = [
