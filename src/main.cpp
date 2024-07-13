@@ -19,7 +19,9 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <editors/entity_tree_editor.hpp>
 #include <editors/meta_data_editor.hpp>
+#include <editors/tileset_editor.hpp>
 #include <game/prototypes.hpp>
+#include <game/viewport.hpp>
 
 namespace backward {
 backward::SignalHandling sh;
@@ -65,6 +67,12 @@ int main(int argc, char *argv[]) {
   jobs.init(app.log);
 
   auto &scene = entt::locator<Scene>::emplace();
+  auto &viewport = entt::locator<Viewport>::emplace();
+
+  viewport.init(app.log);
+  emitter.publish(add_job_event{viewport.startJob, true});
+  // viewport.start();
+
   if (!nogui) {
     scene.init(app.log);
   }
@@ -92,6 +100,8 @@ int main(int argc, char *argv[]) {
       // et_editor.render<Prototypes, entt::tag<"proto"_hs>>();
       et_editor.render();
     });
+    auto ts_editor = TilesetEditor("Tileset Editor");
+    gui.renders.push_back([&]() { ts_editor.render(); });
 
     gui.renders.push_back([&]() {
       ImGui::Begin("Test window");

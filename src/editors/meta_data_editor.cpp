@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 #include <game/game_manager.hpp>
 #include <game/meta_data.hpp>
+#include <imgui-stl.hpp>
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 #include <mutex>

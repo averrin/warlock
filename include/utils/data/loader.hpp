@@ -9,6 +9,7 @@
 #include <fstream>
 #include <ios>
 #include <liblog/liblog.hpp>
+#include <libprint/libprint.hpp>
 #include <sstream>
 #include <utils/entt.hpp>
 #include <vector>
@@ -30,11 +31,11 @@ public:
       cereal::BinaryInputArchive iarchive(ifs);
       // cereal::JSONInputArchive iarchive(ifs);
       auto store_name = file.substr(file.find_last_of("/") + 1);
-      auto store =
-          std::make_shared<StoreType>(container.type, store_name, path, container.version);
+      auto store = std::make_shared<StoreType>(container.type, store_name, path,
+                                               container.version);
       iarchive(*store);
-      log.info("Loaded {} (type: {}, ver: {})", path, store->type,
-               store->version);
+      log.info("Load {} (type: {}, ver: {})", LibPrint::utils::blue(path),
+               store->type, store->version);
       container.add(store);
     }
   }
@@ -46,8 +47,8 @@ public:
       std::ofstream ofs(path, std::ios::out | std::ios::binary);
       cereal::BinaryOutputArchive oarchive(ofs);
       // cereal::JSONOutputArchive oarchive(ofs);
-      log.info("Saving {} (type: {}, ver: {})", path, store->type,
-               store->version);
+      log.info("Save {} (type: {}, ver: {})", LibPrint::utils::blue(path),
+               store->type, store->version);
       oarchive(*store);
     }
   }

@@ -16,12 +16,22 @@ CPMAddPackage("gh:averrin/libcolor#master")
 CPMAddPackage("gh:averrin/libprint#master")
 CPMAddPackage("gh:averrin/liblog#master")
 
+CPMAddPackage("gh:nlohmann/json@3.11.3")
+CPMAddPackage("gh:ilqvya/random@1.5.0")
+CPMAddPackage(
+  NAME strutil
+  DOWNLOAD_ONLY YES
+  GITHUB_REPOSITORY tgalaj/strutil
+    GIT_TAG v1.1.0
+)
+
 CPMAddPackage(
     NAME magic_enum
     GITHUB_REPOSITORY Neargye/magic_enum
     GIT_TAG v0.9.6
 )
 
+target_link_libraries(${EXE_NAME} PRIVATE nlohmann_json::nlohmann_json)
 if(libcolor_ADDED)
   target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${libcolor_SOURCE_DIR}/include")
 endif()
@@ -30,6 +40,12 @@ if(libprint_ADDED)
 endif()
 if(liblog_ADDED)
   target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${liblog_SOURCE_DIR}/include")
+endif()
+if(random_ADDED)
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${random_SOURCE_DIR}/include")
+endif()
+if(strutil_ADDED)
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${strutil_SOURCE_DIR}")
 endif()
 
 if(magic_enum_ADDED)

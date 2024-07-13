@@ -76,6 +76,21 @@ void EntityTreeEditor::render() {
   // ImGui::Begin(name.c_str());
   ImGui::Begin("Prototypes Editor");
 
+  if (ImGui::Button("Apply")) {
+    // emitter.publish(regen_event{});
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Reload")) {
+    // gm->loadData();
+    // emitter.publish(resize_event{});
+    // emitter.publish(regen_event{});
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Save")) {
+    gm.saveData();
+  }
+  ImGui::Separator();
+
   auto entityTree = std::make_shared<tree_node>();
 
   ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;

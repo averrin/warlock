@@ -1,16 +1,13 @@
+#include <IconsFontAwesome6.h>
 #include <app/gui.hpp>
 #include <app/scene.hpp>
-#include <utils/entt_lua.hpp>
-#include <imgui.h>
 #include <imgui-SFML.h>
-#include <IconsFontAwesome6.h>
+#include <imgui.h>
+#include <utils/entt_lua.hpp>
 
-Gui::Gui() {
-}
+Gui::Gui() {}
 
-Gui::~Gui() {
-  ImGui::SFML::Shutdown();
-}
+Gui::~Gui() { ImGui::SFML::Shutdown(); }
 
 static ImGuiDockNodeFlags opt_flags = ImGuiDockNodeFlags_PassthruCentralNode;
 
@@ -38,40 +35,41 @@ void Gui::init(LibLog::Logger parentLog) {
   ImGui::GetIO().FontGlobalScale = GUI_SCALE;
   ImGui::GetStyle().ScaleAllSizes(GUI_SCALE);
 
-
   auto &scene = entt::locator<Scene>::value();
   log.debug("Sfml init: {}", ImGui::SFML::Init(*scene.window, false));
 
   ImGui::GetIO().ConfigDockingWithShift = false;
   ImGui::GetIO().MouseDrawCursor = true;
   ImGui::GetIO().ConfigFlags |=
-    ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+      ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
   ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-  static const ImWchar icons_ranges[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
+  static const ImWchar icons_ranges[] = {ICON_MIN_FA, ICON_MAX_16_FA, 0};
   ImFontConfig icons_config;
   icons_config.MergeMode = true;
   icons_config.PixelSnapH = true;
   icons_config.GlyphMinAdvanceX = 16.0f;
 
-  float baseFontSize = FONT_SIZE * GUI_SCALE; // 13.0f is the size of the default font. Change to the font size you use.
-  float iconFontSize = ICON_SIZE * GUI_SCALE; // FontAwesome fonts need to have their sizes reduced by 2.0f/3.0f in order to align correctly
+  float baseFontSize =
+      FONT_SIZE * GUI_SCALE; // 13.0f is the size of the default font. Change to
+                             // the font size you use.
+  float iconFontSize =
+      ICON_SIZE * GUI_SCALE; // FontAwesome fonts need to have their sizes
+                             // reduced by 2.0f/3.0f in order to align correctly
 
   ImGui::GetIO().Fonts->Clear();
   // ImGui::GetIO().Fonts->AddFontDefault();
   auto main_font = settings["font"].get<std::string>();
   // auto hack_font = PATH + "/fonts/Roboto-Medium.ttf";
-  log.debug("Loading font: {}", main_font);
+  log.var("Font", main_font);
   ImGui::GetIO().Fonts->AddFontFromFileTTF(main_font.c_str(), baseFontSize);
-  auto fa_font = (PATH+"/fonts/"+FONT_ICON_FILE_NAME_FAS);
-  log.debug("Loading font: {}", fa_font);
-  ImGui::GetIO().Fonts->AddFontFromFileTTF(fa_font.c_str(), iconFontSize, &icons_config,
-                               icons_ranges);
+  auto fa_font = (PATH + "/fonts/" + FONT_ICON_FILE_NAME_FAS);
+  log.var("Font", fa_font);
+  ImGui::GetIO().Fonts->AddFontFromFileTTF(fa_font.c_str(), iconFontSize,
+                                           &icons_config, icons_ranges);
   // log.info("fonts: {}", ImGui::GetIO().Fonts->Fonts.Size);
   ImGui::GetIO().Fonts->Build();
-  ImGui::SFML::UpdateFontTexture();
-  // log.debug("Update font tex: {}", ImGui::SFML::UpdateFontTexture());
-
+  log.var("Fonts updated", ImGui::SFML::UpdateFontTexture());
 
   emitter.connect<sf_event_event>([&](const auto &e, const auto &em) {
     auto &scene = entt::locator<Scene>::value();
@@ -90,12 +88,12 @@ void Gui::serve() {
   auto &scene = entt::locator<Scene>::value();
   ImGui::SFML::Update(*scene.window, deltaClock.restart());
   drawDocking(STATUS_BAR_HEIGHT);
-  for(auto render : renders) {
+  for (auto render : renders) {
     render();
   }
   ImGuiViewport *vp = ImGui::GetMainViewport();
-    drawStatusBar(vp->Size.x, STATUS_BAR_HEIGHT, 0.0f,
-                  vp->Size.y - STATUS_BAR_HEIGHT);
+  drawStatusBar(vp->Size.x, STATUS_BAR_HEIGHT, 0.0f,
+                vp->Size.y - STATUS_BAR_HEIGHT);
   ImGui::SFML::Render(*scene.window);
 }
 
@@ -132,8 +130,7 @@ void Gui::drawDocking(float padding) {
   ImGui::End();
 }
 
-void Gui::drawStatusBar(float width, float height, float pos_x,
-                                float pos_y) {
+void Gui::drawStatusBar(float width, float height, float pos_x, float pos_y) {
   float GUI_SCALE = entt::monostate<"gui_scale"_hs>{};
   // auto &viewport = entt::locator<Viewport>::value();
   ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Always);
@@ -157,7 +154,7 @@ void Gui::drawStatusBar(float width, float height, float pos_x,
     ImGui::PopStyleColor(1);
   }
 
-  for(auto render : statusRenders) {
+  for (auto render : statusRenders) {
     render();
   }
   ImGui::End();

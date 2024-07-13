@@ -33,6 +33,7 @@ void bindJobEventToLua(std::string event_name) {
 }*/
 
 void JobManager::init(LibLog::Logger parentLog) {
+  mutex = std::make_shared<std::mutex>();
   // log.setParent(&parentLog);
   log.setAsync(true);
   auto label = "Initializing JobManager";
@@ -57,29 +58,25 @@ void JobManager::init(LibLog::Logger parentLog) {
 
   emitter.connect<job_start_event>([&](const auto &e, const auto &em) {
     auto &lua = entt::locator<sol::state>::value();
-    auto args = lua.create_table();
-    args["job"] = e.job;
+    auto args = lua.create_table_with("job", *e.job);
     emitter.publish(lua_event{"job_start", args});
   });
 
   emitter.connect<job_complete_event>([&](const auto &e, const auto &em) {
     auto &lua = entt::locator<sol::state>::value();
-    auto args = lua.create_table();
-    args["job"] = e.job;
+    auto args = lua.create_table_with("job", *e.job);
     emitter.publish(lua_event{"job_complete", args});
   });
 
   emitter.connect<job_error_event>([&](const auto &e, const auto &em) {
     auto &lua = entt::locator<sol::state>::value();
-    auto args = lua.create_table();
-    args["job"] = e.job;
+    auto args = lua.create_table_with("job", *e.job);
     emitter.publish(lua_event{"job_error", args});
   });
 
   emitter.connect<job_update_event>([&](const auto &e, const auto &em) {
     auto &lua = entt::locator<sol::state>::value();
-    auto args = lua.create_table();
-    args["job"] = e.job;
+    auto args = lua.create_table_with("job", *e.job);
     emitter.publish(lua_event{"job_update", args});
   });
 
@@ -94,10 +91,10 @@ int JobManager::add(std::shared_ptr<Job> job, bool start) {
   log.info("Adding a job: {} [{}]", job->title, job->id);
   jobs[job->id] = job;
   if (start) {
+    auto &emitter = entt::locator<event_emitter>::value();
+    emitter.publish(job_start_event{job});
     auto t = std::thread(
         [&](std::shared_ptr<Job> job) {
-          auto &emitter = entt::locator<event_emitter>::value();
-          emitter.publish(job_start_event{job});
           job->status = JobStatus::PROGRESS;
           try {
             job->func();

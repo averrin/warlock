@@ -35,8 +35,8 @@ void GameManager::loadData() {
   auto files =
       lua["settings"]["meta_data_files"].get<std::vector<std::string>>();
   loader.load<MetaData, MetaDataStore>(metaData, files);
-  log.info("Loaded probabilities: {}", metaData.probability.size());
-  log.info("Loaded mapFeatures: {}", metaData.mapFeatures.size());
+  log.var("Probabilities", metaData.probability.size());
+  log.var("MapFeatures", metaData.mapFeatures.size());
   log.stop("Loading MetaData");
   startJob->progress += 5;
 
@@ -45,8 +45,7 @@ void GameManager::loadData() {
   auto proto_files =
       lua["settings"]["proto_files"].get<std::vector<std::string>>();
   loader.load<Prototypes, RegistryStore>(prototypes, proto_files);
-  log.info("Loaded prototypes: {}",
-           prototypes.registry.storage<hf::meta>().size());
+  log.var("Prototypes", prototypes.registry.storage<hf::meta>().size());
   log.stop("Loading Prototypes");
   startJob->progress += 5;
   started = true;
@@ -147,7 +146,7 @@ void GameManager::initScript(entt::registry &registry, entt::entity entity) {
   fs::path PATH = entt::monostate<"path"_hs>{};
   registry.patch<hf::script>(entity, [&](auto &script) {
     auto &lua = entt::locator<sol::state>::value();
-    log.debug("Loading script: {}", (PATH / script.path).string());
+    log.var("Script", (PATH / script.path).string());
     script.self = lua.load_file(PATH / script.path).call();
     script.self["id"] = entity;
     script.handlers.init = script.self["init"];

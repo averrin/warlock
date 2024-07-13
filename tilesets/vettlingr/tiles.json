@@ -1,0 +1,106 @@
+{
+    "TILEMAPS": [
+        "sprites/vettlingr_32x32.png",
+        "sprites/_Items.png"
+    ],
+    "SIZE": [32, 32],
+    "GAP": 0,
+    "SPRITES": {
+        "UNKNOWN": [0,15, 3],
+        "GRASS": [0, 14, 2],
+        "FLOOR": [0, 11, 2],
+        "GROUND": [0, 12, 2],
+        "WATER": [0, 7, 15],
+        "VOID": [0, 15, 1],
+
+        "WALL_C": [0, 7,12],
+        "WALL_V": [0, 10,11],
+        "WALL_H": [0, 13,12],
+        "WALL_HB": [0, 11,12],
+        "WALL_HT": [0, 10,12],
+        "WALL_VL": [0,9, 11],
+        "WALL_VR": [0, 12,12],
+        "WALL_CROSS": [0,14, 12],
+
+        "WALL_VTS": [0, 7, 11],
+        "WALL_VBS": [0, 3,13],
+        "WALL_HLS": [0, 8,11],
+        "WALL_HRS": [0, 4,13],
+
+        "WALL_LT": [0,12, 11],
+        "WALL_LB": [0, 11,11],
+        "WALL_RT": [0,8, 12],
+        "WALL_RB": [0,9, 12],
+
+        "UPSTAIRS": [0,12, 3],
+        "DOWNSTAIRS": [0,14, 3],
+        "DOOR": [0,2, 9],
+
+        "TORCH_STAND": [0,0, 8],
+        "STATUE": [0,12, 8],
+        "ALTAR": [0,15, 15],
+        "CRATE": [0,14, 15],
+        "BUSH": [0,7, 14],
+
+        "BONES": [0,7, 8],
+        "HERB": [0,12, 15],
+        "ROCK": [0,10, 2],
+        "SCROLL": [0,7, 10],
+        "POTION": [0,13, 10],
+
+        "PICK_AXE": [0,11,7],
+        "TWO_HAND": [0,11,7],
+        "ONE_HAND": [0,11,7],
+        "LIGHT_WEAPON": [0,11,7],
+
+        "RING": [0,11,7],
+        "AMULET": [0,11,7],
+
+        "TORCH": [0,11,7],
+        "LANTERN": [0,11,7],
+        "CANDLE": [0,11,7],
+        "GOLD_COINS": [0,11,7],
+        "PLATE": [0,11,7],
+        "CUIRASS": [0,11,7],
+
+        "HELMET": [0,11,7],
+        "SHIELD": [0,11,7],
+        "GREAVES": [0,11,7],
+        "BOOTS": [0,11,7],
+        "CLOAK": [0,11,7],
+
+        "LEFT_PAULDRON": [0,11,7],
+        "RIGHT_PAULDRON": [0,11,7],
+        "LEFT_GAUNTLET": [0,11,7],
+        "RIGHT_GAUNTLET": [0,11,7],
+
+        "CORPSE": [0,11,7],
+        "THROWING_KNIVES": [0,11,7],
+        "CLUTTER": [0,11,7],
+        "EMPTY": [0,11,7],
+        "ENEMY": [0,11,7],
+
+        "RAT":[0,2,7],
+        "BAT":[0,2,6],
+        "SNAKE":[0,3,7],
+        "VIPER":[0,3,7],
+        "LARGE_BAT":[0,2,4],
+        "GOBLIN_ROCKTHROWER":[0,7,6],
+        "GOBLIN":[0,7,6],
+        "CULTIST":[0,11,6],
+        "ORK_BLACK":[0,15,6],
+        "ORK":[0,15,6],
+        "ORK_BERSERK":[0,15,6],
+        "PIXI":[0,0,7],
+        "OGRE":[0,15,4],
+        "I_OGRE":[0,15,4],
+        "GOBLIN_LIEUTENANT":[0,7,6],
+        "GOBLIN_ROGUE":[0,7,6],
+        "ANT":[0,1,6],
+        "GIANT_ANT":[0,1,6],
+        "ANT_QUEEN":[0,1,6],
+        "SKELETON":[0,10,7],
+        "ZOMBIE":[0,10,7],
+        "WRAITH":[0,7,7]
+    }
+}
