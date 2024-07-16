@@ -6,6 +6,7 @@
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 #include <filesystem>
+#include <game/components.hpp>
 #include <map>
 #include <string>
 #include <vector>
@@ -26,8 +27,6 @@ class RegistryStore : public Store {
         .template get<hf::meta>(ar)
         .template get<hf::visible>(ar)
         .template get<hf::ineditor>(ar)
-        // .template get<hf::pickable>(ar)
-        // .template get<hf::wearable>(ar)
         .template get<hf::glow>(ar)
         .template get<hf::renderable>(ar)
         .template get<hf::wall>(ar)
@@ -37,30 +36,19 @@ class RegistryStore : public Store {
         .template get<hf::obstacle>(ar)
         .template get<hf::creature>(ar)
         .template get<hf::script>(ar)
-        .template get<entt::tag<"item"_hs>>(ar)
-        // .template get<entt::tag<"enemy"_hs>>(ar).template
-        // get<entt::tag<"terrain"_hs>>(ar)
         .template get<entt::tag<"proto"_hs>>(ar)
         .orphans();
-
-    // for (auto entity : registry.view<entt::entity>()) {
-    //   fmt::print("Entity: {}\n", (int)entity);
-    // }
-
-    // fmt::print("Loading prototypes: {}\n",
-    // registry.storage<hf::meta>().size());
   };
   template <class Archive> void save(Archive &ar) const {
     ar(cereal::base_class<Store>(this));
     // TODO: make view configurable
-    auto view = registry.view<entt::tag<"proto"_hs>, hf::meta>();
+    // auto view = registry.view<entt::tag<"proto"_hs>, hf::meta>();
+    auto view = registry.view<entt::entity>();
     entt::snapshot{registry}
         .get<entt::entity>(ar)
         .template get<hf::meta>(ar, view.begin(), view.end())
         .template get<hf::visible>(ar, view.begin(), view.end())
         .template get<hf::ineditor>(ar, view.begin(), view.end())
-        // .template get<hf::pickable>(ar, view.begin(), view.end())
-        // .template get<hf::wearable>(ar, view.begin(), view.end())
         .template get<hf::glow>(ar, view.begin(), view.end())
         .template get<hf::renderable>(ar, view.begin(), view.end())
         .template get<hf::wall>(ar, view.begin(), view.end())
@@ -70,10 +58,6 @@ class RegistryStore : public Store {
         .template get<hf::obstacle>(ar, view.begin(), view.end())
         .template get<hf::creature>(ar, view.begin(), view.end())
         .template get<hf::script>(ar, view.begin(), view.end())
-        .template get<entt::tag<"item"_hs>>(ar, view.begin(), view.end())
-        // .template get<entt::tag<"enemy"_hs>>(ar, view.begin(),
-        // view.end()).template get<entt::tag<"terrain"_hs>>(ar, view.begin(),
-        // view.end())
         .template get<entt::tag<"proto"_hs>>(ar, view.begin(), view.end());
   };
 

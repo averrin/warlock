@@ -40,6 +40,7 @@ public:
   void init(LibLog::Logger parentLog);
 
   void loadTileset(fs::path path);
+  void saveTileset(fs::path path);
   Viewport();
   void start();
   Viewport(const Viewport &other) {

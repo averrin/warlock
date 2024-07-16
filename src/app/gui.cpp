@@ -1,9 +1,11 @@
 #include <IconsFontAwesome6.h>
 #include <app/gui.hpp>
 #include <app/scene.hpp>
+#include <filesystem>
 #include <imgui-SFML.h>
 #include <imgui.h>
 #include <utils/entt_lua.hpp>
+namespace fs = std::filesystem;
 
 Gui::Gui() {}
 
@@ -61,10 +63,10 @@ void Gui::init(LibLog::Logger parentLog) {
   // ImGui::GetIO().Fonts->AddFontDefault();
   auto main_font = settings["font"].get<std::string>();
   // auto hack_font = PATH + "/fonts/Roboto-Medium.ttf";
-  log.var("Font", main_font);
+  log.var("Font", fs::relative(main_font, PATH).string());
   ImGui::GetIO().Fonts->AddFontFromFileTTF(main_font.c_str(), baseFontSize);
   auto fa_font = (PATH + "/fonts/" + FONT_ICON_FILE_NAME_FAS);
-  log.var("Font", fa_font);
+  log.var("Font", fs::relative(fa_font, PATH).string());
   ImGui::GetIO().Fonts->AddFontFromFileTTF(fa_font.c_str(), iconFontSize,
                                            &icons_config, icons_ranges);
   // log.info("fonts: {}", ImGui::GetIO().Fonts->Fonts.Size);

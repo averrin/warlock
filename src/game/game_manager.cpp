@@ -11,6 +11,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <game/meta_data.hpp>
 #include <game/prototypes.hpp>
+#include <game/state.hpp>
 #include <utils/data/loader.hpp>
 
 GameManager::GameManager() {
@@ -34,7 +35,7 @@ void GameManager::loadData() {
   auto &metaData = entt::locator<MetaData>::emplace();
   auto files =
       lua["settings"]["meta_data_files"].get<std::vector<std::string>>();
-  loader.load<MetaData, MetaDataStore>(metaData, files);
+  loader.load<MetaData>(metaData, files);
   log.var("Probabilities", metaData.probability.size());
   log.var("MapFeatures", metaData.mapFeatures.size());
   log.stop("Loading MetaData");
@@ -44,10 +45,37 @@ void GameManager::loadData() {
   auto &prototypes = entt::locator<Prototypes>::emplace();
   auto proto_files =
       lua["settings"]["proto_files"].get<std::vector<std::string>>();
-  loader.load<Prototypes, RegistryStore>(prototypes, proto_files);
+  loader.load<Prototypes>(prototypes, proto_files);
   log.var("Prototypes", prototypes.registry.storage<hf::meta>().size());
   log.stop("Loading Prototypes");
   startJob->progress += 5;
+
+  log.start("Loading State");
+  auto &current_state = entt::locator<State>::emplace();
+
+  fs::path PATH = entt::monostate<"path"_hs>{};
+  auto state_path =
+      PATH / fs::path(lua["settings"]["current_state"].get<std::string>());
+  if (fs::exists(state_path) == false) {
+    log.info("Creating new current state");
+    auto init_state = std::make_shared<State>();
+    auto init_state_files =
+        lua["settings"]["init_states"].get<std::vector<std::string>>();
+    loader.load<State>(*init_state, init_state_files);
+    log.var("Init State", init_state->registry.storage<hf::meta>().size());
+    auto store = current_state.create("current", state_path);
+    store->initEmpty();
+    RegistryContainer::copyRegistry(init_state->registry, store->registry);
+    current_state.add(store);
+    log.var("State Path", current_state.stores.front()->path.string());
+  } else {
+    log.info("Loading current state");
+    loader.load<State>(current_state, {state_path.string()});
+    log.var("Current State", current_state.registry.storage<hf::meta>().size());
+  }
+  log.stop("Loading State");
+  startJob->progress += 5;
+
   started = true;
 
   log.setAsync(false);
@@ -67,6 +95,9 @@ void GameManager::saveData() {
   loader.save(metaData);
   auto &prototypes = entt::locator<Prototypes>::value();
   loader.save(prototypes);
+
+  auto &state = entt::locator<State>::value();
+  loader.save(state);
   log.stop(label);
 
   log.setAsync(false);
@@ -146,7 +177,7 @@ void GameManager::initScript(entt::registry &registry, entt::entity entity) {
   fs::path PATH = entt::monostate<"path"_hs>{};
   registry.patch<hf::script>(entity, [&](auto &script) {
     auto &lua = entt::locator<sol::state>::value();
-    log.var("Script", (PATH / script.path).string());
+    log.var("Script", script.path);
     script.self = lua.load_file(PATH / script.path).call();
     script.self["id"] = entity;
     script.handlers.init = script.self["init"];

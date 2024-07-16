@@ -1,10 +1,13 @@
 require("scripts/controls")
 require("scripts/gui")
+require("scripts/editor")
 
 settings = {
 	meta_data_files = { "data/main.meta" },
-	proto_files = { "data/main.proto" },
+	proto_files = { "data/main.proto", "data/extra.proto" },
 	init_script = "scripts/init.lua",
+	init_states = { "data/init.state" },
+	current_state = "save/current.state",
 	tileset = "tilesets/boxy",
 	seed = 873130520,
 	location_type = "MIX",
@@ -32,7 +35,7 @@ emitter.connect("init", function(event)
 end)
 
 emitter.connect("key", function(event)
-	info("Key pressed: " .. event.combo)
+	var("Pressed", event.combo)
 end)
 
 emitter.connect("job_start", function(event)

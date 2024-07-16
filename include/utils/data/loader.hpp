@@ -11,31 +11,61 @@
 #include <liblog/liblog.hpp>
 #include <libprint/libprint.hpp>
 #include <sstream>
+#include <string>
 #include <utils/entt.hpp>
 #include <vector>
 namespace fs = std::filesystem;
 
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <string>
+
 class Loader {
   LibLog::Logger log = LibLog::Logger(fmt::color::orange, "Loader");
+
+  std::string getCurrentDateTime() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t currentTime = std::chrono::system_clock::to_time_t(now);
+    std::tm *timeInfo = std::localtime(&currentTime);
+    std::ostringstream dateTimeStream;
+    dateTimeStream << std::put_time(timeInfo, "%Y-%m-%d %H:%M:%S");
+    return dateTimeStream.str();
+  }
 
 public:
   void init(LibLog::Logger parentLog);
 
-  template <typename ContainerType, typename StoreType>
+  template <typename ContainerType>
   void load(ContainerType &container, std::vector<std::string> files) {
     fs::path PATH = entt::monostate<"path"_hs>{};
-    for (auto &file : files) {
-      auto path = (PATH / file).string();
-      // log.debug("Try to open {}", path);
-      std::ifstream ifs(path, std::ios::in | std::ios::binary);
-      cereal::BinaryInputArchive iarchive(ifs);
-      // cereal::JSONInputArchive iarchive(ifs);
+    for (auto &_file : files) {
+      auto path = (PATH / _file).string();
+      auto file = fs::relative(path, PATH).string();
       auto store_name = file.substr(file.find_last_of("/") + 1);
-      auto store = std::make_shared<StoreType>(container.type, store_name, path,
-                                               container.version);
-      iarchive(*store);
-      log.info("Load {} (type: {}, ver: {})", LibPrint::utils::blue(path),
-               store->type, store->version);
+      auto store = container.create(store_name, path);
+
+      log.var("Path", file);
+      if (fs::exists(path) == false) {
+        log.error("File not found: {}", path);
+        log.debug("But store is created anyway");
+        store->initEmpty();
+      } else {
+        std::ifstream ifs(path, std::ios::in | std::ios::binary);
+        cereal::BinaryInputArchive iarchive(ifs);
+        // cereal::JSONInputArchive iarchive(ifs);
+        try {
+          iarchive(*store);
+          log.info("{}: {} (type: {}, ver: {})", LibPrint::utils::green("Load"),
+                   LibPrint::utils::italic(store->name), store->type,
+                   store->version);
+        } catch (cereal::Exception &e) {
+          log.error("Error loading {}: {}", path, e.what());
+          continue;
+        }
+      }
       container.add(store);
     }
   }
@@ -43,12 +73,18 @@ public:
   template <typename ContainerType> void save(ContainerType &container) {
     for (auto store : container.stores) {
       auto path = store->path.string();
+      store->attributes["saved_at"] = getCurrentDateTime();
+      auto file =
+          fs::relative(store->path, entt::monostate<"path"_hs>{}).string();
       // log.debug("Try to save {}", path);
       std::ofstream ofs(path, std::ios::out | std::ios::binary);
       cereal::BinaryOutputArchive oarchive(ofs);
       // cereal::JSONOutputArchive oarchive(ofs);
-      log.info("Save {} (type: {}, ver: {})", LibPrint::utils::blue(path),
-               store->type, store->version);
+      log.var("Path", file);
+      log.info("{}: {} (type: {}, ver: {})",
+               LibPrint::utils::color(fmt::terminal_color::bright_red, "Save"),
+               LibPrint::utils::italic(store->name), store->type,
+               store->version);
       oarchive(*store);
     }
   }

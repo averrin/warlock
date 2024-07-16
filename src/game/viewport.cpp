@@ -87,7 +87,7 @@ sf::Color Viewport::getColor(std::string color) {
 void Viewport::loadTileset(fs::path path) {
   auto label = "Loading tileset";
   log.start(label);
-  log.var("Tileset", path.string());
+  log.var("Tileset", fs::relative(path, entt::monostate<"path"_hs>{}).string());
   std::ifstream cfile(path / "colors.json");
   cfile >> colors;
 
@@ -158,6 +158,30 @@ sf::Color Viewport::getColor(std::string cat, std::string key) {
     color = sf::Color(_c.r, _c.g, _c.b, _c.a);
   }
   return color;
+}
+
+void Viewport::saveTileset(fs::path path) {
+  auto p = log.parent;
+  log.setParent(nullptr);
+  log.setAsync(true);
+  auto label = "Saving tileset";
+  log.start(label);
+  log.var("Tileset", fs::relative(path, entt::monostate<"path"_hs>{}).string());
+  std::ofstream o(path / "colors.json");
+  colors["VARIATIONS"] = tileSet.colorVariations;
+  o << std::setw(4) << colors << std::endl;
+
+  json j;
+  j["TILEMAPS"] = tileSet.maps;
+  j["SIZE"] = tileSet.size;
+  j["GAP"] = tileSet.gap;
+  j["SPRITES"] = tileSet.sprites;
+  j["VARIATIONS"] = tileSet.spriteVariations;
+
+  std::ofstream o2(path / "tiles.json");
+  o2 << std::setw(4) << j << std::endl;
+  log.stop(label);
+  log.setParent(p);
 }
 
 /*

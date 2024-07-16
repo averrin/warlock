@@ -6,8 +6,8 @@
 #include <utils/data/container.hpp>
 #include <utils/entt.hpp>
 
-class Prototypes : public RegistryContainer {
-  LibLog::Logger log = LibLog::Logger(fmt::color::orange, "Proto");
+class State : public RegistryContainer {
+  LibLog::Logger log = LibLog::Logger(fmt::color::green, "State");
 
   LibLog::Logger &getLog() override { return log; }
   int8_t getVersion() override { return version; }
@@ -15,7 +15,7 @@ class Prototypes : public RegistryContainer {
 
 public:
   int8_t version = 1;
-  int8_t type = 2;
+  int8_t type = 3;
 
   using RegistryContainer::RegistryContainer;
 };

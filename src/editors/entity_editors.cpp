@@ -1,7 +1,11 @@
 #include <IconsFontAwesome6.h>
 #include <SFML/Graphics.hpp>
 #include <fmt/format.h>
-#include <game/components.hpp>
+#include <utils/entt.hpp>
+#include <utils/entt_lua.hpp>
+using namespace entt::literals;
+#include <game/specs/light.hpp>
+#include <game/viewport.hpp>
 #include <imgui-SFML.h>
 #include <imgui-stl.hpp>
 #include <imgui.h>
@@ -262,7 +266,7 @@ template <>
 void ComponentEditorWidget<hf::renderable>(entt::registry &registry,
                                            entt::registry::entity_type e) {
   float GUI_SCALE = entt::monostate<"gui_scale"_hs>{};
-  // auto viewport = entt::locator<Viewport>::value();
+  auto viewport = entt::locator<Viewport>::value();
   auto r = hf::renderable{};
   if (registry.all_of<hf::renderable>(e)) {
     r = registry.get<hf::renderable>(e);
@@ -279,7 +283,7 @@ void ComponentEditorWidget<hf::renderable>(entt::registry &registry,
   if (ImGui::InputInt("zIndex", &r.zIndex)) {
     registry.emplace_or_replace<hf::renderable>(e, r);
   }
-  /*
+
   auto k = r.spriteKey;
   auto v = viewport.tileSet.sprites[k];
   sf::Sprite s;
@@ -308,7 +312,6 @@ void ComponentEditorWidget<hf::renderable>(entt::registry &registry,
     r.spriteKey = std::string(_ts[s_idx]);
     registry.emplace_or_replace<hf::renderable>(e, r);
   }
-  */
 
   ImGui::SetNextItemWidth(150);
   if (ImGui::InputText("Color", r.fgColor)) {
@@ -335,7 +338,7 @@ void ComponentEditorWidget<hf::renderable>(entt::registry &registry,
     }
   }
 
-  if (ImGui::Checkbox("all_of BG", &r.hasBg)) {
+  if (ImGui::Checkbox("Has BG", &r.hasBg)) {
     registry.emplace_or_replace<hf::renderable>(e, r);
   }
   if (r.hasBg) {

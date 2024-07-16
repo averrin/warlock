@@ -40,6 +40,7 @@ void TilesetEditor::render() {
     // emitter.publish(regen_event{});
   }
   ImGui::SameLine();
+  // TODO: fix tileset selecting
   if (ImGui::Button("Reload")) {
     auto path = PATH / fs::path("tilesets") / ts[ts_idx];
     viewport.loadTileset(path);
@@ -47,7 +48,7 @@ void TilesetEditor::render() {
   }
   ImGui::SameLine();
   if (ImGui::Button("Save")) {
-    // saveTileset();
+    viewport.saveTileset(viewport.tilesetPath);
   }
   ImGui::Separator();
 

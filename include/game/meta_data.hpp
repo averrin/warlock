@@ -1,7 +1,14 @@
+#pragma once
 #include <game/meta_data_store.hpp>
 #include <utils/data/container.hpp>
 
 class MetaData : public Container<MetaDataStore> {
+  LibLog::Logger log = LibLog::Logger(fmt::color::orange, "Meta");
+
+  LibLog::Logger &getLog() override { return log; }
+  int8_t getVersion() override { return version; }
+  int8_t getType() override { return type; }
+
 public:
   int8_t version = 1;
   int8_t type = 1;

@@ -41,6 +41,11 @@ int main(int argc, char *argv[]) {
       .default_value(false)
       .implicit_value(true);
 
+  program.add_argument("--new")
+      .help("remove current save")
+      .default_value(false)
+      .implicit_value(true);
+
   try {
     program.parse_args(argc, argv);
   } catch (const std::exception &err) {
@@ -50,6 +55,8 @@ int main(int argc, char *argv[]) {
   }
   bool nogui = program["--no-gui"] == true;
   bool noeditor = program["--no-editor"] == true;
+
+  bool nostate = program["--new"] == true;
 
   auto seed = time(NULL);
   // if (argc > 1) {
@@ -62,6 +69,15 @@ int main(int argc, char *argv[]) {
   Application app(APP_NAME, path, VERSION, seed);
   app.log.start(APP_NAME);
   auto &emitter = entt::locator<event_emitter>::value();
+
+  if (nostate) {
+    auto &lua = entt::locator<sol::state>::value();
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto state_path =
+        PATH / fs::path(lua["settings"]["current_state"].get<std::string>());
+    app.log.info("Removing state: {}", state_path.string());
+    fs::remove(state_path);
+  }
 
   auto &jobs = entt::locator<JobManager>::emplace();
   jobs.init(app.log);
@@ -97,18 +113,19 @@ int main(int argc, char *argv[]) {
     gui.renders.push_back([&]() { md_editor.render(); });
     auto et_editor = EntityTreeEditor("Prototype Editor");
     gui.renders.push_back([&]() {
-      // et_editor.render<Prototypes, entt::tag<"proto"_hs>>();
-      et_editor.render();
+      // et_editor.render<Prototypes>();
+      et_editor.render<Prototypes, entt::tag<"proto"_hs>>();
+      // et_editor.render();
     });
     auto ts_editor = TilesetEditor("Tileset Editor");
     gui.renders.push_back([&]() { ts_editor.render(); });
 
-    gui.renders.push_back([&]() {
-      ImGui::Begin("Test window");
-      ImGui::Text("\xef\x8a\xb9");
-      ImGui::Text("Hellfrost");
-      ImGui::End();
-    });
+    // gui.renders.push_back([&]() {
+    //   ImGui::Begin("Test window");
+    //   ImGui::Text("\xef\x8a\xb9");
+    //   ImGui::Text("Hellfrost");
+    //   ImGui::End();
+    // });
   }
 
   while (nogui || scene.window->isOpen()) {

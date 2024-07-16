@@ -1,11 +1,11 @@
 #pragma once
-
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/map.hpp>
 #include <cereal/types/memory.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 #include <filesystem>
+#include <fmt/format.h>
 #include <map>
 #include <string>
 #include <vector>
@@ -21,7 +21,8 @@ class Store {
       throw std::runtime_error("Invalid magic number");
     }
     if (type != expected_type) {
-      throw std::runtime_error("Invalid type");
+      throw std::runtime_error(
+          fmt::format("Invalid type: {} != {}", type, expected_type));
     }
     if (version != expected_version) {
       throw std::runtime_error("Invalid version");
@@ -40,6 +41,12 @@ public:
   std::string name;
   fs::path path;
   std::map<std::string, std::string> attributes = {};
+
+  void initEmpty() {
+    type = expected_type;
+    version = expected_version;
+    magic = expected_magic;
+  }
 
   Store(int8_t type, std::string name, fs::path path, int version)
       : expected_type(type), path(path), expected_version(version), name(name) {
