@@ -2,8 +2,7 @@
 #include <IconsFontAwesome6.h>
 #include <fmt/format.h>
 #include <game/game_manager.hpp>
-#include <game/prototypes.hpp>
-#include <game/state.hpp>
+#include <game/specs/light.hpp>
 #include <imgui-stl.hpp>
 #include <imgui.h>
 #include <imgui_entt_entity_editor.hpp>
@@ -11,6 +10,7 @@
 #include <memory>
 #include <string>
 #include <utils/entt.hpp>
+#include <utils/entt_lua.hpp>
 #include <vector>
 
 typedef std::vector<entt::entity> entity_list;
@@ -24,19 +24,13 @@ public:
   std::string name;
   EntityTreeEditor(std::string name);
 
-  template <typename ContainerType, typename... T> void render() {
+  template <typename ContainerType, typename... T>
+  void render(ContainerType &container) {
     auto &gm = entt::locator<GameManager>::value();
     if (!gm.started) {
       return;
     }
     ImGui::Begin("Prototypes Editor");
-    renderInline<ContainerType, T...>();
-    ImGui::End();
-  }
-
-  template <typename ContainerType, typename... T> void renderInline() {
-    auto &gm = entt::locator<GameManager>::value();
-    auto &container = entt::locator<ContainerType>::value();
 
     if (ImGui::Button("Apply")) {
       // emitter.publish(regen_event{});
@@ -52,6 +46,15 @@ public:
       gm.saveData();
     }
     ImGui::Separator();
+
+    renderInline<ContainerType, T...>(container);
+    ImGui::End();
+  }
+
+  template <typename ContainerType, typename... T>
+  void renderInline(ContainerType &container) {
+    auto &gm = entt::locator<GameManager>::value();
+    // auto &container = entt::locator<ContainerType>::value();
 
     auto entityTree = std::make_shared<tree_node>();
 
@@ -120,7 +123,7 @@ public:
     }
   }
 
-  void drawEntityInfo(entt::registry &registry, entt::entity e);
+  static void drawEntityInfo(entt::registry &registry, entt::entity e);
 
   // std::map<std::string, std::string> cache = {};
   // std::map<std::string, float> cache_f = {};

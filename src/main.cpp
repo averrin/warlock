@@ -19,6 +19,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <editors/entity_tree_editor.hpp>
 #include <editors/meta_data_editor.hpp>
+#include <editors/state_editor.hpp>
 #include <editors/tileset_editor.hpp>
 #include <game/prototypes.hpp>
 #include <game/viewport.hpp>
@@ -113,10 +114,13 @@ int main(int argc, char *argv[]) {
     gui.renders.push_back([&]() { md_editor.render(); });
     auto et_editor = EntityTreeEditor("Prototype Editor");
     gui.renders.push_back([&]() {
-      // et_editor.render<Prototypes>();
-      et_editor.render<Prototypes, entt::tag<"proto"_hs>>();
-      // et_editor.render();
+      et_editor.render<Prototypes, entt::tag<"proto"_hs>>(
+          entt::locator<Prototypes>::value());
     });
+    auto state_editor = std::make_shared<StateEditor>("State Editor");
+    jobs.add(state_editor->startJob, true);
+    // emitter.publish(add_job_event{state_editor->startJob, true});
+    gui.renders.push_back([&]() { state_editor->render(); });
     auto ts_editor = TilesetEditor("Tileset Editor");
     gui.renders.push_back([&]() { ts_editor.render(); });
 

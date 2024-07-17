@@ -58,4 +58,11 @@ public:
   RegistryContainer() : Container<RegistryStore>(getType(), getVersion()) {
     log.setAsync(true);
   }
+  RegistryContainer(const RegistryContainer &other)
+      : Container<RegistryStore>(getType(), getVersion()) {
+    log.setAsync(true);
+    for (auto store : other.stores) {
+      add(store);
+    }
+  }
 };

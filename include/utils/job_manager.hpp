@@ -10,9 +10,9 @@
 
 class JobManager {
   LibLog::Logger log = LibLog::Logger(fmt::color::yellow, "JM");
-  std::map<int, std::shared_ptr<Job>> jobs;
-  std::map<int, std::thread *> threads;
-  std::shared_ptr<std::mutex> mutex;
+  std::map<int, std::shared_ptr<Job>> jobs = {};
+  std::map<int, std::thread *> threads = {};
+  std::shared_ptr<std::mutex> mutex = nullptr;
 
 public:
   JobManager();

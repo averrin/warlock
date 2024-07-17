@@ -1,6 +1,8 @@
 #pragma once
+#include <filesystem>
 #include <memory>
 #include <vector>
+namespace fs = std::filesystem;
 
 template <typename StoreType> class Container {
   LibLog::Logger log = LibLog::Logger(fmt::color::orange, "Cont");

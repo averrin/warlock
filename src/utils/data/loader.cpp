@@ -17,4 +17,5 @@
 void Loader::init(LibLog::Logger parentLog) {
   // log.setParent(&parentLog);
   log.setAsync(true);
+  log.setOffset(1);
 }
