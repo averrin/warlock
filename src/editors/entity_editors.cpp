@@ -4,6 +4,7 @@
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 using namespace entt::literals;
+#include <game/components/frame.hpp>
 #include <game/specs/light.hpp>
 #include <game/viewport.hpp>
 #include <imgui-SFML.h>
@@ -23,7 +24,42 @@ std::string new_key_lf;
 bool show_unknown = true;
 float new_prob = 0;
 
+void MetaDataEditor(Metadata &meta) {
+  ImGui::InputText("Name", meta.name);
+  ImGui::InputText("Description", meta.description);
+
+  for (auto [key, attr] : meta.attributes) {
+    ImGui::Text("[%s]: %s", key.c_str(), attr->ToString().c_str());
+  }
+}
+
 namespace MM {
+template <>
+void ComponentEditorWidget<Frame>(entt::registry &registry,
+                                  entt::registry::entity_type e) {
+  auto &f = registry.get<Frame>(e);
+  MetaDataEditor(f.data);
+
+  ImGui::Text("Components:");
+  for (auto &c : f.components) {
+    if (ImGui::CollapsingHeader(
+            fmt::format("{} [{}]", c->data.name.c_str(), c->state.c_str())
+                .c_str())) {
+      MetaDataEditor(c->data);
+    }
+  }
+}
+
+template <>
+void ComponentEditorWidget<Connection>(entt::registry &registry,
+                                       entt::registry::entity_type e) {
+  auto &c = registry.get<Connection>(e);
+  MetaDataEditor(c.data);
+
+  ImGui::InputInt("Source", &c.source);
+  ImGui::InputInt("Target", &c.target);
+}
+
 template <>
 void ComponentEditorWidget<hf::meta>(entt::registry &registry,
                                      entt::registry::entity_type e) {

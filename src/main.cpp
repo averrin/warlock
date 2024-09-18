@@ -2,7 +2,10 @@
 #include <backward.hpp>
 #include <chrono>
 #include <fmt/format.h>
+#include <imgui-SFML.h>
+#include <imgui-stl.hpp>
 #include <meta.hpp>
+#include <misc/cpp/imgui_stdlib.h>
 #include <utils/data/loader.hpp>
 #include <utils/job_manager.hpp>
 #include <utils/selfpath.hpp>
@@ -10,6 +13,8 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <app/gui.hpp>
 #include <app/scene.hpp>
+#include <game/draw_engine.hpp>
+#include <game/draw_manager.hpp>
 #include <game/game_manager.hpp>
 #include <utils/entt.hpp>
 
@@ -19,10 +24,10 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <editors/entity_tree_editor.hpp>
 #include <editors/meta_data_editor.hpp>
+#include <editors/power_editor.hpp>
 #include <editors/state_editor.hpp>
 #include <editors/tileset_editor.hpp>
 #include <game/prototypes.hpp>
-#include <game/viewport.hpp>
 
 namespace backward {
 backward::SignalHandling sh;
@@ -42,6 +47,11 @@ int main(int argc, char *argv[]) {
       .default_value(false)
       .implicit_value(true);
 
+  program.add_argument("--no-debug")
+      .help("disable debug logs")
+      .default_value(false)
+      .implicit_value(true);
+
   program.add_argument("--new")
       .help("remove current save")
       .default_value(false)
@@ -55,9 +65,10 @@ int main(int argc, char *argv[]) {
     std::exit(1);
   }
   bool nogui = program["--no-gui"] == true;
-  bool noeditor = program["--no-editor"] == true;
+  bool noeditor = nogui || program["--no-editor"] == true;
 
   bool nostate = program["--new"] == true;
+  bool nodebug = program["--no-debug"] == true;
 
   auto seed = time(NULL);
   // if (argc > 1) {
@@ -65,6 +76,7 @@ int main(int argc, char *argv[]) {
   // }
   auto path = get_selfpath();
   entt::monostate<"path"_hs>{} = path;
+  entt::monostate<"debug"_hs>{} = !nodebug;
 
   entt::locator<event_emitter>::emplace();
   Application app(APP_NAME, path, VERSION, seed);
@@ -84,18 +96,22 @@ int main(int argc, char *argv[]) {
   jobs.init(app.log);
 
   auto &scene = entt::locator<Scene>::emplace();
-  auto &viewport = entt::locator<Viewport>::emplace();
+  auto &draw_manager = entt::locator<DrawManager>::emplace();
 
-  viewport.init(app.log);
-  emitter.publish(add_job_event{viewport.startJob, true});
-  // viewport.start();
-
+  std::shared_ptr<DrawEngine> main_engine = nullptr;
+  // std::shared_ptr<DrawEngine> alt_engine = nullptr;
   if (!nogui) {
     scene.init(app.log);
+    draw_manager.init(app.log);
+    main_engine = draw_manager.addEngine("main");
+    main_engine->resize(scene.window->getSize());
+
+    // alt_engine = draw_manager.addEngine("alt");
+    // alt_engine->resize(scene.window->getSize());
   }
 
   auto &gui = entt::locator<Gui>::emplace();
-  if (!nogui && !noeditor) {
+  if (!noeditor) {
     gui.init(app.log);
   }
 
@@ -114,7 +130,7 @@ int main(int argc, char *argv[]) {
     gui.renders.push_back([&]() { md_editor.render(); });
     auto et_editor = EntityTreeEditor("Prototype Editor");
     gui.renders.push_back([&]() {
-      et_editor.render<Prototypes, entt::tag<"proto"_hs>>(
+      et_editor.render<Prototypes, entt::tag<"proto"_hs> /*, hf::meta*/>(
           entt::locator<Prototypes>::value());
     });
     auto state_editor = std::make_shared<StateEditor>("State Editor");
@@ -124,12 +140,35 @@ int main(int argc, char *argv[]) {
     auto ts_editor = TilesetEditor("Tileset Editor");
     gui.renders.push_back([&]() { ts_editor.render(); });
 
-    // gui.renders.push_back([&]() {
-    //   ImGui::Begin("Test window");
-    //   ImGui::Text("\xef\x8a\xb9");
-    //   ImGui::Text("Hellfrost");
-    //   ImGui::End();
-    // });
+    auto power_editor = std::make_shared<PowerEditor>("Power Editor");
+    gui.renders.push_back([&]() {
+      if (gm.started) {
+        power_editor->render();
+      }
+    });
+
+    sf::RenderTexture rt;
+    sf::Sprite s;
+    gui.renders.push_back([&]() {
+      ImGui::Begin("Test window");
+      // rt.draw(*alt_engine->layers);
+      rt.display();
+      s.setTexture(rt.getTexture());
+      ImGui::Image(s, sf::Vector2f(800, 600), sf::Color::White,
+                   sf::Color::Transparent);
+      ImGui::End();
+    });
+  }
+
+  if (!nogui) {
+    sf::RectangleShape rectangle;
+    rectangle.setPosition(0, 0);
+    rectangle.setSize(
+        sf::Vector2f(scene.window->getSize().x, scene.window->getSize().y));
+
+    main_engine->start();
+    // alt_engine->start();
+    fmt::print("Main Engine: {}\n", fmt::ptr(main_engine.get()));
   }
 
   while (nogui || scene.window->isOpen()) {
@@ -137,6 +176,11 @@ int main(int argc, char *argv[]) {
     gm.serve();
     if (!nogui) {
       scene.serve();
+      // draw_manager.serve();
+      // draw_manager.draw();
+      if (gm.started) {
+        // scene.window->draw(*main_engine->layers);
+      }
       if (!noeditor) {
         gui.serve();
       }

@@ -58,21 +58,25 @@ public:
 
     auto entityTree = std::make_shared<tree_node>();
 
+    std::map<std::string, entt::registry *> regs;
+    regs["Root"] = &container.registry;
+    for (auto data : container.stores) {
+      regs[data->name] = &data->registry;
+    }
+
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
     if (ImGui::BeginTabBar("StoresTabs", tab_bar_flags)) {
-      for (auto data : container.stores) {
-        if (ImGui::BeginTabItem(data->name.c_str())) {
-          auto ents = data->registry.template view<T...>();
+      for (auto [name, reg] : regs) {
+        if (ImGui::BeginTabItem(name.c_str())) {
+          auto ents = reg->template view<T...>();
           // auto ents = data->registry.view<entt::tag<"proto"_hs>>();
           for (auto e : ents) {
-            if (!data->registry.template all_of<hf::ineditor>(e) ||
-                data->registry.template get<hf::ineditor>(e).folders.size() ==
-                    0 ||
-                data->registry.template get<hf::ineditor>(e).folders.front() ==
-                    "") {
+            if (!reg->template all_of<hf::ineditor>(e) ||
+                reg->template get<hf::ineditor>(e).folders.size() == 0 ||
+                reg->template get<hf::ineditor>(e).folders.front() == "") {
               entityTree->entities.push_back(e);
             } else {
-              auto ie = data->registry.template get<hf::ineditor>(e);
+              auto ie = reg->template get<hf::ineditor>(e);
               if (ie.folders.size() == 0) {
                 entityTree->entities.push_back(e);
               } else {
@@ -92,16 +96,18 @@ public:
           if (ImGui::TreeNode("ents", "%s Entities", ICON_FA_CUBE)) {
             ImGui::AlignTextToFramePadding();
             ImGui::Text("Count: %lu", ents.size());
+            ImGui::Text("Count ALL: %lu",
+                        reg->template storage<entt::entity>().size());
             ImGui::SameLine();
             if (ImGui::Button("New Entity")) {
-              auto e = data->registry.create();
-              data->registry.template emplace<entt::tag<"proto"_hs>>(e);
+              auto e = reg->create();
+              reg->template emplace<T...>(e);
             }
 
             std::function<void(std::shared_ptr<tree_node> v)> it;
             it = [&](std::shared_ptr<tree_node> v) {
               for (auto e : v->entities) {
-                drawEntityInfo(data->registry, e);
+                drawEntityInfo(*reg, e);
               }
               for (auto [fn, f] : v->children) {
                 if (ImGui::TreeNode(

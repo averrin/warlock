@@ -1,16 +1,18 @@
 #include <app/application.hpp>
+#include <filesystem>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
-#include <filesystem>
 namespace fs = std::filesystem;
 #define SOL_SAFE_NUMERICS 1
-#include <sol/sol.hpp>
 #include <lua/logger.hpp>
+#include <sol/sol.hpp>
 
 Application::Application(std::string app_name, fs::path path,
                          std::string version, int s)
-    : APP_NAME(app_name), VERSION(version), PATH(path), PATH_STR(path.string()) {
+    : APP_NAME(app_name), VERSION(version), PATH(path),
+      PATH_STR(path.string()) {
   fmt::print("Path: {}\n", PATH.string());
+  log.is_debug = entt::monostate<"debug"_hs>{};
 
   auto label = "Init Application";
   log.start(label);
@@ -50,20 +52,17 @@ void Application::initLua() {
   luaLog.setParent(&log);
 
   lua.new_usertype<Application>("Application", "new", sol::no_constructor,
-                                "APP_NAME", &Application::APP_NAME,
-                                "VERSION", &Application::VERSION,
-                                "PATH", &Application::PATH_STR
-                                );
+                                "APP_NAME", &Application::APP_NAME, "VERSION",
+                                &Application::VERSION, "PATH",
+                                &Application::PATH_STR);
   lua.set("app", this);
-  lua.set_function("exit", [&]() { 
+  lua.set_function("exit", [&]() {
     auto &emitter = entt::locator<event_emitter>::value();
     emitter.publish(close_event{"Lua call"});
   });
 }
 
-int Application::serve() {
-  return 0;
-}
+int Application::serve() { return 0; }
 
 Application::~Application() {
   auto &lua = entt::locator<sol::state>::value();

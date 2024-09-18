@@ -1,6 +1,7 @@
 #pragma once
 #include <utils/entt.hpp>
 using namespace entt::literals;
+#include <game/components/frame.hpp>
 #include <game/specs/light.hpp>
 #include <iostream>
 #include <utils/entt_lua.hpp>
@@ -12,7 +13,8 @@ using all_components =
                   // hf::pickable, hf::wearable,
                   hf::glow, hf::renderable, hf::wall, hf::tags, hf::player,
                   hf::vision, hf::obstacle, hf::creature, hf::script,
-                  entt::tag<"item"_hs>, entt::tag<"proto"_hs>>;
+                  entt::tag<"item"_hs>, entt::tag<"proto"_hs>, Frame,
+                  Connection>;
 
 template <typename ComponentList, template <typename> class Visitor,
           std::size_t Index = 0>

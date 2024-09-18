@@ -8,7 +8,7 @@
 #include <vector>
 
 class StateEditor {
-  LibLog::Logger log = LibLog::Logger(fmt::color::pink, "StatEd");
+  LibLog::Logger log = LibLog::Logger(fmt::color::pink, "STED");
   std::shared_ptr<EntityTreeEditor> et_editor = nullptr;
 
 public:

@@ -5,22 +5,22 @@ using namespace entt::literals;
 #include <string>
 #include <vector>
 
-#include <cereal/types/string.hpp>
-#include <cereal/types/map.hpp>
-#include <cereal/types/vector.hpp>
-#include <cereal/types/memory.hpp>
 #include <cereal/archives/binary.hpp>
 #include <cereal/archives/json.hpp>
+#include <cereal/types/map.hpp>
+#include <cereal/types/memory.hpp>
+#include <cereal/types/string.hpp>
+#include <cereal/types/vector.hpp>
 
 struct event_emitter : entt::emitter<event_emitter> {
   std::map<entt::id_type, std::vector<std::function<void(void *)>>> handlers;
 
   template <typename Type>
   void connect(std::function<void(Type &, const event_emitter &)> func) {
-    handlers[entt::type_id<Type>().hash()].push_back(
-        [func = std::move(func), this](void *value) {
-          func(*static_cast<Type *>(value), static_cast<event_emitter &>(*this));
-        });
+    handlers[entt::type_id<Type>().hash()].push_back([func = std::move(func),
+                                                      this](void *value) {
+      func(*static_cast<Type *>(value), static_cast<event_emitter &>(*this));
+    });
     on<Type>([&](Type &event, const event_emitter &emitter) {
       for (auto &handler : handlers[entt::type_id<Type>().hash()]) {
         handler(&event);
@@ -30,6 +30,10 @@ struct event_emitter : entt::emitter<event_emitter> {
 };
 
 struct init_event {
+  std::string component;
+};
+
+struct ready_event {
   std::string component;
 };
 
@@ -45,7 +49,6 @@ struct key_event {
   bool control;
   bool shift;
 };
-
 
 namespace hf {
 struct ingame {
@@ -137,7 +140,6 @@ struct wearable {
   // };
 };
 
-
 struct cell {
   // std::shared_ptr<Cell> cell = nullptr;
 };
@@ -153,17 +155,12 @@ struct size {
   int width = 0;
   int height = 0;
 };
-struct wall {
-};
+struct wall {};
 struct tags {
   std::vector<std::string> tags;
   friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const {
-    ar(tags);
-  };
-  template <class Archive> void load(Archive &ar) {
-    ar(tags);
-  };
+  template <class Archive> void save(Archive &ar) const { ar(tags); };
+  template <class Archive> void load(Archive &ar) { ar(tags); };
 };
 
 struct renderable {
@@ -186,7 +183,7 @@ struct renderable {
   };
   template <class Archive> void load(Archive &ar) {
     ar(spriteKey, fgColor, hasBg, bgColor, hasBorder, borderColor, hidden,
-     zIndex, fgLayer ,bgLayer, brdLayer);
+       zIndex, fgLayer, bgLayer, brdLayer);
   };
 };
 
@@ -201,8 +198,7 @@ struct overwrite {
   int zIndex = 0;
 };
 
-struct creature {
-};
+struct creature {};
 struct obstacle {
   bool passThrough = false;
   bool seeThrough = false;
@@ -221,16 +217,12 @@ struct player {};
 struct vision {
   float distance = 0;
   friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const {
-    ar(distance);
-  };
-  template <class Archive> void load(Archive &ar) {
-    ar(distance);
-  };
+  template <class Archive> void save(Archive &ar) const { ar(distance); };
+  template <class Archive> void load(Archive &ar) { ar(distance); };
 };
 
 // TODO
 struct usable {};
 struct consumable {};
 struct destructable {};
-}; // namespace hellfrost
+}; // namespace hf

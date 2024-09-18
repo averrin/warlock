@@ -45,7 +45,13 @@ void Scene::init(LibLog::Logger parentLog) {
   log.stop(label);
 }
 
-void Scene::serve() { window->clear(sf::Color::Black); }
+void Scene::serve() {
+  sf::FloatRect visibleArea(0, 0, window->getSize().x, window->getSize().y);
+  auto sv = sf::View(visibleArea);
+  window->setView(sv);
+
+  window->clear(sf::Color::Black);
+}
 
 void Scene::draw() {
   // log.start("serve");

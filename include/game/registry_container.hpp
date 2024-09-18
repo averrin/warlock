@@ -34,6 +34,13 @@ public:
     }
   }
 
+  static entt::entity copyEntity(entt::entity entity, entt::registry &src,
+                                 entt::registry &dst) {
+    auto copy = dst.create();
+    TypeVisitor<all_components, EmplaceVisitor>::visit(entity, src, copy, dst);
+    return copy;
+  }
+
   void combine(std::shared_ptr<RegistryStore> store) override {
     RegistryContainer::copyRegistry(store->registry, registry);
     // for (auto entity : store->registry.view<hf::meta>()) {

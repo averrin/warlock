@@ -15,6 +15,8 @@ CPMAddPackage("gh:fmtlib/fmt#${FMT_VERSION}")
 CPMAddPackage("gh:averrin/libcolor#master")
 CPMAddPackage("gh:averrin/libprint#master")
 CPMAddPackage("gh:averrin/liblog#master")
+CPMAddPackage("gh:bobluppes/graaf#main")
+CPMAddPackage("gh:mobius3/tweeny#master")
 
 CPMAddPackage("gh:nlohmann/json@3.11.3")
 CPMAddPackage("gh:ilqvya/random@1.5.0")
@@ -52,6 +54,13 @@ if(magic_enum_ADDED)
   target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${magic_enum_SOURCE_DIR}/include/magic_enum")
 endif()
 
+if(graaf_ADDED)
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${graaf_SOURCE_DIR}/include")
+endif()
+
+if(tweeny_ADDED)
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${tweeny_SOURCE_DIR}/include")
+endif()
 target_link_libraries(${EXE_NAME} PRIVATE
   fmt
 )

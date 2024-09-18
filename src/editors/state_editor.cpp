@@ -21,7 +21,11 @@ void StateEditor::start() {
   fs::path PATH = entt::monostate<"path"_hs>{};
   for (auto &file : pathes) {
     auto state = std::make_shared<State>();
-    loader.load<State>(*state, {(PATH / file).string()});
+    auto success = loader.load<State>(*state, {(PATH / file).string()});
+    if (!success) {
+      log.error("Failed to load state: {}", file);
+      continue;
+    }
     states.push_back(state);
   }
 
@@ -44,7 +48,7 @@ void StateEditor::render() {
     ImGui::PushStyleColor(ImGuiCol_TabActive, ImVec4(1.f, 0.2f, 0.2f, 1.f));
     if (ImGui::BeginTabItem("Active")) {
       ImGui::PopStyleColor(3);
-      auto active_state = entt::locator<State>::value();
+      auto &active_state = entt::locator<State>::value();
       if (ImGui::Button("Save")) {
         auto &loader = entt::locator<Loader>::value();
         loader.save(active_state);

@@ -1,10 +1,11 @@
 require("scripts/controls")
 require("scripts/gui")
 require("scripts/editor")
+require("scripts/draw")
 
 settings = {
 	meta_data_files = { "data/main.meta" },
-	proto_files = { "data/main.proto", "data/extra.proto" },
+	proto_files = { "data/frame.proto" },
 	init_script = "scripts/init.lua",
 	init_states = { "data/init.state" },
 	current_state = "save/current.state",

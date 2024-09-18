@@ -1,13 +1,16 @@
 #pragma once
-#include <liblog/liblog.hpp>
-#include <utils/jobs.hpp>
-#include <utils/entt.hpp>
 #include <chrono>
+#include <liblog/liblog.hpp>
+#include <utils/entt.hpp>
+#include <utils/jobs.hpp>
 using hr_clock = std::chrono::high_resolution_clock;
+#include <game/system.hpp>
 
 class GameManager {
   LibLog::Logger log = LibLog::Logger(fmt::color::purple, "GM");
   std::chrono::time_point<hr_clock> lastUpdate;
+
+  std::vector<std::shared_ptr<System>> systems;
 
 public:
   GameManager();
@@ -26,4 +29,3 @@ public:
   void initScript(entt::registry &registry, entt::entity entity);
   void releaseScript(entt::registry &registry, entt::entity entity);
 };
-

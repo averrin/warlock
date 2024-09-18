@@ -26,6 +26,8 @@ void Viewport::start() {
   log.start(label);
   loadTileset(tilesetPath);
   log.stop(label);
+  auto &emitter = entt::locator<event_emitter>::value();
+  emitter.publish(ready_event{"viewport"});
   started = true;
 
   log.setAsync(false);

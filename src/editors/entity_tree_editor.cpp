@@ -1,4 +1,5 @@
 #include <editors/entity_tree_editor.hpp>
+#include <game/components/frame.hpp>
 
 EntityTreeEditor::EntityTreeEditor(std::string name) : name(name) {
   auto &entityEditor = entt::locator<MM::EntityEditor<entt::entity>>::emplace();
@@ -6,12 +7,15 @@ EntityTreeEditor::EntityTreeEditor(std::string name) : name(name) {
   entityEditor.registerComponent<hf::position>("Position");
   entityEditor.registerComponent<hf::visible>("Visible");
   entityEditor.registerComponent<hf::renderable>("Renderable");
+  entityEditor.registerComponent<hf::ineditor>("Editor");
+  entityEditor.registerComponent<Frame>("Frame");
+  entityEditor.registerComponent<Connection>("Connection");
+  /*
   entityEditor.registerComponent<hf::player>("Player");
   entityEditor.registerComponent<hf::creature>("Creature");
   entityEditor.registerComponent<hf::obstacle>("Obstacle");
   entityEditor.registerComponent<hf::script>("Script");
   entityEditor.registerComponent<hf::vision>("Vision");
-  entityEditor.registerComponent<hf::ineditor>("Editor");
   entityEditor.registerComponent<hf::pickable>("Pickable");
   entityEditor.registerComponent<hf::wearable>("Wearable");
   entityEditor.registerComponent<hf::glow>("Glow");
@@ -22,6 +26,7 @@ EntityTreeEditor::EntityTreeEditor(std::string name) : name(name) {
   entityEditor.registerComponent<hf::wall>("Wall");
   entityEditor.registerComponent<hf::tags>("Tags");
   entityEditor.registerComponent<hf::overwrite>("Overwrite");
+  */
 }
 
 void EntityTreeEditor::drawEntityInfo(entt::registry &registry,

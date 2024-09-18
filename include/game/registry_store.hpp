@@ -12,6 +12,7 @@
 #include <vector>
 namespace fs = std::filesystem;
 
+#include <game/components/frame.hpp>
 #include <game/specs/light.hpp>
 #include <utils/data/store.hpp>
 #include <utils/entt.hpp>
@@ -36,6 +37,8 @@ class RegistryStore : public Store {
         .template get<hf::obstacle>(ar)
         .template get<hf::creature>(ar)
         .template get<hf::script>(ar)
+        .template get<Frame>(ar)
+        .template get<Connection>(ar)
         .template get<entt::tag<"proto"_hs>>(ar)
         .orphans();
   };
@@ -58,6 +61,8 @@ class RegistryStore : public Store {
         .template get<hf::obstacle>(ar, view.begin(), view.end())
         .template get<hf::creature>(ar, view.begin(), view.end())
         .template get<hf::script>(ar, view.begin(), view.end())
+        .template get<Frame>(ar, view.begin(), view.end())
+        .template get<Connection>(ar, view.begin(), view.end())
         .template get<entt::tag<"proto"_hs>>(ar, view.begin(), view.end());
   };
 

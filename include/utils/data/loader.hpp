@@ -24,7 +24,7 @@ namespace fs = std::filesystem;
 #include <string>
 
 class Loader {
-  LibLog::Logger log = LibLog::Logger(fmt::color::orange, "Loader");
+  LibLog::Logger log = LibLog::Logger(fmt::color::orange, "LOAD");
 
   std::string getCurrentDateTime() {
     auto now = std::chrono::system_clock::now();
@@ -39,7 +39,7 @@ public:
   void init(LibLog::Logger parentLog);
 
   template <typename ContainerType>
-  void load(ContainerType &container, std::vector<std::string> files) {
+  bool load(ContainerType &container, std::vector<std::string> files) {
     fs::path PATH = entt::monostate<"path"_hs>{};
     for (auto &_file : files) {
       auto path = (PATH / _file).string();
@@ -58,7 +58,8 @@ public:
         // cereal::JSONInputArchive iarchive(ifs);
         try {
           iarchive(*store);
-          log.info("{}: {} (type: {}, ver: {})", LibPrint::utils::green("Load"),
+          log.info("{}: {} (type: {}, ver: {})",
+                   LibPrint::utils::green("󰟉 Load"),
                    LibPrint::utils::italic(store->name), store->type,
                    store->version);
         } catch (cereal::Exception &e) {
@@ -68,6 +69,7 @@ public:
       }
       container.add(store);
     }
+    return container.stores.size() > 0;
   }
 
   template <typename ContainerType> void save(ContainerType &container) {
@@ -81,10 +83,10 @@ public:
       cereal::BinaryOutputArchive oarchive(ofs);
       // cereal::JSONOutputArchive oarchive(ofs);
       log.var("Path", file);
-      log.info("{}: {} (type: {}, ver: {})",
-               LibPrint::utils::color(fmt::terminal_color::bright_red, "Save"),
-               LibPrint::utils::italic(store->name), store->type,
-               store->version);
+      log.info(
+          "{}: {} (type: {}, ver: {})",
+          LibPrint::utils::color(fmt::terminal_color::bright_red, " Save"),
+          LibPrint::utils::italic(store->name), store->type, store->version);
       oarchive(*store);
     }
   }
