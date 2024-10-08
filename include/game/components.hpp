@@ -14,7 +14,7 @@ using all_components =
                   hf::glow, hf::renderable, hf::wall, hf::tags, hf::player,
                   hf::vision, hf::obstacle, hf::creature, hf::script,
                   entt::tag<"item"_hs>, entt::tag<"proto"_hs>, Frame,
-                  Connection>;
+                  Connection, Environment>;
 
 template <typename ComponentList, template <typename> class Visitor,
           std::size_t Index = 0>

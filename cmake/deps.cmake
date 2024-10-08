@@ -11,6 +11,7 @@ include(cmake/deps/lua.cmake)
 
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${PROJECT_PATH}/include/3rdparty")
 
+IF (NOT CPM_SKIP_UPDATE)
 CPMAddPackage("gh:fmtlib/fmt#${FMT_VERSION}")
 CPMAddPackage("gh:averrin/libcolor#master")
 CPMAddPackage("gh:averrin/libprint#master")
@@ -32,6 +33,7 @@ CPMAddPackage(
     GITHUB_REPOSITORY Neargye/magic_enum
     GIT_TAG v0.9.6
 )
+ENDIF()
 
 target_link_libraries(${EXE_NAME} PRIVATE nlohmann_json::nlohmann_json)
 if(libcolor_ADDED)
@@ -74,8 +76,10 @@ FetchContent_MakeAvailable(backward)
 target_link_libraries(${EXE_NAME} PUBLIC Backward::Interface)
 
 # Other dependencies
+IF (NOT CPM_SKIP_UPDATE)
 CPMAddPackage("gh:juliettef/IconFontCppHeaders#main")
-CPMAddPackage("gh:USCiLab/cereal#master")
+CPMAddPackage("gh:USCiLab/cereal#v1.3.2")
+ENDIF()
 
 if(IconFontCppHeaders_ADDED)
   target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${IconFontCppHeaders_SOURCE_DIR}")
@@ -94,14 +98,14 @@ target_link_libraries(${EXE_NAME} PRIVATE
 )
 
 # Taskflow
-FetchContent_Declare(
-  taskflow
-  URL "https://github.com/taskflow/taskflow/archive/refs/tags/v${TASKFLOW_VERSION}.zip"
-)
-set(TF_BUILD_EXAMPLES OFF)
-set(TF_BUILD_TESTS OFF)
-FetchContent_MakeAvailable(taskflow)
-target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${taskflow_SOURCE_DIR}")
+#FetchContent_Declare(
+#  taskflow
+#  URL "https://github.com/taskflow/taskflow/archive/refs/tags/v${TASKFLOW_VERSION}.zip"
+#)
+#set(TF_BUILD_EXAMPLES OFF)
+#set(TF_BUILD_TESTS OFF)
+#FetchContent_MakeAvailable(taskflow)
+#target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${taskflow_SOURCE_DIR}")
 
 # ENTT
 

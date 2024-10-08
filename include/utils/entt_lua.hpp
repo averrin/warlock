@@ -14,6 +14,7 @@ struct lua_event {
 };
 
 void initEnttLua();
+void register_bindings(sol::state& lua);
 
 namespace hf {
 struct script {

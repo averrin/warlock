@@ -99,6 +99,7 @@ int JobManager::add(std::shared_ptr<Job> job, bool start) {
           try {
             job->func();
           } catch (const std::exception &e) {
+            throw e;
             job->status = JobStatus::ERROR;
             job->error = e.what();
             emitter.publish(job_error_event{job});

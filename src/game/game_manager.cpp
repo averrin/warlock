@@ -18,6 +18,9 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <fmt/ranges.h>
 #include <game/components/frame.hpp>
 #include <game/systems/power.hpp>
+#include <game/systems/tweening.hpp>
+#include <game/systems/code_execution.hpp>
+#include <game/systems/thermal.hpp>
 #include <ranges> // For ranges
 
 #include <iostream>
@@ -151,6 +154,52 @@ void GameManager::init(LibLog::Logger parentLog) {
   log.stop(label);
 }
 
+entt::entity GameManager::addConnection(int source, int target) {
+  auto &current_state = entt::locator<State>::value();
+  auto e = createEntityFromPrototype("CONNECTION", current_state.registry);
+  auto &c = current_state.registry.get<Connection>(e);
+  auto &meta = current_state.registry.get<hf::meta>(e);
+  c.data.id = Metadata::newId();
+
+  Attribute is_bidirection("Is Bidirectional",
+                           "Is the connection bidirectional",
+                           AttributeType::BOOL, true);
+  c.data.attributes["bidirectional"] =
+      std::make_shared<Attribute>(is_bidirection);
+
+  c.source = source;
+  c.target = target;
+  current_state.registry.emplace_or_replace<Connection>(e, c);
+  auto name = fmt::format("{} -> {}", source ,target);
+
+  meta.name = name;
+  meta.id = fmt::format("CONNECTION-{}", (int)e);
+  current_state.registry.emplace_or_replace<hf::meta>(e, meta);
+  return e;
+}
+
+entt::entity GameManager::addFrame(std::string_view name) {
+  auto &current_state = entt::locator<State>::value();
+  auto e = createEntityFromPrototype("FRAME", current_state.registry);
+  auto &frame = current_state.registry.get<Frame>(e);
+  auto &meta = current_state.registry.get<hf::meta>(e);
+  frame.data.id = Metadata::newId();
+  frame.data.name = name;
+
+  Attribute temp("Temperature",
+                           "Total frame temperature in Celsius",
+                           AttributeType::FLOAT, -1000.0f);
+  frame.data.attributes["temp"] =
+      std::make_shared<Attribute>(temp);
+
+  current_state.registry.emplace_or_replace<Frame>(e, frame);
+
+  meta.name = fmt::format("{} [{}]", name, frame.data.id);
+  meta.id = fmt::format("FRAME-{}", (int)e);
+  current_state.registry.emplace_or_replace<hf::meta>(e, meta);
+  return e;
+}
+
 void GameManager::start() {
   auto p = log.parent;
   auto &emitter = entt::locator<event_emitter>::value();
@@ -165,9 +214,11 @@ void GameManager::start() {
   log.start(label);
   auto &current_state = entt::locator<State>::value();
 
+  /*
   auto e = current_state.registry.create();
   current_state.registry.emplace<hf::script>(
       e, hf::script{"scripts/entities/test.lua"});
+      */
   // auto &script = current_state.registry.get<hf::script>(e);
   // script.self["counter"] = 24;
 
@@ -184,128 +235,92 @@ void GameManager::start() {
   emitter.publish(ready_event{"game_manager"});
   log.stop(label);
 
-  Attribute io_capacity("I/O Capacity",
-                        "How many io ports the frame can contain",
-                        AttributeType::INT, 10);
-  Attribute capacity("Component Capacity",
-                     "How many components the frame can contain",
-                     AttributeType::INT, 10);
+  systems.push_back(std::make_shared<TweeningSystem>());
+  systems.push_back(std::make_shared<PowerSystem>());
+  systems.push_back(std::make_shared<ThermalSystem>());
+  auto exec = std::make_shared<CodeExecutionSystem>();
+  systems.push_back(exec);
+  auto ces_id = 3;
 
-  Attribute is_bidirection("Is Bidirectional",
-                           "Is the connection bidirectional",
-                           AttributeType::BOOL, true);
+  for (auto &c : exec->sources) {
+    components.push_back(c.first);
+  }
 
-  Attribute component_type("Component Type", "Component Type",
-                           AttributeType::STRING, "Unknown");
+  emitter.connect<exec_lua_function>([=](const auto &e, const auto &em) {
+    std::dynamic_pointer_cast<CodeExecutionSystem>(systems[ces_id])->executeCoreFunction(e.component, e.function_name);
+  });
 
-  auto makeComponent = [&](std::string_view name, std::string type) {
-    auto component = Component{};
-    component.data.name = name;
-    component.data.attributes["type"] =
-        std::make_shared<Attribute>(component_type);
-    component.data.attributes["type"]->SetBaseValue(type);
-    return component;
-  };
+  emitter.connect<add_component>([=](const auto &e, const auto &em) {
+    auto component = create_component_from_lua(
+      std::dynamic_pointer_cast<CodeExecutionSystem>(systems[ces_id])->getState(e.frame.data.id),
+      std::dynamic_pointer_cast<CodeExecutionSystem>(systems[ces_id])->getScript(e.component_name));
+    e.frame.addComponent(component);
+  });
 
-  auto core = makeComponent("Core", "Core");
-  core.data.attributes["io_capacity"] =
-      std::make_shared<Attribute>(io_capacity);
-  auto generator = makeComponent("Generator", "Generator");
-  generator.data.attributes["production"] =
-      std::make_shared<Attribute>(Attribute("Production", "Energy production",
-                                            AttributeType::FLOAT, 1000.f));
+  if (current_state.registry.template storage<entt::entity>().size() > 0) {
+    log.setAsync(false);
+    log.setParent(p);
+    started = true;
+    return;
+  }
 
-  auto consumer = makeComponent("Consumer", "Consumer");
-  consumer.data.attributes["consumption"] = std::make_shared<Attribute>(
-      Attribute("Consumption", "Energy consumption", AttributeType::INT, 1050));
-
-  auto battery = makeComponent("Battery", "Battery");
-  battery.data.attributes["capacity"] = std::make_shared<Attribute>(
-      Attribute("Capacity", "Energy capacity", AttributeType::INT, 1000));
-  battery.data.attributes["charge"] = std::make_shared<Attribute>(
-      Attribute("Charge", "Energy charge", AttributeType::INT, 250));
-  battery.data.attributes["discharge"] = std::make_shared<Attribute>(
-      Attribute("Discharge", "Energy discharge", AttributeType::INT, 150));
-  battery.data.attributes["charge_speed"] = std::make_shared<Attribute>(
-      Attribute("Charge Speed", "Charge speed", AttributeType::INT, 10));
-
-  auto charger = makeComponent("Charger", "Charger");
-  charger.data.attributes["charge_speed"] = std::make_shared<Attribute>(
-      Attribute("Charge Speed", "Charge speed", AttributeType::INT, 10));
-  charger.data.attributes["consumption"] = std::make_shared<Attribute>(
-      Attribute("Consumption", "Energy consumption", AttributeType::INT, 50));
-
-  auto next_id = 0;
-  auto makeFrame = [&](std::string_view name) {
-    auto e = createEntityFromPrototype("FRAME", current_state.registry);
-    auto &frame = current_state.registry.get<Frame>(e);
-    auto &meta = current_state.registry.get<hf::meta>(e);
-    frame.components.push_back(std::make_shared<Component>(core));
-    frame.data.id = next_id++;
-    frame.data.name = name;
-    frame.data.attributes["components_capacity"] =
-        std::make_shared<Attribute>(capacity);
-    current_state.registry.emplace_or_replace<Frame>(e, frame);
-
-    meta.name = name;
-    meta.id = fmt::format("FRAME-{}", (int)e);
-    current_state.registry.emplace_or_replace<hf::meta>(e, meta);
-    return e;
-  };
+  auto env = createEntityFromPrototype("ENV", current_state.registry);
 
   auto component_names = std::vector<std::string_view>{
-      "Nexus",      "Generator",   "Battery",   "Consumer 1",
-      "Consumer 2", "Generator 2", "Consumer 3"};
+      "Nexus",      "Generator SIN",   "Battery",   "Consumer 1",
+      "Consumer 2", "Generator SAW", "Consumer 3"};
   auto frames = std::vector<entt::entity>{};
-  std::ranges::transform(component_names, std::back_inserter(frames),
-                         makeFrame);
+  auto frame_ids = std::map<entt::entity, int>{};
 
-  for (auto &f : frames) {
-    auto &frame = current_state.registry.get<Frame>(f);
-    log.var("Frame", frame.data.name);
+  auto makeFrame = [&](std::string_view name) {
+    auto e = addFrame(name);
+    auto &frame = current_state.registry.get<Frame>(e);
+    auto core = create_component_from_lua(exec->getState(frame.data.id), exec->getScript("core.lua"));
+    frame.addComponent(core);
+
+    auto connector = create_component_from_lua(exec->getState(frame.data.id), exec->getScript("power_wire_connector.lua"));
+    frame.addComponent(connector);
+
+    frame_ids[e] = frame.data.id;
+    auto generator = create_component_from_lua(exec->getState(frame.data.id), exec->getScript("generator.lua"));
     if (frame.data.name.starts_with("Nexus")) {
-      frame.components.push_back(std::make_shared<Component>(generator));
+      auto nexus = create_component_from_lua(exec->getState(frame.data.id), exec->getScript("nexus.lua"));
+      frame.addComponent(nexus);
     } else if (frame.data.name.starts_with("Generator")) {
-      frame.components.push_back(std::make_shared<Component>(generator));
+      frame.addComponent(generator);
+    }
+
+    if (frame.data.name.ends_with("SAW")) {
+      generator->data.attributes["production"]->SetEasing({AttributeEasingType::SAW, 0.7f, 2000});
     } else if (frame.data.name.starts_with("Battery")) {
-      frame.components.push_back(std::make_shared<Component>(battery));
-      frame.components.push_back(std::make_shared<Component>(charger));
+      auto charger = create_component_from_lua(exec->getState(frame.data.id), exec->getScript("charger.lua"));
+      auto battery = create_component_from_lua(exec->getState(frame.data.id), exec->getScript("battery.lua"));
+      frame.addComponent(battery);
+      frame.addComponent(charger);
+      auto meter = create_component_from_lua(exec->getState(frame.data.id), exec->getScript("power_meter.lua"));
+      frame.addComponent(meter);
     } else {
-      frame.components.push_back(std::make_shared<Component>(consumer));
+      auto consumer = create_component_from_lua(exec->getState(frame.data.id), exec->getScript("consumer.lua"));
+      frame.addComponent(consumer);
     }
 
     for (auto &c : frame.components) {
-      c->data.id = next_id++;
+      // c->data.id = Metadata::newId();
       log.var("    Component", c->data.name);
+      log.var("    Component ID", c->data.id);
     }
-  }
 
-  auto makeConnection = [&](entt::entity source, entt::entity target) {
-    auto e = createEntityFromPrototype("CONNECTION", current_state.registry);
-    auto &c = current_state.registry.get<Connection>(e);
-    auto &meta = current_state.registry.get<hf::meta>(e);
-    c.data.id = next_id++;
-    c.data.attributes["bidirectional"] =
-        std::make_shared<Attribute>(is_bidirection);
-    c.source = (int)source;
-    c.target = (int)target;
-    current_state.registry.emplace_or_replace<Connection>(e, c);
-    auto name = current_state.registry.get<Frame>(source).data.name + " -> " +
-                current_state.registry.get<Frame>(target).data.name;
-
-    meta.name = name;
-    meta.id = fmt::format("CONNECTION-{}", (int)e);
-    current_state.registry.emplace_or_replace<hf::meta>(e, meta);
     return e;
   };
 
-  makeConnection(frames[0], frames[1]);
-  makeConnection(frames[1], frames[2]);
-  makeConnection(frames[2], frames[3]);
-  makeConnection(frames[2], frames[4]);
-  makeConnection(frames[5], frames[6]);
+  std::ranges::transform(component_names, std::back_inserter(frames),
+                         makeFrame);
 
-  systems.push_back(std::make_shared<PowerSystem>());
+  addConnection(frame_ids[frames[0]], frame_ids[frames[1]]);
+  addConnection(frame_ids[frames[1]], frame_ids[frames[2]]);
+  addConnection(frame_ids[frames[2]], frame_ids[frames[3]]);
+  addConnection(frame_ids[frames[2]], frame_ids[frames[4]]);
+  addConnection(frame_ids[frames[5]], frame_ids[frames[6]]);
 
   log.setAsync(false);
   log.setParent(p);
@@ -316,8 +331,9 @@ void GameManager::serve() {
   if (!started)
     return;
 
+  updateMutex.lock();
   auto &current_state = entt::locator<State>::value();
-  for (auto system : systems) {
+  for (auto &system : systems) {
     const std::chrono::duration<double, std::milli> delta =
         hr_clock::now() - lastUpdate;
     system->update(delta);
@@ -334,6 +350,7 @@ void GameManager::serve() {
   }
 */
   lastUpdate = hr_clock::now();
+  updateMutex.unlock();
 }
 
 void GameManager::initScript(entt::registry &registry, entt::entity entity) {

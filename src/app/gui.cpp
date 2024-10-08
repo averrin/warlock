@@ -4,12 +4,16 @@
 #include <filesystem>
 #include <imgui-SFML.h>
 #include <imgui.h>
+#include <implot.h>
 #include <utils/entt_lua.hpp>
 namespace fs = std::filesystem;
 
 Gui::Gui() {}
 
-Gui::~Gui() { ImGui::SFML::Shutdown(); }
+Gui::~Gui() { ImGui::SFML::Shutdown(); 
+  ImPlot::DestroyContext();
+  ImGui::DestroyContext();
+}
 
 static ImGuiDockNodeFlags opt_flags = ImGuiDockNodeFlags_PassthruCentralNode;
 
@@ -26,6 +30,7 @@ void Gui::init(LibLog::Logger parentLog) {
   auto PATH = lua["app"]["PATH"].get<std::string>();
 
   ImGui::CreateContext();
+  ImPlot::CreateContext();
   // Theme::Init();
 
   auto settings = lua["gui"];

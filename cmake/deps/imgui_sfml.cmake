@@ -8,6 +8,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imgui)
 
+CPMAddPackage("gh:epezent/implot#master")
+
+if(implot_ADDED)
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${implot_SOURCE_DIR}")
+
+  file(GLOB IMPLOT_SOURCE "${implot_SOURCE_DIR}/*.cpp")
+  list(APPEND DEPS_SOURCES ${IMPLOT_SOURCE})
+endif()
+
+
 FetchContent_Declare(
   SFML
   URL "https://github.com/SFML/SFML/archive/${SFML_VERSION}.zip"
@@ -38,9 +48,20 @@ file(GLOB IMGUI_SOURCE_STDLIB "include/3rdparty/imgui-stl.cpp")
 list(APPEND DEPS_SOURCES ${IMGUI_SOURCE_STDLIB})
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${OPENGL_INCLUDE_DIR})
 
+CPMAddPackage("gh:santaclose/ImGuiColorTextEdit#master")
+
+if(ImGuiColorTextEdit_ADDED)
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${ImGuiColorTextEdit_SOURCE_DIR}")
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${ImGuiColorTextEdit_SOURCE_DIR}/vendor/regex/include")
+  file(GLOB IMGUICTE_SOURCE "${ImGuiColorTextEdit_SOURCE_DIR}/*.cpp")
+  file(GLOB RE_SOURCE "${ImGuiColorTextEdit_SOURCE_DIR}/vendor/regex/src/*.cpp")
+  list(APPEND DEPS_SOURCES ${IMGUICTE_SOURCE})
+  list(APPEND DEPS_SOURCES ${RE_SOURCE})
+endif()
+
 target_link_libraries(${EXE_NAME} PRIVATE
   ImGui-SFML::ImGui-SFML
   OpenGL
-  stdc++fs
+  #stdc++fs
   sfml-system sfml-window sfml-graphics
 )

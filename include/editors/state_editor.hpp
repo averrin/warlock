@@ -15,7 +15,7 @@ public:
   std::shared_ptr<Job> startJob = nullptr;
   std::vector<std::shared_ptr<State>> states = {};
   std::string name = "";
-  bool started = false;
+  bool started = true;
   void start();
   void render();
   std::map<std::string, std::string> cache = {};

@@ -5,9 +5,40 @@ using Random = effolkronium::random_static;
 #include <ios>
 #include <libcolor/libcolor.hpp>
 #include <sstream>
-#include <strutil.h>
+//#include <strutil.h>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
+
+    bool ends_with(const std::string & str, const std::string & suffix)
+    {
+        const auto suffix_start = str.size() - suffix.size();
+        const auto result = str.find(suffix, suffix_start);
+        return (result == suffix_start) && (result != std::string::npos);
+    }
+
+    bool ends_with(const std::string & str, const char suffix)
+    {
+        return !str.empty() && (str.back() == suffix);
+    }
+
+std::vector<std::string> split(const std::string & str, const char delim)
+    {
+        std::vector<std::string> tokens;
+        std::stringstream ss(str);
+
+        std::string token;
+        while(std::getline(ss, token, delim))
+        {
+            tokens.push_back(token);
+        }
+
+        // Match semantics of split(str,str)
+        if (str.empty() || ends_with(str, delim)) {
+            tokens.emplace_back();
+        }
+
+        return tokens;
+    }
 
 Viewport::Viewport() {
   startJob = std::make_shared<Job>("Viewport start",
@@ -81,7 +112,7 @@ sf::Color Viewport::getColor(std::string color) {
     auto c = LibColor::Color::fromHexString(color);
     return sf::Color(c.r, c.g, c.b, c.a);
   } else {
-    auto p = strutil::split(color, "/");
+    auto p = split(color, '/');
     return getColor(p[0], p[1]);
   }
 }

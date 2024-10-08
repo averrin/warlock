@@ -1,8 +1,8 @@
 #pragma once
 #include <game/components/frame.hpp>
 #include <game/system.hpp>
-#include <tweeny.h>
 #include <vector>
+#include <deque>
 
 struct NetworkInfo {
   Metadata data;
@@ -13,7 +13,8 @@ struct NetworkInfo {
   float consumption = 0;
   float accumulated = 0;
   float accumulated_available = 0;
-  float battery_count = 0;
+  int battery_count = 0;
+  std::map<std::string, std::deque<float>> history;
 };
 
 struct PowerInfo {
@@ -21,9 +22,10 @@ struct PowerInfo {
 };
 
 class PowerSystem : public System {
-  int lastUpdate = 0;
+  std::map<std::string, std::map<std::string, std::deque<float>>> history;
 
 public:
-  std::map<int, std::shared_ptr<tweeny::tween<float>>> tweens;
-  void update(std::chrono::duration<double, std::milli> delta) override;
+  void fixedUpdate() override;
+
+  PowerSystem() : System(50) {}
 };

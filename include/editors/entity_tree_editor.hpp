@@ -41,6 +41,10 @@ public:
       // emitter.publish(resize_event{});
       // emitter.publish(regen_event{});
     }
+    if (ImGui::Button("Clear")) {
+      container.clear();
+      gm.saveData();
+    }
     ImGui::SameLine();
     if (ImGui::Button("Save")) {
       gm.saveData();

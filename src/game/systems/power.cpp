@@ -9,7 +9,7 @@
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 using Random = effolkronium::random_static;
-using tweeny::easing;
+using hr_clock = std::chrono::high_resolution_clock;
 
 // DFS function to traverse the graph
 void dfs(int node, const std::unordered_map<int, std::vector<int>> &graph,
@@ -58,105 +58,219 @@ findUnconnectedNets(const std::vector<Connection> &connections) {
   return components;
 }
 
-void PowerSystem::update(std::chrono::duration<double, std::milli> delta) {
-  // fmt::print("PowerSystem update: {}\n", delta.count());
-  // lastUpdate += delta.count();
-  // if (lastUpdate < 500) {
-  //   return;
-  // } else {
-  //   lastUpdate = 0;
-  // }
+void PowerSystem::fixedUpdate() {
 
   auto &info = entt::locator<PowerInfo>::emplace();
 
   auto &current_state = entt::locator<State>::value();
+  auto frames_view = current_state.registry.view<Frame>();
 
   auto conns = std::vector<Connection>{};
   for (auto &c : current_state.registry.view<Connection>()) {
-    conns.push_back(current_state.registry.get<Connection>(c));
+    auto conn = current_state.registry.get<Connection>(c);
+    auto n = 0;
+    for(auto &f : frames_view) {
+      auto &frame = current_state.registry.get<Frame>(f);
+      if(frame.data.id == conn.source || frame.data.id == conn.target) {
+        auto connector = frame.getComponentByType("Power Wire Connector");
+        if(connector != nullptr && connector->state == ComponentState::ACTIVE) {
+          n++;
+        }
+      }
+    }
+    if (n == 2) {
+      conns.push_back(conn);
+    }
   }
   auto nets = findUnconnectedNets(conns);
 
   for (auto &net : nets) {
 
     NetworkInfo netInfo;
+    netInfo.frames = net;
 
     auto frames = std::vector<Frame>{};
-    for (auto &f : net) {
-      auto &frame = current_state.registry.get<Frame>((entt::entity)f);
-      frames.push_back(frame);
+
+    for(auto &f : frames_view) {
+      auto &frame = current_state.registry.get<Frame>(f);
+      if(std::ranges::find(net, frame.data.id) != net.end()) {
+        frames.push_back(frame);
+      }
     }
 
-    /*
     auto joined_view =
-        frames | std::views::transform([](Frame n) { return n.data.name; });
-    netInfo.data.name = fmt::join(joined_view, " -> ");
-    */
-    netInfo.data.name = fmt::format("Network {}", info.networks.size());
+        frames | std::views::transform([](Frame n) { return n.data.id; });
+    netInfo.data.name = fmt::format("Network {}", fmt::join(joined_view, "-"));
+    if(history.find(netInfo.data.name) == history.end()) {
+      history[netInfo.data.name] = {
+        {"production", {}},
+        {"total", {}},
+        {"consumption", {}},
+        {"accumulated", {}},
+        {"accumulated_available", {}},
+        {"battery_count", {}},
+      };
+    }
+    auto &ph = history[netInfo.data.name]["production"];
+    auto &ch = history[netInfo.data.name]["consumption"];
+    auto &th = history[netInfo.data.name]["total"];
+    // netInfo.data.name = fmt::format("Network {}", info.networks.size());
 
     auto production = 0.f;
+    auto total = 0.f;
     auto consumption = 0;
     auto accumulated = 0;
     auto accumulated_available = 0;
     auto battery_count = 0;
+    std::vector<std::shared_ptr<Component>> batteries;
     for (auto &f : frames) {
       for (auto &c : f.components) {
-        if (std::ranges::find_if(c->data.attributes, [](auto &a) {
-              return a.first == "production";
-            }) != c->data.attributes.end()) {
-
-          if (tweens.find(c->data.id) == tweens.end()) {
-            auto p = c->data.get<float>("production");
-            auto t = tweeny::from(p * 0.8f)
-                         .to(p * 1.f)
-                         .during(50)
-                         .via(easing::linear)
-                         .from(p * 1.0f)
-                         .to(p * 0.8f)
-                         .during(50)
-                         .via(easing::linear);
-            tweens[c->data.id] = std::make_shared<tweeny::tween<float>>(t);
-            // tweens[c->data.id].seek(
-            //     Random::get<float>(0, 1)); // Randomize the starting point
-            fmt::print("Tween created for component {} at {}\n", c->data.id,
-                       tweens[c->data.id]->progress());
-          }
-          auto p = tweens[c->data.id]->step(0.01f);
-          if (tweens[c->data.id]->progress() >= 1.f) {
-            tweens[c->data.id]->seek(0);
-          }
-          fmt::print("{} Tween progress: {}\n", c->data.id,
-                     tweens[c->data.id]->progress());
-          c->data.attributes["production"]->SetBaseValue(p);
-          production += c->data.get<float>("production");
+        if (c->state == ComponentState::DEACTIVATED || c->state == ComponentState::DEACTIVATING || c->state == ComponentState::DESTROYED) {
+          continue;
         }
         if (std::ranges::find_if(c->data.attributes, [](auto &a) {
               return a.first == "consumption";
             }) != c->data.attributes.end()) {
-          consumption += c->data.get<int>("consumption");
+          auto cons = c->data.get<float>("consumption");
+          auto eff = c->data.get_or<float>("efficiency", 1.0f);
+          consumption += cons * eff;
+        }
+        if (c->state == ComponentState::ACTIVATING) {
+          if (std::ranges::find_if(c->data.attributes, [](auto &a) {
+                return a.first == "activation_consumption";
+              }) != c->data.attributes.end()) {
+          auto cons = c->data.get<float>("activation_consumption");
+          consumption += cons;
+          }
         }
       }
+      for (auto &c : f.components) {
+        if(c->state != ComponentState::ACTIVE) {
+          continue;
+        }
+        if (std::ranges::find_if(c->data.attributes, [](auto &a) {
+              return a.first == "production";
+            }) != c->data.attributes.end()) {
+          auto eff = c->data.get_or<float>("efficiency", 1.0f);
+          production += c->data.get<float>("production") * eff;
+        }
 
-      auto battery =
-          std::ranges::find_if(f.components, [](std::shared_ptr<Component> c) {
-            return c->data.get<std::string>("type") == "Battery";
-          });
-      if (battery != f.components.end()) {
-        battery_count += 1;
-        auto charge = (*battery)->data.get<int>("charge");
-        auto capacity = (*battery)->data.get<int>("capacity");
-        auto discharge = (*battery)->data.get<int>("discharge");
+        if (c->data.get<std::string>("type") == "Battery") {
+          battery_count += 1;
+          batteries.push_back(c);
+          c->data.set<std::string>("status", "IDLE");
+          c->data.set<float>("heat", 0);
+          auto charge = c->data.get<int>("charge");
+          auto capacity = c->data.get<int>("capacity");
+          auto discharge = c->data.get<int>("discharge");
 
-        accumulated += charge;
-        accumulated_available += charge > discharge ? discharge : charge;
+          accumulated += charge;
+          accumulated_available += charge > discharge ? discharge : charge;
+        }
       }
     }
 
+    auto delta = production - consumption;
+    if (delta > 0) {
+      for (auto &f : frames) {
+        for (auto &c : f.components) {
+          if(c->state != ComponentState::ACTIVE) {
+            continue;
+          }
+          if (c->data.get<std::string>("type") == "Charger") {
+            auto bat = c->data.get_or<int>("target", -1);
+            if (bat >= 0) {
+              auto speed = c->data.get<float>("charge_speed");
+              auto eff = c->data.get_or<float>("efficiency", 1.0f);
+              std::shared_ptr<Component> battery = nullptr;
+              for (auto &b : batteries) {
+                if (b->data.id == bat) {
+                  battery = b;
+                  break;
+                }
+              }
+              if (battery != nullptr) {
+                auto charge = battery->data.get<int>("charge");
+                auto capacity = battery->data.get<int>("capacity");
+
+                if (charge < capacity) {
+                  auto p = speed * eff;
+                  if (p > capacity - charge) {
+                    p = capacity - charge;
+                  }
+                  battery->data.set<int>("charge", charge + p);
+                  battery->data.set<std::string>("status", "CHARGING");
+                  battery->data.set<float>("heat", battery->data.get<float>("charge_heat"));
+                }
+              } else {
+                c->state = ComponentState::ERROR;
+                c->error = "Incorrect or deactivated battery selected";
+              }
+            } else {
+              c->state = ComponentState::ERROR;
+              c->error = "No battery selected";
+            }
+          }
+        }
+      }
+    }
+
+    auto empty = 0;
+    if (delta < 0) {
+      delta = -delta;
+      while (delta > 0 && empty < battery_count) {
+        auto p = delta / battery_count;
+        for (auto &c : batteries) {
+          auto charge = c->data.get<int>("charge");
+          auto discharge = c->data.get<int>("discharge");
+          if (p > discharge) {
+            p = discharge;
+          }
+          if (p > charge) {
+            p = charge;
+          }
+          if (p == 0) {
+            empty += 1;
+            continue;
+          };
+          c->data.set<int>("charge", charge - p);
+          c->data.set<std::string>("status", "DISCHARGING");
+          c->data.set<float>("heat", c->data.get<float>("discharge_heat"));
+          delta -= p;
+        }
+      }
+    }
+
+
     netInfo.production = production;
+    ph.push_back(production);
     netInfo.consumption = consumption;
+    ch.push_back(consumption);
+    th.push_back(production+accumulated_available);
     netInfo.accumulated = accumulated;
     netInfo.accumulated_available = accumulated_available;
     netInfo.battery_count = battery_count;
+
+    if(ph.size() > 100) {
+      ph.pop_front();
+      ch.pop_front();
+      th.pop_front();
+    }
+
+    netInfo.history["production"] = ph;
+    netInfo.history["consumption"] = ch;
+    netInfo.history["total"] = th;
+
+    if (consumption > production+accumulated_available) {
+      for (auto &f : frames) {
+        for (auto &c : f.components) {
+          if (c->data.get_or<bool>("stable", false) || c->data.get_or<bool>("passive", false)) {
+            continue;
+          }
+          c->state = ComponentState::DEACTIVATED;
+        }
+      }
+    }
 
     info.networks.push_back(netInfo);
   }

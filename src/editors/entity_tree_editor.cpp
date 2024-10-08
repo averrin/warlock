@@ -10,6 +10,7 @@ EntityTreeEditor::EntityTreeEditor(std::string name) : name(name) {
   entityEditor.registerComponent<hf::ineditor>("Editor");
   entityEditor.registerComponent<Frame>("Frame");
   entityEditor.registerComponent<Connection>("Connection");
+  entityEditor.registerComponent<Environment>("Environment");
   /*
   entityEditor.registerComponent<hf::player>("Player");
   entityEditor.registerComponent<hf::creature>("Creature");

@@ -14,7 +14,7 @@ include_directories(
 )
 
 target_link_libraries(${EXE_NAME} PRIVATE
-  stdc++fs
+  #stdc++fs
 )
 set_target_properties(${EXE_NAME}
     PROPERTIES

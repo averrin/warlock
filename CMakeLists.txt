@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.20...3.29.3)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
 set(APP_NAME "Hellfrost")
 project(hellfrost VERSION 0.1.0)

@@ -3,13 +3,16 @@
 #include <string>
 #include <vector>
 
-class PowerEditor {
+class GameEditor {
 
 public:
   std::string name;
   void render();
   std::map<std::string, std::string> cache = {};
   std::map<std::string, float> cache_f = {};
+  std::map<std::string, int> cache_i = {};
 
-  PowerEditor(std::string name) : name(name) {}
+  GameEditor(std::string name) : name(name) {
+  }
 };
+

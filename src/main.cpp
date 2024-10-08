@@ -4,6 +4,7 @@
 #include <fmt/format.h>
 #include <imgui-SFML.h>
 #include <imgui-stl.hpp>
+#include <implot.h>
 #include <meta.hpp>
 #include <misc/cpp/imgui_stdlib.h>
 #include <utils/data/loader.hpp>
@@ -13,6 +14,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <app/gui.hpp>
 #include <app/scene.hpp>
+#include <app/ide.hpp>
 #include <game/draw_engine.hpp>
 #include <game/draw_manager.hpp>
 #include <game/game_manager.hpp>
@@ -27,6 +29,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <editors/power_editor.hpp>
 #include <editors/state_editor.hpp>
 #include <editors/tileset_editor.hpp>
+#include <editors/game_editor.hpp>
 #include <game/prototypes.hpp>
 
 namespace backward {
@@ -75,6 +78,7 @@ int main(int argc, char *argv[]) {
   //   seed = std::atoi(argv[1]);
   // }
   auto path = get_selfpath();
+  entt::monostate<"id"_hs>{} = -1;
   entt::monostate<"path"_hs>{} = path;
   entt::monostate<"debug"_hs>{} = !nodebug;
 
@@ -124,7 +128,10 @@ int main(int argc, char *argv[]) {
   emitter.publish(add_job_event{gm.startJob, true});
 
   if (!noeditor) {
-    gui.renders.push_back([&]() { ImGui::ShowDemoWindow(); });
+    gui.renders.push_back([&]() { 
+      ImGui::ShowDemoWindow(); 
+      ImPlot::ShowDemoWindow();
+    });
     // auto md_editor = std::make_shared<MetaDataEditor>("Meta Data Editor");
     auto md_editor = MetaDataEditor("Meta Data Editor");
     gui.renders.push_back([&]() { md_editor.render(); });
@@ -133,18 +140,29 @@ int main(int argc, char *argv[]) {
       et_editor.render<Prototypes, entt::tag<"proto"_hs> /*, hf::meta*/>(
           entt::locator<Prototypes>::value());
     });
-    auto state_editor = std::make_shared<StateEditor>("State Editor");
-    jobs.add(state_editor->startJob, true);
-    // emitter.publish(add_job_event{state_editor->startJob, true});
-    gui.renders.push_back([&]() { state_editor->render(); });
+    auto state_editor = StateEditor("State Editor");
+    // jobs.add(state_editor->startJob, true);
+    emitter.publish(add_job_event{state_editor.startJob, true});
+    gui.renders.push_back([&]() { state_editor.render(); });
     auto ts_editor = TilesetEditor("Tileset Editor");
     gui.renders.push_back([&]() { ts_editor.render(); });
+
+    auto ide = std::make_shared<IDE>();
+    ide->init(path);
+    gui.renders.push_back([=]() { ide->render(); });
 
     auto power_editor = std::make_shared<PowerEditor>("Power Editor");
     gui.renders.push_back([&]() {
       if (gm.started) {
         power_editor->render();
       }
+    });
+
+    auto game_editor = GameEditor("Game Editor");
+    gui.renders.push_back([&]() {
+      // if (gm.started) {
+        game_editor.render();
+      // }
     });
 
     sf::RenderTexture rt;

@@ -8,8 +8,11 @@ _init:
   ln -s ./build/compile_commands.json .
 
 [no-cd]
-init: _init
+_link:
   cd ./build/bin && ln -s ../../tilesets ../../imgui.ini ../../game.bin ../../fonts ../../scripts ../../data .
+
+[no-cd]
+init: _init _link
 
 [no-cd]
 build:
@@ -18,4 +21,4 @@ build:
 
 [no-cd]
 run args="": build
-  nixGL ./build/bin/{{bin_name}} {{args}}
+  ./build/bin/{{bin_name}} {{args}}

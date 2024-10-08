@@ -8,15 +8,22 @@ StateEditor::StateEditor(std::string name) {
   log.setAsync(true);
   log.setOffset(1);
   log.info("StateEditor created");
+  started = true;
 }
 
 void StateEditor::start() {
-  started = false;
+  // started = false;
   // auto label = "Open States";
   // log.start(label);
+  states.clear();
 
   auto &lua = entt::locator<sol::state>::value();
   auto pathes = lua["editor"]["loaded_states"].get<std::vector<std::string>>();
+  if (pathes.empty()) {
+    log.warn("No states to load");
+    started = true;
+    return;
+  }
   auto &loader = entt::locator<Loader>::value();
   fs::path PATH = entt::monostate<"path"_hs>{};
   for (auto &file : pathes) {
@@ -35,10 +42,13 @@ void StateEditor::start() {
 
 void StateEditor::render() {
   auto &gm = entt::locator<GameManager>::value();
+  fs::path PATH = entt::monostate<"path"_hs>{};
+  ImGui::Begin("State Editor");
   if (!started || !gm.started) {
+    ImGui::Text(fmt::format("Loading... se:{} gm:{}", started, gm.started).c_str());
+    ImGui::End();
     return;
   }
-  ImGui::Begin("State Editor");
 
   ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
   if (ImGui::BeginTabBar("StoresTabs", tab_bar_flags)) {
@@ -52,6 +62,16 @@ void StateEditor::render() {
       if (ImGui::Button("Save")) {
         auto &loader = entt::locator<Loader>::value();
         loader.save(active_state);
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Save to init")) {
+        auto &loader = entt::locator<Loader>::value();
+        loader.saveStateToFile(active_state, (PATH/"data/init.state").string());
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Save to current")) {
+        auto &loader = entt::locator<Loader>::value();
+        loader.saveStateToFile(active_state, (PATH/"save/current.state").string());
       }
       ImGui::Separator();
       et_editor->renderInline<State, hf::meta>(active_state);

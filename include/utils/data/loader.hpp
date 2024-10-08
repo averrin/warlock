@@ -23,6 +23,8 @@ namespace fs = std::filesystem;
 #include <sstream>
 #include <string>
 
+#include <game/registry_container.hpp>
+
 class Loader {
   LibLog::Logger log = LibLog::Logger(fmt::color::orange, "LOAD");
 
@@ -42,6 +44,11 @@ public:
   bool load(ContainerType &container, std::vector<std::string> files) {
     fs::path PATH = entt::monostate<"path"_hs>{};
     for (auto &_file : files) {
+      // if(state_cache.find(_file) != state_cache.end()) {
+      //   log.debug("State @ {} got from cache", _file);
+      //   container.add(store);
+      //   continue;
+      // }
       auto path = (PATH / _file).string();
       auto file = fs::relative(path, PATH).string();
       auto store_name = file.substr(file.find_last_of("/") + 1);
@@ -68,8 +75,29 @@ public:
         }
       }
       container.add(store);
+      // state_cache[_file] = store;
     }
     return container.stores.size() > 0;
+  }
+
+  void saveStateToFile(RegistryContainer &container,
+                               std::string path) {
+    std::shared_ptr<RegistryStore> store = container.create("state", path);
+    store->initEmpty();
+    RegistryContainer::copyRegistry(container.registry, store->registry);
+      store->attributes["saved_at"] = getCurrentDateTime();
+      auto file =
+          fs::relative(store->path, entt::monostate<"path"_hs>{}).string();
+      // log.debug("Try to save {}", path);
+      std::ofstream ofs(path, std::ios::out | std::ios::binary);
+      cereal::BinaryOutputArchive oarchive(ofs);
+      // cereal::JSONOutputArchive oarchive(ofs);
+      log.var("Path", file);
+      log.info(
+          "{}: {} (type: {}, ver: {})",
+          LibPrint::utils::color(fmt::terminal_color::bright_red, " Save"),
+          LibPrint::utils::italic(store->name), store->type, store->version);
+      oarchive(*store);
   }
 
   template <typename ContainerType> void save(ContainerType &container) {
