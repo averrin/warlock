@@ -152,18 +152,17 @@ int main(int argc, char *argv[]) {
     gui.renders.push_back([=]() { ide->render(); });
 
     auto power_editor = std::make_shared<PowerEditor>("Power Editor");
-    gui.renders.push_back([&]() {
-      if (gm.started) {
-        power_editor->render();
-      }
-    });
+    gui.editors.push_back(power_editor);
 
-    auto game_editor = GameEditor("Game Editor");
+    auto game_editor = std::make_shared<GameEditor>("Game Editor");
+    gui.editors.push_back(game_editor);
+    /*
     gui.renders.push_back([&]() {
       // if (gm.started) {
-        game_editor.render();
+        game_editor->render();
       // }
     });
+    */
 
     sf::RenderTexture rt;
     sf::Sprite s;

@@ -289,6 +289,10 @@ void ComponentEditorWidget<Frame>(entt::registry &registry,
                                   entt::registry::entity_type e) {
   auto &f = registry.get<Frame>(e);
 
+  if (ImGui::Button(fmt::format("Inspect##i-{}", f.data.id).c_str())) {
+    entt::monostate<"inspected_frame"_hs>{} = (int)e;
+  }
+
   static const std::array<FrameSize, 4> frame_sizes = {
     FrameSize::S,
     FrameSize::M,
@@ -343,7 +347,7 @@ void ComponentEditorWidget<Frame>(entt::registry &registry,
                 .c_str())) {
     ImGui::Indent();
 
-    if (ImGui::Button("+ Add Component")) {
+    if (ImGui::Button(fmt::format("+ Add Component##ac-{}", f.data.id).c_str())) {
       ImGui::OpenPopup("Add Component");
     }
 
@@ -386,6 +390,8 @@ void ComponentEditorWidget<Environment>(entt::registry &registry,
                                        entt::registry::entity_type e) {
   auto &env = registry.get<Environment>(e);
 
+  ImGui::Text(fmt::format("Time: {:#02d}:{:#02d}",
+                          env.minutes / 60, env.minutes % 60).c_str());
   ImGui::InputInt("Time (minutes)", &env.minutes);
   ImGui::InputFloat("Temperature", &env.temperature);
   ImGui::InputFloat("Air Flow", &env.airFlow);

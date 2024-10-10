@@ -2,6 +2,7 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <liblog/liblog.hpp>
+#include <app/editor.hpp>
 
 class Gui {
   LibLog::Logger log = LibLog::Logger(fmt::color::pink, "GUI");
@@ -13,6 +14,8 @@ public:
 
   void init(LibLog::Logger parentLog);
   void serve();
+
+  std::vector<std::shared_ptr<Editor>> editors = {};
 
   std::vector<std::function<void()>> renders = {};
   std::vector<std::function<void()>> statusRenders = {};

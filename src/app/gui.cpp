@@ -98,6 +98,9 @@ void Gui::serve() {
   for (auto render : renders) {
     render();
   }
+  for (auto editor : editors) {
+    editor->render();
+  }
   ImGuiViewport *vp = ImGui::GetMainViewport();
   drawStatusBar(vp->Size.x, STATUS_BAR_HEIGHT, 0.0f,
                 vp->Size.y - STATUS_BAR_HEIGHT);

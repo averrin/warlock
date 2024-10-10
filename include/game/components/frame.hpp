@@ -47,6 +47,10 @@ struct Metadata {
     return std::get<T>(attributes[name]->GetFinalValue());
   }
 
+  bool has(std::string key) {
+    return attributes.find(key) != attributes.end();
+  }
+
   template <class T> T get_or(std::string name, T default_value) {
     if(attributes.find(name) == attributes.end()) {
       return default_value;
@@ -74,6 +78,8 @@ struct Environment {
   template <class Archive> void load(Archive &ar) {
     ar(temperature, minutes, radioactivity, airFlow);
   };
+
+  std::map<int, std::deque<float>> temperatures = {};
 };
 
 enum class ComponentMaterial {

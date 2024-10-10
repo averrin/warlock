@@ -11,6 +11,10 @@ void ThermalSystem::fixedUpdate() {
   auto &current_state = entt::locator<State>::value();
   for (auto &e : current_state.registry.view<Environment>()) {
     environment = &current_state.registry.get<Environment>(e);
+    environment->temperatures[-1].push_back(environment->temperature);
+      if (environment->temperatures[-1].size() > 100) {
+        environment->temperatures[-1].pop_front();
+      }
     break;
   }
 
@@ -47,6 +51,11 @@ void ThermalSystem::fixedUpdate() {
 
       float temperatureChange = totalHeatTransfer / getThermalMass(component.get()) * timeStep;
       component->data.set<float>("temp", temp + temperatureChange);
+      environment->temperatures[component->data.id].push_back(temp + temperatureChange);
+
+      if (environment->temperatures[component->data.id].size() > 100) {
+        environment->temperatures[component->data.id].pop_front();
+      }
     }
   }
 }

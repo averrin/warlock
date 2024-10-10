@@ -64,19 +64,13 @@ void PowerEditor::render() {
     auto max_value = std::ranges::max(combined_range);
 
     int vpad = 500;
-    // ImGui::SliderFloat("History",&history,1,30,"%.1f s");
-    // static ImPlotAxisFlags flags = ImPlotAxisFlags_NoTickLabels;
     static ImPlotAxisFlags flags;
     if (ImPlot::BeginPlot(fmt::format("Net stats##{}", net.data.name).c_str(),
                           ImVec2(0,0))) {
-        // ImPlot::SetupAxes(nullptr, nullptr, flags, flags);
         ImPlot::SetupAxisLimits(ImAxis_X1,0, history);
         ImPlot::SetupAxisLimits(ImAxis_Y1,min_value - vpad,max_value + vpad);
-        // ImPlot::SetNextFillStyle(IMPLOT_AUTO_COL,0.5f);
-        // ImPlot::PlotShaded("Mouse X", &sdata1.Data[0].x, &sdata1.Data[0].y, sdata1.Data.size(), -INFINITY, 0, sdata1.Offset, 2 * sizeof(float));
         ImPlot::PlotLine("Production", x, &net.history["production"][0], net.history["production"].size());
         ImPlot::PlotLine("Total", x, &net.history["total"][0], net.history["total"].size());
-        // ImPlot::PlotShaded("Production", x, &net.history["total"][0], net.history["total"].size(), net.consumption);
         ImPlot::PlotLine("Consumption", x, &net.history["consumption"][0], net.history["consumption"].size());
         ImPlot::EndPlot();
     }

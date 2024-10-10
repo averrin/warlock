@@ -19,6 +19,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <game/components/frame.hpp>
 #include <game/systems/power.hpp>
 #include <game/systems/tweening.hpp>
+#include <game/systems/environment.hpp>
 #include <game/systems/code_execution.hpp>
 #include <game/systems/thermal.hpp>
 #include <ranges> // For ranges
@@ -238,9 +239,10 @@ void GameManager::start() {
   systems.push_back(std::make_shared<TweeningSystem>());
   systems.push_back(std::make_shared<PowerSystem>());
   systems.push_back(std::make_shared<ThermalSystem>());
+  systems.push_back(std::make_shared<EnvironmentSystem>());
   auto exec = std::make_shared<CodeExecutionSystem>();
   systems.push_back(exec);
-  auto ces_id = 3;
+  auto ces_id = 4;
 
   for (auto &c : exec->sources) {
     components.push_back(c.first);
