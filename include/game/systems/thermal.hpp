@@ -78,7 +78,8 @@ public:
 
     float calculateRadiation(Component* c, float surfaceArea) {
       auto temp = c->data.get<float>("temp");
-      float emissivity = 0.95;  // Assume high emissivity for most materials
+      // float emissivity = 0.95;  // Assume high emissivity for most materials
+      float emissivity = 1.2;  // Assume high emissivity for most materials
       return emissivity * stefanBoltzmannConstant * surfaceArea * 
              (std::pow(environment->temperature, 4) - std::pow(temp, 4));
     }

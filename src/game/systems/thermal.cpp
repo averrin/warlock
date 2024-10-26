@@ -8,6 +8,10 @@
 #include <utils/entt.hpp>
 
 void ThermalSystem::fixedUpdate() {
+
+  auto heat_effect_temp = 150.0f;
+  auto cold_effect_temp = -50.0f;
+
   auto &current_state = entt::locator<State>::value();
   for (auto &e : current_state.registry.view<Environment>()) {
     environment = &current_state.registry.get<Environment>(e);
@@ -51,6 +55,20 @@ void ThermalSystem::fixedUpdate() {
 
       float temperatureChange = totalHeatTransfer / getThermalMass(component.get()) * timeStep;
       component->data.set<float>("temp", temp + temperatureChange);
+
+
+      if (component->data.get<float>("temp") > heat_effect_temp) {
+        component->data.addEffect(EffectID::OVERHEAT);
+      } else {
+        component->data.removeEffect(EffectID::OVERHEAT);
+      }
+
+      if (component->data.get<float>("temp") < cold_effect_temp) {
+        component->data.addEffect(EffectID::FREEZE);
+      }else{
+        component->data.removeEffect(EffectID::FREEZE);
+      }
+
       environment->temperatures[component->data.id].push_back(temp + temperatureChange);
 
       if (environment->temperatures[component->data.id].size() > 100) {

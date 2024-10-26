@@ -10,14 +10,23 @@
 #include <game/attributes.hpp>
 #include <stdexcept>
 #include <map>
+#include <ranges>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 
+struct Effect {
+
+};
+enum class EffectID {
+  OVERHEAT,
+  FREEZE,
+};
 struct Metadata {
   int id = -1;
   std::string name = "";
   std::string description = "";
   std::map<std::string, std::shared_ptr<Attribute>> attributes = {};
+  std::vector<EffectID> effects = {};
   
   static int newId() {
     int new_id = entt::monostate<"id"_hs>{};
@@ -37,6 +46,20 @@ struct Metadata {
         throw std::runtime_error("attribute is fucked");
       }
     }
+  }
+
+  void addEffect(EffectID id) {
+    if(std::ranges::find(effects, id) != effects.end()) {
+      return;
+    }
+    effects.push_back(id);
+  }
+
+  void removeEffect(EffectID id) {
+    if(std::ranges::find(effects, id) == effects.end()) {
+      return;
+    }
+    effects.erase(std::ranges::remove(effects, id).begin(), effects.end());
   }
 
   template <class T> void set(std::string name, T val) {
@@ -71,6 +94,7 @@ struct Environment {
   float temperature = 0.0f;
   float airFlow = 0.0f;
   int minutes = 0;
+  bool isDay = false;
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
     ar(temperature, minutes, radioactivity, airFlow);
@@ -172,7 +196,7 @@ struct Frame {
   Metadata data;
   std::map<ComponentSize, uint> component_limits = {};
   std::vector<std::shared_ptr<Component>> components;
-  FrameSize size = FrameSize::S;
+  FrameSize size = FrameSize::M;
   ComponentMaterial material = ComponentMaterial::STEEL;
   
   Frame() {

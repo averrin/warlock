@@ -186,6 +186,10 @@ void MetaDataEditor(Metadata &meta) {
       }
     }
   }
+
+  for (auto eid : meta.effects) {
+    ImGui::Text(fmt::format("Effect: {}", magic_enum::enum_name(eid)).c_str());
+  }
 }
 
 bool ComponentEditor(Frame &f, std::shared_ptr<Component> c) {

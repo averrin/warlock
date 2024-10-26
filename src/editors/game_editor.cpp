@@ -30,6 +30,8 @@ void GameEditor::render() {
       fmt::runtime("Time: {:#02d}:{:#02d} Temperature: {:#02f}C"),
         env->minutes / 60, env->minutes % 60,
         env->temperature).c_str());
+    ImGui::Text(fmt::format("Air Flow: {:#02f}", env->airFlow).c_str());
+    ImGui::Text(fmt::format("Is Day: {}", env->isDay).c_str());
     break;
   }
 

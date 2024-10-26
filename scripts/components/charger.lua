@@ -36,7 +36,7 @@ return {
           title = "Active heat",
           description = "Heat generated while active",
           type = AttributeType.FLOAT,
-          value = 0.01
+          value = 0.025
       },
   },
   state = ComponentState.DEACTIVATED,

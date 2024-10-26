@@ -54,13 +54,13 @@ return {
             title = "Charge heat",
             description = "Heat generated while charging",
             type = AttributeType.FLOAT,
-            value = 0.1
+            value = 0.5
         },
         discharge_heat = {
             title = "Discharge heat",
             description = "Heat generated while discharging",
             type = AttributeType.FLOAT,
-            value = 0.05
+            value = 0.25
         },
     },
     state = ComponentState.DEACTIVATED,
