@@ -1,0 +1,25 @@
+return {
+	name = "Big Storage",
+	description = "Big Storage",
+	attributes = {
+		type = {
+			title = "Type",
+			value = "Storage",
+		},
+		slots = {
+			title = "Slots",
+			description = "Number of slots",
+			type = AttributeType.INT,
+			value = 4,
+		},
+		passive = {
+			title = "Passive",
+			description = "Passive storage",
+			type = AttributeType.BOOL,
+			value = true,
+		},
+	},
+	state = ComponentState.ACTIVE,
+	size = ComponentSize.M,
+	api = {},
+}

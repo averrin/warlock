@@ -93,26 +93,35 @@ int JobManager::add(std::shared_ptr<Job> job, bool start) {
   if (start) {
     auto &emitter = entt::locator<event_emitter>::value();
     emitter.publish(job_start_event{job});
-    auto t = std::thread(
-        [&](std::shared_ptr<Job> job) {
-          job->status = JobStatus::PROGRESS;
-          try {
-            job->func();
-          } catch (const std::exception &e) {
-            throw e;
-            job->status = JobStatus::ERROR;
-            job->error = e.what();
-            emitter.publish(job_error_event{job});
-            return;
-          }
-          job->status = JobStatus::COMPLETE;
-          job->progress = 100;
-          emitter.publish(job_update_event{job});
-          emitter.publish(job_complete_event{job});
-        },
-        job);
-    threads[job->id] = &t;
-    t.detach();
+    if (!sync) {
+      auto t = std::thread(
+          [&](std::shared_ptr<Job> job) {
+            job->status = JobStatus::PROGRESS;
+            try {
+              job->func();
+            } catch (const std::exception &e) {
+              std::cerr << e.what() << std::endl;
+              throw e;
+              job->status = JobStatus::ERROR;
+              job->error = e.what();
+              emitter.publish(job_error_event{job});
+              return;
+            }
+            job->status = JobStatus::COMPLETE;
+            job->progress = 100;
+            emitter.publish(job_update_event{job});
+            emitter.publish(job_complete_event{job});
+          },
+          job);
+      threads[job->id] = &t;
+      t.detach();
+    } else {
+      job->func();
+      job->status = JobStatus::COMPLETE;
+      job->progress = 100;
+      emitter.publish(job_update_event{job});
+      emitter.publish(job_complete_event{job});
+    }
   }
   return job->id;
 }

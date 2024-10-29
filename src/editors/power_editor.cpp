@@ -1,11 +1,11 @@
 #include <editors/power_editor.hpp>
-#include <game/systems/power.hpp>
+#include <effolkronium/random.hpp>
 #include <fmt/format.h>
+#include <game/systems/power.hpp>
 #include <imgui.h>
 #include <implot.h>
-#include <utils/entt.hpp>
-#include <effolkronium/random.hpp>
 #include <ranges>
+#include <utils/entt.hpp>
 using Random = effolkronium::random_static;
 
 void PowerEditor::render() {
@@ -17,6 +17,11 @@ void PowerEditor::render() {
   }
   auto &info = entt::locator<PowerInfo>::value();
 
+  if (info.networks.empty()) {
+    ImGui::Text("No networks available");
+    ImGui::End();
+    return;
+  }
 
   for (auto net : info.networks) {
     ImGui::Text(net.data.name.c_str());
@@ -53,9 +58,14 @@ void PowerEditor::render() {
     }
 
     std::vector<float> combined_range = {};
-    combined_range.insert(combined_range.end(), net.history["production"].begin(), net.history["production"].end());
-    combined_range.insert(combined_range.end(), net.history["total"].begin(), net.history["total"].end());
-    combined_range.insert(combined_range.end(), net.history["consumption"].begin(), net.history["consumption"].end());
+    combined_range.insert(combined_range.end(),
+                          net.history["production"].begin(),
+                          net.history["production"].end());
+    combined_range.insert(combined_range.end(), net.history["total"].begin(),
+                          net.history["total"].end());
+    combined_range.insert(combined_range.end(),
+                          net.history["consumption"].begin(),
+                          net.history["consumption"].end());
 
     // Find the minimum value
     auto min_value = std::ranges::min(combined_range);
@@ -66,13 +76,16 @@ void PowerEditor::render() {
     int vpad = 500;
     static ImPlotAxisFlags flags;
     if (ImPlot::BeginPlot(fmt::format("Net stats##{}", net.data.name).c_str(),
-                          ImVec2(0,0))) {
-        ImPlot::SetupAxisLimits(ImAxis_X1,0, history);
-        ImPlot::SetupAxisLimits(ImAxis_Y1,min_value - vpad,max_value + vpad);
-        ImPlot::PlotLine("Production", x, &net.history["production"][0], net.history["production"].size());
-        ImPlot::PlotLine("Total", x, &net.history["total"][0], net.history["total"].size());
-        ImPlot::PlotLine("Consumption", x, &net.history["consumption"][0], net.history["consumption"].size());
-        ImPlot::EndPlot();
+                          ImVec2(0, 0))) {
+      ImPlot::SetupAxisLimits(ImAxis_X1, 0, history);
+      ImPlot::SetupAxisLimits(ImAxis_Y1, min_value - vpad, max_value + vpad);
+      ImPlot::PlotLine("Production", x, &net.history["production"][0],
+                       net.history["production"].size());
+      ImPlot::PlotLine("Total", x, &net.history["total"][0],
+                       net.history["total"].size());
+      ImPlot::PlotLine("Consumption", x, &net.history["consumption"][0],
+                       net.history["consumption"].size());
+      ImPlot::EndPlot();
     }
 
     ImGui::Separator();

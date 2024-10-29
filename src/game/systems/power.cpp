@@ -25,7 +25,8 @@ void dfs(int node, const std::unordered_map<int, std::vector<int>> &graph,
 }
 
 std::vector<std::vector<int>>
-findUnconnectedNets(const std::vector<Connection> &connections) {
+findUnconnectedNets(const std::vector<Connection> &connections,
+                    std::vector<int> all_nodes) {
   // Step 1: Create adjacency list for the graph
   std::unordered_map<int, std::vector<int>> graph;
 
@@ -54,6 +55,11 @@ findUnconnectedNets(const std::vector<Connection> &connections) {
       components.push_back(component);
     }
   }
+  for (int node : all_nodes) {
+    if (visited.find(node) == visited.end()) {
+      components.push_back({node});
+    }
+  }
 
   return components;
 }
@@ -64,16 +70,23 @@ void PowerSystem::fixedUpdate() {
 
   auto &current_state = entt::locator<State>::value();
   auto frames_view = current_state.registry.view<Frame>();
+  auto all_nodes = std::vector<int>{};
+
+  for (auto &f : frames_view) {
+    auto &frame = current_state.registry.get<Frame>(f);
+    all_nodes.push_back(frame.data.id);
+  }
 
   auto conns = std::vector<Connection>{};
   for (auto &c : current_state.registry.view<Connection>()) {
     auto conn = current_state.registry.get<Connection>(c);
     auto n = 0;
-    for(auto &f : frames_view) {
+    for (auto &f : frames_view) {
       auto &frame = current_state.registry.get<Frame>(f);
-      if(frame.data.id == conn.source || frame.data.id == conn.target) {
+      if (frame.data.id == conn.source || frame.data.id == conn.target) {
         auto connector = frame.getComponentByType("Power Wire Connector");
-        if(connector != nullptr && connector->state == ComponentState::ACTIVE) {
+        if (connector != nullptr &&
+            connector->state == ComponentState::ACTIVE) {
           n++;
         }
       }
@@ -82,7 +95,7 @@ void PowerSystem::fixedUpdate() {
       conns.push_back(conn);
     }
   }
-  auto nets = findUnconnectedNets(conns);
+  auto nets = findUnconnectedNets(conns, all_nodes);
 
   for (auto &net : nets) {
 
@@ -91,9 +104,9 @@ void PowerSystem::fixedUpdate() {
 
     auto frames = std::vector<Frame>{};
 
-    for(auto &f : frames_view) {
+    for (auto &f : frames_view) {
       auto &frame = current_state.registry.get<Frame>(f);
-      if(std::ranges::find(net, frame.data.id) != net.end()) {
+      if (std::ranges::find(net, frame.data.id) != net.end()) {
         frames.push_back(frame);
       }
     }
@@ -101,14 +114,14 @@ void PowerSystem::fixedUpdate() {
     auto joined_view =
         frames | std::views::transform([](Frame n) { return n.data.id; });
     netInfo.data.name = fmt::format("Network {}", fmt::join(joined_view, "-"));
-    if(history.find(netInfo.data.name) == history.end()) {
+    if (history.find(netInfo.data.name) == history.end()) {
       history[netInfo.data.name] = {
-        {"production", {}},
-        {"total", {}},
-        {"consumption", {}},
-        {"accumulated", {}},
-        {"accumulated_available", {}},
-        {"battery_count", {}},
+          {"production", {}},
+          {"total", {}},
+          {"consumption", {}},
+          {"accumulated", {}},
+          {"accumulated_available", {}},
+          {"battery_count", {}},
       };
     }
     auto &ph = history[netInfo.data.name]["production"];
@@ -125,33 +138,39 @@ void PowerSystem::fixedUpdate() {
     std::vector<std::shared_ptr<Component>> batteries;
     for (auto &f : frames) {
       for (auto &c : f.components) {
-        if (c->state == ComponentState::DEACTIVATED || c->state == ComponentState::DEACTIVATING || c->state == ComponentState::DESTROYED) {
+        if (c->state == ComponentState::DEACTIVATED ||
+            c->state == ComponentState::DEACTIVATING ||
+            c->state == ComponentState::DESTROYED) {
           continue;
         }
         if (std::ranges::find_if(c->data.attributes, [](auto &a) {
               return a.first == "consumption";
             }) != c->data.attributes.end()) {
           auto cons = c->data.get<float>("consumption");
+          auto load = c->data.get_or<float>("load", 1.0f);
           auto eff = c->data.get_or<float>("efficiency", 1.0f);
-          consumption += cons * eff;
+          consumption += cons * load;
         }
         if (c->state == ComponentState::ACTIVATING) {
           if (std::ranges::find_if(c->data.attributes, [](auto &a) {
                 return a.first == "activation_consumption";
               }) != c->data.attributes.end()) {
-          auto cons = c->data.get<float>("activation_consumption");
-          consumption += cons;
+            auto cons = c->data.get<float>("activation_consumption");
+            consumption += cons;
           }
         }
       }
       for (auto &c : f.components) {
-        if(c->state != ComponentState::ACTIVE) {
+        if (c->state != ComponentState::ACTIVE) {
           continue;
         }
         if (std::ranges::find_if(c->data.attributes, [](auto &a) {
               return a.first == "production";
             }) != c->data.attributes.end()) {
-          auto eff = c->data.get_or<float>("efficiency", 1.0f);
+          auto eff = c->data.get_or<float>("load", 1.0f);
+          if (c->data.get<std::string>("type") == "Solar") {
+            eff = c->data.get_or<float>("efficiency", 1.0f);
+          }
           production += c->data.get<float>("production") * eff;
         }
 
@@ -174,13 +193,14 @@ void PowerSystem::fixedUpdate() {
     if (delta > 0) {
       for (auto &f : frames) {
         for (auto &c : f.components) {
-          if(c->state != ComponentState::ACTIVE) {
+          if (c->state != ComponentState::ACTIVE) {
             continue;
           }
           if (c->data.get<std::string>("type") == "Charger") {
             auto bat = c->data.get_or<int>("target", -1);
             if (bat >= 0) {
               auto speed = c->data.get<float>("charge_speed");
+              auto load = c->data.get_or<float>("load", 1.0f);
               auto eff = c->data.get_or<float>("efficiency", 1.0f);
               std::shared_ptr<Component> battery = nullptr;
               for (auto &b : batteries) {
@@ -194,13 +214,14 @@ void PowerSystem::fixedUpdate() {
                 auto capacity = battery->data.get<int>("capacity");
 
                 if (charge < capacity) {
-                  auto p = speed * eff;
+                  auto p = speed * eff * load;
                   if (p > capacity - charge) {
                     p = capacity - charge;
                   }
                   battery->data.set<int>("charge", charge + p);
                   battery->data.set<std::string>("status", "CHARGING");
-                  battery->data.set<float>("heat", battery->data.get<float>("charge_heat"));
+                  battery->data.set<float>(
+                      "heat", battery->data.get<float>("charge_heat"));
                 }
               } else {
                 c->state = ComponentState::ERROR;
@@ -241,17 +262,16 @@ void PowerSystem::fixedUpdate() {
       }
     }
 
-
     netInfo.production = production;
     ph.push_back(production);
     netInfo.consumption = consumption;
     ch.push_back(consumption);
-    th.push_back(production+accumulated_available);
+    th.push_back(production + accumulated_available);
     netInfo.accumulated = accumulated;
     netInfo.accumulated_available = accumulated_available;
     netInfo.battery_count = battery_count;
 
-    if(ph.size() > 100) {
+    if (ph.size() > 100) {
       ph.pop_front();
       ch.pop_front();
       th.pop_front();
@@ -261,10 +281,11 @@ void PowerSystem::fixedUpdate() {
     netInfo.history["consumption"] = ch;
     netInfo.history["total"] = th;
 
-    if (consumption > production+accumulated_available) {
+    if (consumption > production + accumulated_available) {
       for (auto &f : frames) {
         for (auto &c : f.components) {
-          if (c->data.get_or<bool>("stable", false) || c->data.get_or<bool>("passive", false)) {
+          if (c->data.get_or<bool>("stable", false) ||
+              c->data.get_or<bool>("passive", false)) {
             continue;
           }
           c->state = ComponentState::DEACTIVATED;

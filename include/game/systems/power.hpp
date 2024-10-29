@@ -1,8 +1,8 @@
 #pragma once
+#include <deque>
 #include <game/components/frame.hpp>
 #include <game/system.hpp>
 #include <vector>
-#include <deque>
 
 struct NetworkInfo {
   Metadata data;
@@ -27,5 +27,5 @@ class PowerSystem : public System {
 public:
   void fixedUpdate() override;
 
-  PowerSystem() : System(50) {}
+  PowerSystem() : System(50, "Power") {}
 };

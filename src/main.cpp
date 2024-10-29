@@ -13,8 +13,8 @@
 using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <app/gui.hpp>
-#include <app/scene.hpp>
 #include <app/ide.hpp>
+#include <app/scene.hpp>
 #include <game/draw_engine.hpp>
 #include <game/draw_manager.hpp>
 #include <game/game_manager.hpp>
@@ -25,11 +25,11 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <imgui.h>
 
 #include <editors/entity_tree_editor.hpp>
+#include <editors/game_editor.hpp>
 #include <editors/meta_data_editor.hpp>
 #include <editors/power_editor.hpp>
 #include <editors/state_editor.hpp>
 #include <editors/tileset_editor.hpp>
-#include <editors/game_editor.hpp>
 #include <game/prototypes.hpp>
 
 namespace backward {
@@ -98,17 +98,18 @@ int main(int argc, char *argv[]) {
 
   auto &jobs = entt::locator<JobManager>::emplace();
   jobs.init(app.log);
+  jobs.sync = true;
 
   auto &scene = entt::locator<Scene>::emplace();
-  auto &draw_manager = entt::locator<DrawManager>::emplace();
+  // auto &draw_manager = entt::locator<DrawManager>::emplace();
 
   std::shared_ptr<DrawEngine> main_engine = nullptr;
   // std::shared_ptr<DrawEngine> alt_engine = nullptr;
   if (!nogui) {
     scene.init(app.log);
-    draw_manager.init(app.log);
-    main_engine = draw_manager.addEngine("main");
-    main_engine->resize(scene.window->getSize());
+    // draw_manager.init(app.log);
+    // main_engine = draw_manager.addEngine("main");
+    // main_engine->resize(scene.window->getSize());
 
     // alt_engine = draw_manager.addEngine("alt");
     // alt_engine->resize(scene.window->getSize());
@@ -123,13 +124,15 @@ int main(int argc, char *argv[]) {
   loader.init(app.log);
 
   auto &gm = entt::locator<GameManager>::emplace();
+  // auto gm = GameManager();
   gm.init(app.log);
 
-  emitter.publish(add_job_event{gm.startJob, true});
+  // emitter.publish(add_job_event{gm.startJob, true});
+  jobs.add(gm.startJob, true);
 
   if (!noeditor) {
-    gui.renders.push_back([&]() { 
-      ImGui::ShowDemoWindow(); 
+    gui.renders.push_back([&]() {
+      ImGui::ShowDemoWindow();
       ImPlot::ShowDemoWindow();
     });
     // auto md_editor = std::make_shared<MetaDataEditor>("Meta Data Editor");
@@ -141,11 +144,11 @@ int main(int argc, char *argv[]) {
           entt::locator<Prototypes>::value());
     });
     auto state_editor = StateEditor("State Editor");
-    // jobs.add(state_editor->startJob, true);
-    emitter.publish(add_job_event{state_editor.startJob, true});
+    jobs.add(state_editor.startJob, true);
+    // emitter.publish(add_job_event{state_editor.startJob, true});
     gui.renders.push_back([&]() { state_editor.render(); });
-    auto ts_editor = TilesetEditor("Tileset Editor");
-    gui.renders.push_back([&]() { ts_editor.render(); });
+    // auto ts_editor = TilesetEditor("Tileset Editor");
+    // gui.renders.push_back([&]() { ts_editor.render(); });
 
     auto ide = std::make_shared<IDE>();
     ide->init(path);
@@ -183,9 +186,9 @@ int main(int argc, char *argv[]) {
     rectangle.setSize(
         sf::Vector2f(scene.window->getSize().x, scene.window->getSize().y));
 
-    main_engine->start();
+    // main_engine->start();
     // alt_engine->start();
-    fmt::print("Main Engine: {}\n", fmt::ptr(main_engine.get()));
+    // fmt::print("Main Engine: {}\n", fmt::ptr(main_engine.get()));
   }
 
   while (nogui || scene.window->isOpen()) {

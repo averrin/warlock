@@ -8,15 +8,15 @@
 #include <cereal/types/vector.hpp>
 
 #include <game/attributes.hpp>
-#include <stdexcept>
 #include <map>
 #include <ranges>
+#include <stdexcept>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 
-struct Effect {
+#include <game/components/items.hpp>
 
-};
+struct Effect {};
 enum class EffectID {
   OVERHEAT,
   FREEZE,
@@ -27,16 +27,15 @@ struct Metadata {
   std::string description = "";
   std::map<std::string, std::shared_ptr<Attribute>> attributes = {};
   std::vector<EffectID> effects = {};
-  
+
   static int newId() {
     int new_id = entt::monostate<"id"_hs>{};
     new_id++;
     entt::monostate<"id"_hs>{} = new_id;
     return new_id;
   }
-  Metadata() {
-  }
-  Metadata(const Metadata& other) {
+  Metadata() {}
+  Metadata(const Metadata &other) {
     id = other.id;
     name = other.name;
     description = other.description;
@@ -49,14 +48,14 @@ struct Metadata {
   }
 
   void addEffect(EffectID id) {
-    if(std::ranges::find(effects, id) != effects.end()) {
+    if (std::ranges::find(effects, id) != effects.end()) {
       return;
     }
     effects.push_back(id);
   }
 
   void removeEffect(EffectID id) {
-    if(std::ranges::find(effects, id) == effects.end()) {
+    if (std::ranges::find(effects, id) == effects.end()) {
       return;
     }
     effects.erase(std::ranges::remove(effects, id).begin(), effects.end());
@@ -70,12 +69,10 @@ struct Metadata {
     return std::get<T>(attributes[name]->GetFinalValue());
   }
 
-  bool has(std::string key) {
-    return attributes.find(key) != attributes.end();
-  }
+  bool has(std::string key) { return attributes.find(key) != attributes.end(); }
 
   template <class T> T get_or(std::string name, T default_value) {
-    if(attributes.find(name) == attributes.end()) {
+    if (attributes.find(name) == attributes.end()) {
       return default_value;
     }
     return std::get<T>(attributes[name]->GetFinalValue());
@@ -85,25 +82,29 @@ struct Metadata {
   template <class Archive> void save(Archive &ar) const {
     ar(id, name, description, attributes);
   };
-  template <class Archive> void load(Archive &ar) { ar(id, name, description, attributes); };
+  template <class Archive> void load(Archive &ar) {
+    ar(id, name, description, attributes);
+  };
 };
-
 
 struct Environment {
   float radioactivity = 0.0f;
   float temperature = 0.0f;
   float airFlow = 0.0f;
+  float sun = 0.0f;
   int minutes = 0;
   bool isDay = false;
+  int days = 0;
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
-    ar(temperature, minutes, radioactivity, airFlow);
+    ar(temperature, minutes, radioactivity, airFlow, sun, days);
   };
   template <class Archive> void load(Archive &ar) {
-    ar(temperature, minutes, radioactivity, airFlow);
+    ar(temperature, minutes, radioactivity, airFlow, sun);
   };
 
   std::map<int, std::deque<float>> temperatures = {};
+  std::map<std::string, std::deque<float>> named_history = {};
 };
 
 enum class ComponentMaterial {
@@ -122,15 +123,61 @@ enum class ComponentState {
   DEACTIVATING,
   ERROR,
   DESTROYED,
-  BLOCKED
+  BLOCKED,
+  BROKEN,
 };
 
-enum class ComponentSize {
-  S, M, L
-};
+enum class ComponentSize { S, M, L };
 
-enum class FrameSize {
-  S, M, L, G
+enum class FrameSize { S, M, L, G };
+
+class ItemStorage {
+public:
+  int slotsCount = 0;
+  std::vector<ItemSlot> slots;
+
+  ItemStorage(int slotsCount) : slotsCount(slotsCount) { reset(); }
+
+  void reset() {
+    slots.clear();
+    for (int i = 0; i < slotsCount; i++) {
+      auto slot = ItemSlot();
+      slot.id = Metadata::newId();
+      slots.push_back(slot);
+    }
+  }
+
+  bool add(ItemStack stack) {
+    for (auto &slot : slots) {
+      if (slot.stack == nullptr) {
+        slot.stack = std::make_shared<ItemStack>(stack);
+        return true;
+      } else if (slot.stack->item.name == stack.item.name) {
+        if (slot.stack->amount + stack.amount > slot.stack->item.stack) {
+          return false;
+        }
+        slot.stack->amount += stack.amount;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool remove(ItemStack stack) {
+    for (auto &slot : slots) {
+      if (slot.stack == nullptr) {
+        continue;
+      }
+      if (slot.stack->item.name == stack.item.name) {
+        slot.stack->amount -= stack.amount;
+        if (slot.stack->amount <= 0) {
+          slot.stack = nullptr;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
 };
 
 struct Frame;
@@ -143,17 +190,19 @@ struct Component {
   std::string error = "";
   int time_switch = -1;
   ComponentState next_state = ComponentState::DEACTIVATED;
-  // std::map<std::string, sol::function> api;
   sol::table api = {};
   Frame *frame = nullptr;
   ComponentMaterial material = ComponentMaterial::STEEL;
+
+  std::shared_ptr<ItemStorage> storage = nullptr;
 
   bool activate() {
     if (data.get_or<bool>("passive", false)) {
       return false;
     }
 
-    if (state == ComponentState::DEACTIVATED || state == ComponentState::ERROR) {
+    if (state == ComponentState::DEACTIVATED ||
+        state == ComponentState::ERROR) {
       error = "";
       state = ComponentState::ACTIVATING;
       time_switch = data.get_or<int>("activation_time", 0);
@@ -167,7 +216,8 @@ struct Component {
     if (data.get_or<bool>("passive", false)) {
       return false;
     }
-    if (state == ComponentState::ACTIVE || state == ComponentState::ACTIVATING || state == ComponentState::ERROR) {
+    if (state == ComponentState::ACTIVE ||
+        state == ComponentState::ACTIVATING || state == ComponentState::ERROR) {
       state = ComponentState::DEACTIVATING;
       time_switch = data.get_or<int>("activation_time", 0);
       next_state = ComponentState::DEACTIVATED;
@@ -177,12 +227,15 @@ struct Component {
   }
 
   friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const { ar(data, size, state, require, conflict, material); };
-  template <class Archive> void load(Archive &ar) { ar(data,size, state, require, conflict, material); };
+  template <class Archive> void save(Archive &ar) const {
+    ar(data, size, state, require, conflict, material);
+  };
+  template <class Archive> void load(Archive &ar) {
+    ar(data, size, state, require, conflict, material);
+  };
 
-  Component() {
-  }
-  Component(const Component& other) {
+  Component() {}
+  Component(const Component &other) {
     data = other.data;
     size = other.size;
     state = other.state;
@@ -194,20 +247,22 @@ struct Component {
 
 struct Frame {
   Metadata data;
-  std::map<ComponentSize, uint> component_limits = {};
   std::vector<std::shared_ptr<Component>> components;
   FrameSize size = FrameSize::M;
   ComponentMaterial material = ComponentMaterial::STEEL;
-  
-  Frame() {
-    component_limits[ComponentSize::S] = 0;
-    component_limits[ComponentSize::M] = 0;
-    component_limits[ComponentSize::L] = 0;
-  }
 
-  Frame(const Frame& other) {
+  std::map<FrameSize, std::map<ComponentSize, uint>> limits = {
+      {FrameSize::S, {{ComponentSize::S, 8}, {ComponentSize::M, 1}}},
+      {FrameSize::M, {{ComponentSize::S, 16}, {ComponentSize::M, 2}}},
+      {FrameSize::L,
+       {{ComponentSize::S, 32}, {ComponentSize::M, 4}, {ComponentSize::L, 1}}},
+      {FrameSize::G,
+       {{ComponentSize::S, 32}, {ComponentSize::M, 8}, {ComponentSize::L, 4}}}};
+
+  Frame() {}
+
+  Frame(const Frame &other) {
     data = other.data;
-    component_limits = other.component_limits;
     for (auto &c : other.components) {
       components.push_back(c);
     }
@@ -243,9 +298,11 @@ struct Frame {
 
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
-    ar(data, component_limits, components, size, material);
+    ar(data, components, size, material);
   };
-  template <class Archive> void load(Archive &ar) { ar(data, component_limits, components, size, material); };
+  template <class Archive> void load(Archive &ar) {
+    ar(data, components, size, material);
+  };
 };
 
 struct Connection {
@@ -260,7 +317,8 @@ struct Connection {
   template <class Archive> void load(Archive &ar) { ar(data, source, target); };
 };
 
-std::shared_ptr<Component> create_component_from_lua(sol::state& lua, const std::string& lua_file_path);
+std::shared_ptr<Component>
+create_component_from_lua(sol::state &lua, const std::string &lua_file_path);
 
 struct exec_lua_function {
   std::shared_ptr<Component> component;
@@ -268,6 +326,6 @@ struct exec_lua_function {
 };
 
 struct add_component {
-  Frame& frame;
+  Frame &frame;
   std::string component_name;
 };

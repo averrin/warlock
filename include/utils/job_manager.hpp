@@ -22,6 +22,7 @@ public:
 
   int add(std::shared_ptr<Job> job, bool start = true);
   bool restart(int id);
+  bool sync = false;
 
   // template <typename T> void bindJobEventToLua(std::string event_name);
 };

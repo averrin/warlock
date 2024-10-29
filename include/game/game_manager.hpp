@@ -5,19 +5,23 @@
 #include <utils/jobs.hpp>
 using hr_clock = std::chrono::high_resolution_clock;
 #include <game/system.hpp>
+#include <game/systems/code_execution.hpp>
+#include <game/systems/items.hpp>
 #include <mutex>
 
 class GameManager {
   LibLog::Logger log = LibLog::Logger(fmt::color::purple, "GM");
   std::chrono::time_point<hr_clock> lastUpdate;
 
-  std::vector<std::shared_ptr<System>> systems;
-
 public:
   GameManager();
   ~GameManager();
 
   std::vector<std::string> components = {};
+
+  std::vector<std::shared_ptr<System>> systems;
+  std::shared_ptr<CodeExecutionSystem> exec;
+  std::shared_ptr<ItemsSystem> items;
 
   void init(LibLog::Logger parentLog);
   void start();
@@ -26,7 +30,8 @@ public:
 
   void loadData();
   void saveData();
-  entt::entity addFrame(std::string_view name);
+  entt::entity addFrame(std::string name);
+  int addFrameFromBlueprint(std::string name);
   entt::entity addConnection(int source, int target);
 
   std::shared_ptr<Job> startJob;

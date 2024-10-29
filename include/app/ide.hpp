@@ -3,12 +3,12 @@
 
 #include <IconsFontAwesome6.h>
 // #include <bits/fs_ops.h>
+#include <TextEditor.h>
+#include <fmt/format.h>
 #include <fstream>
 #include <imgui.h>
-#include <TextEditor.h>
 #include <iostream>
 #include <sol/sol.hpp>
-#include <fmt/format.h>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 
@@ -24,14 +24,14 @@ class IDE {
   std::shared_ptr<TextEditor> todoEditor;
 
 public:
-  IDE(){
+  IDE() {
     luaEditor = std::make_shared<TextEditor>();
     todoEditor = std::make_shared<TextEditor>();
   };
 
   void addFolder(fs::path p) {
     for (const fs::path &file : fs::directory_iterator(p)) {
-      fmt::print("ide: {}\n", file.string());
+      // fmt::print("ide: {}\n", file.string());
       if (file.extension() == ".lua") {
         files.push_back(file);
       } else {

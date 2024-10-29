@@ -9,11 +9,13 @@
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 
-sol::state& CodeExecutionSystem::getState(int id) {
+sol::state &CodeExecutionSystem::getState(int id) {
   if (states.find(id) == states.end()) {
     fmt::print("Creating new state for frame {}\n", id);
     states[id] = sol::state();
-    states[id].open_libraries(sol::lib::base, sol::lib::package, sol::lib::string, sol::lib::table, sol::lib::math, sol::lib::os, sol::lib::io);
+    states[id].open_libraries(sol::lib::base, sol::lib::package,
+                              sol::lib::string, sol::lib::table, sol::lib::math,
+                              sol::lib::os, sol::lib::io);
     register_bindings(states[id]);
   }
   return states[id];
@@ -21,14 +23,17 @@ sol::state& CodeExecutionSystem::getState(int id) {
 
 std::string CodeExecutionSystem::getScript(std::string name) {
   if (sources.find(name) == sources.end()) {
-    return "";
+    fmt::print("Script not found: {}\n", name);
+    throw std::runtime_error("Script not found");
   }
   return sources[name];
 }
 
-void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c, std::string function_name){
+void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
+                                              std::string function_name) {
   // auto &lua = entt::locator<sol::state>::value();
-  // component->lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string,
+  // component->lua.open_libraries(sol::lib::base, sol::lib::package,
+  // sol::lib::string,
   //                    sol::lib::table, sol::lib::math, sol::lib::os);
   // register_bindings(component->lua);
   // for (auto &f : current_state.registry.view<Frame>()) {
@@ -41,7 +46,7 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c, std:
   // }
 
   auto &current_state = entt::locator<State>::value();
-  //get Environment
+  // get Environment
   for (auto &env : current_state.registry.view<Environment>()) {
     auto environment = current_state.registry.get<Environment>(env);
     getState(c->frame->data.id).set("environment", environment);
@@ -50,7 +55,8 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c, std:
 
   auto code = c->data.get<std::string>("code");
   getState(c->frame->data.id).set("frame", c->frame);
-  sol::safe_function_result result = getState(c->frame->data.id).safe_script(code, sol::script_pass_on_error);
+  sol::safe_function_result result =
+      getState(c->frame->data.id).safe_script(code, sol::script_pass_on_error);
   if (!result.valid()) {
     sol::error err = result;
     std::cout << "Lua script error: " << err.what() << std::endl;
@@ -79,10 +85,10 @@ void CodeExecutionSystem::fixedUpdate() {
   for (auto &f : current_state.registry.view<Frame>()) {
     auto frame = current_state.registry.get<Frame>(f);
     for (auto &c : frame.components) {
-      if(c->state != ComponentState::ACTIVE) {
+      if (c->state != ComponentState::ACTIVE) {
         continue;
       }
-      if(c->data.get<std::string>("type") == "Core") {
+      if (c->data.get<std::string>("type") == "Core") {
         executeCoreFunction(c, "update");
       }
     }

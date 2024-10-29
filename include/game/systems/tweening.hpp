@@ -1,11 +1,11 @@
 #pragma once
+#include <deque>
 #include <game/components/frame.hpp>
 #include <game/system.hpp>
 #include <vector>
-#include <deque>
 
 class TweeningSystem : public System {
 public:
   void fixedUpdate() override;
-  TweeningSystem() : System(50) {}
+  TweeningSystem() : System(50, "Tweening") {}
 };
