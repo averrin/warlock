@@ -11,12 +11,11 @@
 using Random = effolkronium::random_static;
 using hr_clock = std::chrono::high_resolution_clock;
 
-// DFS function to traverse the graph
+// TODO: move to helpers
 void dfs(int node, const std::unordered_map<int, std::vector<int>> &graph,
          std::unordered_set<int> &visited) {
   visited.insert(node);
 
-  // Traverse all neighbors of the current node
   for (int neighbor : graph.at(node)) {
     if (visited.find(neighbor) == visited.end()) {
       dfs(neighbor, graph, visited);
@@ -80,13 +79,13 @@ void PowerSystem::fixedUpdate() {
   auto conns = std::vector<Connection>{};
   for (auto &c : current_state.registry.view<Connection>()) {
     auto conn = current_state.registry.get<Connection>(c);
+    if (conn.type != ConnectionType::POWER)
+      continue;
     auto n = 0;
     for (auto &f : frames_view) {
       auto &frame = current_state.registry.get<Frame>(f);
       if (frame.data.id == conn.source || frame.data.id == conn.target) {
-        auto connector = frame.getComponentByType("Power Wire Connector");
-        if (connector != nullptr &&
-            connector->state == ComponentState::ACTIVE) {
+        if (frame.hasComponentType("Power Wire Connector")) {
           n++;
         }
       }

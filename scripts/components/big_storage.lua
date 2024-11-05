@@ -1,6 +1,7 @@
 return {
 	name = "Big Storage",
 	description = "Big Storage",
+	icon = "box.png",
 	attributes = {
 		type = {
 			title = "Type",

@@ -6,6 +6,7 @@
 using hr_clock = std::chrono::high_resolution_clock;
 #include <game/system.hpp>
 #include <game/systems/code_execution.hpp>
+#include <game/systems/input.hpp>
 #include <game/systems/items.hpp>
 #include <mutex>
 
@@ -22,6 +23,7 @@ public:
   std::vector<std::shared_ptr<System>> systems;
   std::shared_ptr<CodeExecutionSystem> exec;
   std::shared_ptr<ItemsSystem> items;
+  std::shared_ptr<InputSystem> input;
 
   void init(LibLog::Logger parentLog);
   void start();
@@ -32,11 +34,13 @@ public:
   void saveData();
   entt::entity addFrame(std::string name);
   int addFrameFromBlueprint(std::string name);
-  entt::entity addConnection(int source, int target);
+  entt::entity addConnection(int source, int target, ConnectionType);
 
   std::shared_ptr<Job> startJob;
   std::mutex updateMutex;
 
   void initScript(entt::registry &registry, entt::entity entity);
   void releaseScript(entt::registry &registry, entt::entity entity);
+
+  void startFramePlacement();
 };

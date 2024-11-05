@@ -1,6 +1,7 @@
 return {
 	name = "Charger",
 	description = "Battery charger",
+	icon = "battery-pack.png",
 	attributes = {
 		type = {
 			title = "Type",
@@ -24,7 +25,7 @@ return {
 			title = "Charge Speed",
 			description = "Charge speed",
 			type = AttributeType.FLOAT,
-			value = 10.0,
+			value = 25.0,
 		},
 		target = {
 			title = "Target component",

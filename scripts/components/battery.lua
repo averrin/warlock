@@ -1,6 +1,7 @@
 return {
 	name = "Battery",
 	description = "Generic battery",
+	icon = "battery-100.png",
 	attributes = {
 		type = {
 			title = "Type",
@@ -30,7 +31,7 @@ return {
 			title = "Discharge",
 			description = "How many power can give",
 			type = AttributeType.INT,
-			value = 150,
+			value = 300,
 		},
 		charge_speed = {
 			title = "Charge speed",

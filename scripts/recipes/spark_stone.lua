@@ -19,4 +19,5 @@ return {
 	},
 	timeCost = 2.5,
 	powerCost = 250.0,
+	available = { "Refinery" },
 }

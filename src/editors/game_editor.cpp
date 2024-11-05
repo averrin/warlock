@@ -1,10 +1,13 @@
+#include <IconsFontAwesome6.h>
+#include <SFML/Graphics.hpp>
+#include <editors/entity_tree_editor.hpp>
 #include <editors/game_editor.hpp>
 #include <effolkronium/random.hpp>
 #include <fmt/format.h>
-#include <game/components/frame.hpp>
 #include <game/game_manager.hpp>
 #include <game/state.hpp>
 #include <game/systems/thermal.hpp>
+#include <imgui-SFML.h>
 #include <imgui-stl.hpp>
 #include <imgui.h>
 #include <imgui_entt_entity_editor.hpp>
@@ -13,17 +16,18 @@
 #include <ranges>
 #include <utils/entt.hpp>
 using Random = effolkronium::random_static;
+#include <editors/helpers.hpp>
 
 void GameEditor::render() {
   auto &gm = entt::locator<GameManager>::value();
+  auto &current_state = entt::locator<State>::value();
   ImGui::Begin("Game");
-  if (!gm.started) {
+  if (!gm.started ||
+      current_state.registry.template storage<entt::entity>().size() == 0) {
     ImGui::Text("Game not started");
     ImGui::End();
     return;
   }
-
-  auto &current_state = entt::locator<State>::value();
 
   ImGui::SetNextItemWidth(250);
   ImGui::InputText(fmt::format("##nf-name").c_str(), &cache["fn"]);
@@ -38,8 +42,18 @@ void GameEditor::render() {
   ImGui::SetNextItemWidth(90);
   ImGui::InputInt("Dest", &cache_i["dst"]);
   ImGui::SameLine();
+  // TODO: add combo box for Connection Type
+
+  static int connection_type_idx = 0;
+  const char *connection_types[] = {"POWER", "DATA"};
+  ImGui::SetNextItemWidth(90);
+  ImGui::Combo("Connection Type", &connection_type_idx, connection_types,
+               IM_ARRAYSIZE(connection_types));
+
   if (ImGui::Button("New Connection")) {
-    gm.addConnection(cache_i["src"], cache_i["dst"]);
+    ConnectionType selected_type =
+        static_cast<ConnectionType>(connection_type_idx);
+    gm.addConnection(cache_i["src"], cache_i["dst"], selected_type);
   }
   ImGui::Separator();
   ImGui::Separator();
@@ -64,8 +78,100 @@ void GameEditor::render() {
         for (auto system : gm.systems) {
           ImGui::Checkbox(system->name.c_str(), &system->enabled);
           ImGui::SameLine();
-          ImGui::InputFloat(fmt::format("Interval##{}", system->name).c_str(),
+          ImGui::SetNextItemWidth(120);
+          ImGui::InputFloat(fmt::format("##{}", system->name).c_str(),
                             &system->targetInterval);
+        }
+
+        ImGui::Text("Frames:");
+        ImGui::Indent();
+        auto &current_state = entt::locator<State>::value();
+
+        static ImGuiTableFlags flags =
+            ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_Resizable |
+            ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV |
+            ImGuiTableFlags_ContextMenuInBody;
+        if (ImGui::BeginTable("table1", 5, flags)) {
+          for (auto &f : current_state.registry.view<Frame>()) {
+            auto &frame = current_state.registry.get<Frame>(f);
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            if (ImGui::Button(
+                    fmt::format("{}##fact-{}", ICON_FA_PLAY, frame.data.id)
+                        .c_str())) {
+              frame.activate();
+            }
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text(
+                fmt::format("{} [{}]", frame.data.name, frame.data.id).c_str());
+            ImGui::TableSetColumnIndex(2);
+            EntityTreeEditor::ComponentsPanel(frame);
+            ImGui::TableSetColumnIndex(3);
+            auto consumption = 0.0f;
+            auto total_consumption = 0.0f;
+            for (auto c : frame.components) {
+              auto cons = c->data.get_or<float>("consumption", 0.0f);
+              total_consumption += cons;
+              if (c->state == ComponentState::ACTIVE) {
+                consumption += cons;
+              }
+            }
+            ImGui::Text(
+                fmt::format("{:.1f}/{:.1f}", consumption, total_consumption)
+                    .c_str());
+
+            ImGui::TableSetColumnIndex(4);
+            if (ImGui::Button(
+                    fmt::format("View##bf-{}", frame.data.id).c_str())) {
+              ImGui::OpenPopup(
+                  fmt::format("{}##f-{}", frame.data.name, frame.data.id)
+                      .c_str());
+            }
+          }
+          ImGui::EndTable();
+        }
+        ImGui::Unindent();
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("table2", 2, flags)) {
+          for (auto &f : current_state.registry.view<Frame>()) {
+            auto &frame = current_state.registry.get<Frame>(f);
+            auto hasStorage = false;
+            for (auto c : frame.components) {
+              if (c->storage != nullptr) {
+                hasStorage = true;
+              }
+            }
+            if (!hasStorage) {
+              continue;
+            }
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text(
+                fmt::format("{} [{}]", frame.data.name, frame.data.id).c_str());
+            ImGui::TableSetColumnIndex(1);
+            for (auto c : frame.components) {
+              if (c->storage != nullptr) {
+                for (auto slot : c->storage->slots) {
+                  if (slot.stack != nullptr) {
+                    ImGui::Text(fmt::format("{}: {}", slot.stack->item.name,
+                                            slot.stack->amount)
+                                    .c_str());
+                  }
+                }
+              }
+            }
+          }
+          ImGui::EndTable();
+        }
+
+        ImGui::Separator();
+        if (ImGui::Button("Activate all")) {
+          for (auto &f : current_state.registry.view<Frame>()) {
+            auto frame = current_state.registry.get<Frame>(f);
+            frame.activate();
+          }
         }
         ImGui::EndTabItem();
       }
@@ -128,9 +234,11 @@ void GameEditor::render() {
         const auto &items = gm.items->loader->get_items();
         for (const auto &[name, item] : items) {
           if (ImGui::CollapsingHeader(name.c_str())) {
+            ImGui::Indent();
             ImGui::Text("Name: %s", item.name.c_str());
             ImGui::Text("Description: %s", item.description.c_str());
             ImGui::Text("Stack: %d", item.stack);
+            ImGui::Unindent();
           }
         }
         ImGui::EndTabItem();
@@ -140,6 +248,7 @@ void GameEditor::render() {
         const auto &recipes = gm.items->loader->get_recipes();
         for (const auto &recipe : recipes) {
           if (ImGui::CollapsingHeader(recipe.name.c_str())) {
+            ImGui::Indent();
             ImGui::Text("Name: %s", recipe.name.c_str());
             ImGui::Text("Description: %s", recipe.description.c_str());
             ImGui::Text("Time Cost: %.2f", recipe.timeCost);
@@ -156,6 +265,12 @@ void GameEditor::render() {
               ImGui::BulletText("Item: %s, Amount: %d",
                                 output.item.name.c_str(), output.amount);
             }
+
+            ImGui::Text("Available on:");
+            for (auto &item : recipe.availableOn) {
+              ImGui::BulletText(item.c_str());
+            }
+            ImGui::Unindent();
           }
         }
         ImGui::EndTabItem();
@@ -164,15 +279,30 @@ void GameEditor::render() {
     }
   }
 
-  /*
-  if (ImPlot::BeginPlot("Sun")) {
-    ImPlot::SetupAxisLimits(ImAxis_X1, 0, history);
-    ImPlot::SetupAxisLimits(ImAxis_Y1, -20, 120);
-    ImPlot::PlotLine("Environment", x, &env.named_history["sun"][0],
-                     env.named_history["sun"].size());
-    ImPlot::EndPlot();
+  auto viewed_frame = gm.input->viewed_frame;
+  if (viewed_frame != -1) {
+    auto &frame = current_state.registry.get<Frame>((entt::entity)viewed_frame);
+    ImGui::OpenPopup(
+        fmt::format("{}##f-{}", frame.data.name, frame.data.id).c_str());
+
+    if (ImGui::BeginPopup(
+            fmt::format("{}##f-{}", frame.data.name, frame.data.id).c_str())) {
+
+      ImGui::Text(
+          fmt::format("{} [{}]", frame.data.name, frame.data.id).c_str());
+      MM::ComponentEditorWidget<Frame>(current_state.registry,
+                                       (entt::entity)viewed_frame);
+      ImGui::EndPopup();
+    }
+  } else if (gm.input->show_context_menu) {
+    ImGui::OpenPopup("Context Menu");
   }
-  */
+  if (ImGui::BeginPopup("Context Menu")) {
+    if (ImGui::MenuItem("Create empty frame")) {
+      gm.startFramePlacement();
+    }
+    ImGui::EndPopup();
+  }
 
   ImGui::End();
 }

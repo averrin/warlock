@@ -1,6 +1,8 @@
 #include <chrono>
 #include <filesystem>
 #include <game/game_manager.hpp>
+#include <game/oracle.hpp>
+#include <magic_enum.hpp>
 #include <mutex>
 #include <thread>
 #include <utils/entt.hpp>
@@ -10,45 +12,34 @@ using namespace std::this_thread;     // sleep_for, sleep_until
 using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <game/meta_data.hpp>
-#include <game/prototypes.hpp>
 #include <game/state.hpp>
+#include <utils/assets_loader.hpp>
 #include <utils/data/loader.hpp>
 
 #include <algorithm> // For std::ranges::transform
 #include <fmt/ranges.h>
 #include <game/components/frame.hpp>
 #include <game/systems/environment.hpp>
+#include <game/systems/input.hpp>
 #include <game/systems/items.hpp>
 #include <game/systems/power.hpp>
+#include <game/systems/presentation.hpp>
 #include <game/systems/thermal.hpp>
 #include <game/systems/tweening.hpp>
 #include <ranges> // For ranges
+#include <utils/entt_tools.hpp>
 
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-entt::entity createEntityFromPrototype(std::string protoID,
-                                       entt::registry &reg) {
-  auto &prototypes = entt::locator<Prototypes>::value();
-  for (auto entity : prototypes.registry.view<hf::meta>()) {
-    auto meta = prototypes.registry.get<hf::meta>(entity);
-    if (meta.id == protoID) {
-      auto copy =
-          RegistryContainer::copyEntity(entity, prototypes.registry, reg);
-      fmt::print("Proto: {}.{} -> {}\n", meta.id, (int)entity, (int)copy);
-      return copy;
-    }
-  }
-  throw std::runtime_error("Prototype not found");
-}
-
 GameManager::GameManager() {
   log.is_debug = entt::monostate<"debug"_hs>{};
   startJob = std::make_shared<Job>("GameManager start",
                                    std::bind(&GameManager::start, this));
   entt::locator<std::mutex *>::emplace();
+  entt::locator<Oracle>::emplace();
 }
 
 GameManager::~GameManager() {}
@@ -96,7 +87,7 @@ void GameManager::loadData() {
     log.var("Init State", init_state->registry.storage<hf::meta>().size());
     auto store = current_state.create("current", state_path);
     store->initEmpty();
-    RegistryContainer::copyRegistry(init_state->registry, store->registry);
+    EnttTools::copyRegistry(init_state->registry, store->registry);
     current_state.add(store);
     log.var("State Path", current_state.stores.front()->path.string());
   } else {
@@ -158,27 +149,31 @@ void GameManager::init(LibLog::Logger parentLog) {
   log.stop(label);
 }
 
-entt::entity GameManager::addConnection(int source, int target) {
+entt::entity GameManager::addConnection(int source, int target,
+                                        ConnectionType type) {
   auto &current_state = entt::locator<State>::value();
-  auto e = createEntityFromPrototype("CONNECTION", current_state.registry);
+  auto e = EnttTools::createEntityFromPrototype("CONNECTION",
+                                                current_state.registry);
   auto &c = current_state.registry.get<Connection>(e);
+  c.type = type;
   auto &meta = current_state.registry.get<hf::meta>(e);
   c.data.id = Metadata::newId();
-
-  Attribute is_bidirection("Is Bidirectional",
-                           "Is the connection bidirectional",
-                           AttributeType::BOOL, true);
-  c.data.attributes["bidirectional"] =
-      std::make_shared<Attribute>(is_bidirection);
 
   c.source = source;
   c.target = target;
   current_state.registry.emplace_or_replace<Connection>(e, c);
-  auto name = fmt::format("{} -> {}", source, target);
+  auto name = fmt::format("[{}] {} -> {}", magic_enum::enum_name(c.type),
+                          source, target);
 
   meta.name = name;
   meta.id = fmt::format("CONNECTION-{}", (int)e);
   current_state.registry.emplace_or_replace<hf::meta>(e, meta);
+
+  auto &relation = current_state.registry.get_or_emplace<wl::relation>(e);
+  relation.parent = (entt::entity)2;
+  auto &p_relation =
+      current_state.registry.get_or_emplace<wl::relation>((entt::entity)2);
+  p_relation.children.push_back(e);
   return e;
 }
 
@@ -211,7 +206,8 @@ int GameManager::addFrameFromBlueprint(std::string name) {
 
 entt::entity GameManager::addFrame(std::string name) {
   auto &current_state = entt::locator<State>::value();
-  auto e = createEntityFromPrototype("FRAME", current_state.registry);
+  auto e =
+      EnttTools::createEntityFromPrototype("FRAME", current_state.registry);
   auto &frame = current_state.registry.get<Frame>(e);
   auto &meta = current_state.registry.get<hf::meta>(e);
   frame.data.id = Metadata::newId();
@@ -226,6 +222,19 @@ entt::entity GameManager::addFrame(std::string name) {
   meta.name = fmt::format("{} [{}]", name, frame.data.id);
   meta.id = fmt::format("FRAME-{}", (int)e);
   current_state.registry.emplace_or_replace<hf::meta>(e, meta);
+
+  auto &transform = current_state.registry.get_or_emplace<wl::transform>(e);
+  auto snap = 128.0f;
+  transform.position.x = Random::get(0, 800);
+  transform.position.x = std::round(transform.position.x / snap) * snap;
+  transform.position.y = Random::get(0, 800);
+  transform.position.y = std::round(transform.position.y / snap) * snap;
+
+  auto &relation = current_state.registry.get_or_emplace<wl::relation>(e);
+  relation.parent = (entt::entity)1;
+  auto &p_relation =
+      current_state.registry.get_or_emplace<wl::relation>((entt::entity)1);
+  p_relation.children.push_back(e);
   return e;
 }
 
@@ -236,6 +245,10 @@ void GameManager::start() {
 
   loadData();
   saveData();
+
+  fs::path PATH = entt::monostate<"path"_hs>{};
+  auto assetLoader = entt::locator<AssetLoader>::emplace(PATH / "assets");
+  fmt::print("Assets: {}\n", assetLoader.getTextures().size());
 
   log.setParent(nullptr);
   log.setAsync(true);
@@ -272,6 +285,9 @@ void GameManager::start() {
   systems.push_back(exec);
   items = std::make_shared<ItemsSystem>();
   systems.push_back(items);
+  systems.push_back(std::make_shared<PresentationSystem>());
+  input = std::make_shared<InputSystem>();
+  systems.push_back(input);
 
   for (auto &c : exec->sources) {
     components.push_back(c.first);
@@ -287,6 +303,13 @@ void GameManager::start() {
     e.frame.addComponent(component);
   });
 
+  emitter.connect<input_selected_position>([&](auto &e, auto &em) {
+    auto nf = addFrame("New Frame");
+    auto &transform = current_state.registry.get<wl::transform>(nf);
+    transform.position = e.position;
+    current_state.registry.replace<wl::transform>(nf, transform);
+  });
+
   if (current_state.registry.template storage<entt::entity>().size() > 0) {
     log.setAsync(false);
     log.setParent(p);
@@ -294,9 +317,11 @@ void GameManager::start() {
     return;
   }
 
-  fs::path PATH = entt::monostate<"path"_hs>{};
-
-  createEntityFromPrototype("ENV", current_state.registry);
+  EnttTools::createEntityFromPrototype("ENV", current_state.registry);
+  EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
+                                       "Frames");
+  EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
+                                       "Connections");
   lua.load_file(PATH / "scripts/game_init.lua").call();
 
   log.setAsync(false);
@@ -307,9 +332,12 @@ void GameManager::start() {
 void GameManager::serve() {
   if (!started)
     return;
+  auto &current_state = entt::locator<State>::value();
+  if (current_state.registry.template storage<entt::entity>().size() == 0) {
+    return;
+  }
 
   updateMutex.lock();
-  auto &current_state = entt::locator<State>::value();
   for (auto &system : systems) {
     const std::chrono::duration<double, std::milli> delta =
         hr_clock::now() - lastUpdate;
@@ -355,4 +383,9 @@ void GameManager::releaseScript(entt::registry &registry, entt::entity entity) {
   if (!script.enabled)
     return;
   script.handlers.destroy(script.self);
+}
+
+void GameManager::startFramePlacement() {
+  // input->startPositionSelection("MARKER", 64);
+  input->startPositionSelection("FRAME_GHOST_M", 128);
 }

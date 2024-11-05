@@ -6,16 +6,21 @@
 #include <utils/entt_lua.hpp>
 using namespace entt::literals;
 #include <TextEditor.h>
-#include <game/components/frame.hpp>
+#include <editors/entity_tree_editor.hpp>
+#include <editors/helpers.hpp>
 #include <game/specs/light.hpp>
+#include <game/systems/thermal.hpp>
 #include <game/viewport.hpp>
 #include <imgui-SFML.h>
 #include <imgui-stl.hpp>
 #include <imgui.h>
 #include <imgui_entt_entity_editor.hpp>
+#include <implot.h>
 #include <libcolor/libcolor.hpp>
 #include <magic_enum.hpp>
 #include <string>
+#include <utils/assets_loader.hpp>
+#include <utils/entt_draw.hpp>
 
 std::string new_key_sprite;
 std::string new_key_color;
@@ -26,117 +31,109 @@ std::string new_key_lf;
 bool show_unknown = true;
 float new_prob = 0;
 
-const char *AttributeEasingTypeToString(AttributeEasingType type) {
-  switch (type) {
-  case AttributeEasingType::NONE:
-    return "None";
-  case AttributeEasingType::JITTER:
-    return "Jitter";
-  case AttributeEasingType::SAW:
-    return "Saw";
-  case AttributeEasingType::SIN:
-    return "Sin";
-  case AttributeEasingType::RANDOM_STEP:
-    return "Random Step";
-  default:
-    return "Unknown";
+void EntityTreeEditor::ComponentsPanel(Frame &frame) {
+
+  static float GUI_SCALE = entt::monostate<"gui_scale"_hs>{};
+
+  for (auto c : frame.components) {
+    auto size = 24;
+    auto color = sf::Color::White;
+    switch (c->state) {
+    case ComponentState::ACTIVE:
+      color = sf::Color::Green;
+      break;
+    case ComponentState::ERROR:
+      color = sf::Color::Red;
+      break;
+    case ComponentState::DEACTIVATED:
+      color = sf::Color(120, 120, 120, 255);
+      break;
+    case ComponentState::BROKEN:
+      color = sf::Color::Yellow;
+      break;
+    case ComponentState::DESTROYED:
+      color = sf::Color::Black;
+      break;
+    case ComponentState::ACTIVATING:
+      color = sf::Color::Blue;
+      break;
+    }
+    auto assetLoader = entt::locator<AssetLoader>::value();
+    sf::Texture t;
+    sf::Sprite s;
+    auto ts = assetLoader.getTextures();
+    if (ts.empty()) {
+      continue;
+    }
+    s.setTexture(*ts[c->data.icon]);
+    ImGui::Image(s, sf::Vector2f(size * GUI_SCALE, size * GUI_SCALE), color,
+                 sf::Color::Transparent);
+
+    ImVec2 imagePos = ImGui::GetItemRectMin();
+    ImGui::SetCursorScreenPos(imagePos);
+    if (ImGui::InvisibleButton(
+            fmt::format("cat-{}-{}", frame.data.id, c->data.id).c_str(),
+            ImVec2(size * GUI_SCALE, size * GUI_SCALE))) {
+      if (c->state == ComponentState::ACTIVE) {
+        c->deactivate();
+      } else {
+        c->activate();
+      }
+    }
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+      ImGui::OpenPopup(
+          fmt::format("{}##c-{}", c->data.name, c->data.id).c_str());
+    }
+    if (ImGui::BeginPopup(
+            fmt::format("{}##c-{}", c->data.name, c->data.id).c_str())) {
+      ImGui::Text(c->data.name.c_str());
+      EntityTreeEditor::ComponentEditor(frame, c);
+      ImGui::EndPopup();
+    }
+    const bool is_hovered = ImGui::IsItemHovered(); // Hovered
+    if (is_hovered) {
+      ImGui::BeginTooltip();
+      ImGui::Text(c->data.name.c_str());
+      ImGui::Text(ComponentStateToString(c->state));
+
+      ImGui::SameLine();
+      for (auto eid : c->data.effects) {
+        if (eid == EffectID::OVERHEAT) {
+          ImGui::TextColored(ImVec4(1, 0, 0, 1), ICON_FA_FIRE);
+        } else if (eid == EffectID::FREEZE) {
+          ImGui::TextColored(ImVec4(0, 0, 1, 1), ICON_FA_SNOWFLAKE);
+        }
+        ImGui::SameLine();
+      }
+      ImGui::EndTooltip();
+    }
+    ImGui::SameLine();
+  }
+
+  if (ImGui::Button(fmt::format("+##pac-{}", frame.data.id).c_str())) {
+    ImGui::OpenPopup(
+        fmt::format("Add Component##pac-{}", frame.data.id).c_str());
+  }
+
+  if (ImGui::BeginPopup(
+          fmt::format("Add Component##pac-{}", frame.data.id).c_str())) {
+    ImGui::TextUnformatted("Available:");
+    ImGui::Separator();
+
+    auto &gm = entt::locator<GameManager>::value();
+    auto &emitter = entt::locator<event_emitter>::value();
+    for (auto &comp_name : gm.components) {
+      ImGui::PushID(comp_name.c_str());
+      if (ImGui::Selectable(fmt::format("{} [{}]", comp_name, "?").c_str())) {
+        emitter.publish(add_component{frame, comp_name});
+      }
+      ImGui::PopID();
+    }
+    ImGui::EndPopup();
   }
 }
 
-const char *ComponentMaterialToString(ComponentMaterial size) {
-  switch (size) {
-  case ComponentMaterial::ALUMINIUM:
-    return "Aluminium";
-  case ComponentMaterial::COPPER:
-    return "Copper";
-  case ComponentMaterial::STEEL:
-    return "Steel";
-  case ComponentMaterial::TITANIUM:
-    return "Titanium";
-  case ComponentMaterial::PLASTIC:
-    return "Plastic";
-  case ComponentMaterial::GLASS:
-    return "Glass";
-  default:
-    return "Unknown";
-  }
-}
-
-const char *ComponentSizeToString(ComponentSize size) {
-  switch (size) {
-  case ComponentSize::S:
-    return "Small";
-  case ComponentSize::M:
-    return "Medium";
-  case ComponentSize::L:
-    return "Large";
-  default:
-    return "Unknown";
-  }
-}
-
-const char *FrameSizeToString(FrameSize size) {
-  switch (size) {
-  case FrameSize::S:
-    return "Small";
-  case FrameSize::M:
-    return "Medium";
-  case FrameSize::L:
-    return "Large";
-  case FrameSize::G:
-    return "Giant";
-  default:
-    return "Unknown";
-  }
-}
-
-const char *ComponentStateToString(ComponentState state) {
-  switch (state) {
-  case ComponentState::DEACTIVATED:
-    return "Deactivated";
-  case ComponentState::ACTIVATING:
-    return "Activating";
-  case ComponentState::ACTIVE:
-    return "Active";
-  case ComponentState::DEACTIVATING:
-    return "Deactivating";
-  case ComponentState::ERROR:
-    return "Error";
-  case ComponentState::DESTROYED:
-    return "Destroyed";
-  case ComponentState::BLOCKED:
-    return "Blocked";
-  case ComponentState::BROKEN:
-    return "Broken";
-  default:
-    return "Unknown";
-  }
-}
-
-const char *ComponentStateToIcon(ComponentState state) {
-  switch (state) {
-  case ComponentState::DEACTIVATED:
-    return ICON_FA_STOP;
-  case ComponentState::ACTIVATING:
-    return ICON_FA_GEARS;
-  case ComponentState::ACTIVE:
-    return ICON_FA_CHECK;
-  case ComponentState::DEACTIVATING:
-    return ICON_FA_GEARS;
-  case ComponentState::ERROR:
-    return ICON_FA_TRIANGLE_EXCLAMATION;
-  case ComponentState::DESTROYED:
-    return ICON_FA_SKULL_CROSSBONES;
-  case ComponentState::BROKEN:
-    return ICON_FA_SKULL_CROSSBONES;
-  case ComponentState::BLOCKED:
-    return ICON_FA_BAN;
-  default:
-    return ICON_FA_QUESTION;
-  }
-}
-
-void MetaDataEditor(Metadata &meta) {
+void EntityTreeEditor::MetaDataEditor(Metadata &meta) {
   float GUI_SCALE = entt::monostate<"gui_scale"_hs>{};
   ImGui::SetNextItemWidth(90 * GUI_SCALE);
   ImGui::InputInt(fmt::format("ID##n-mde-{}", meta.id).c_str(), &meta.id);
@@ -145,6 +142,26 @@ void MetaDataEditor(Metadata &meta) {
   ImGui::InputText(fmt::format("Name##n-mde-{}", meta.id).c_str(), meta.name);
   ImGui::InputText(fmt::format("Description##d-mde-{}", meta.id).c_str(),
                    meta.description);
+
+  fs::path PATH = entt::monostate<"path"_hs>{};
+
+  sf::Texture t;
+  sf::Sprite s;
+  if (meta.icon != "") {
+    auto assetLoader = entt::locator<AssetLoader>::value();
+    auto ts = assetLoader.getTextures();
+    if (ts.find(meta.icon) != ts.end()) {
+      s.setTexture(*ts[meta.icon]);
+    } else {
+      s.setTexture(t);
+    }
+  } else {
+    s.setTexture(t);
+  }
+  ImGui::Image(s, sf::Vector2f(24 * GUI_SCALE, 24 * GUI_SCALE),
+               sf::Color::White, sf::Color::Transparent);
+  ImGui::SameLine();
+  ImGui::InputText(fmt::format("Icon##n-mde-{}", meta.id).c_str(), meta.icon);
 
   static std::map<int, std::shared_ptr<TextEditor>> editors;
 
@@ -256,7 +273,7 @@ void MetaDataEditor(Metadata &meta) {
   ImGui::Unindent();
 }
 
-bool ComponentEditor(Frame &f, std::shared_ptr<Component> c) {
+bool EntityTreeEditor::ComponentEditor(Frame &f, std::shared_ptr<Component> c) {
   static const std::array<ComponentSize, 3> component_sizes = {
       ComponentSize::S, ComponentSize::M, ComponentSize::L};
 
@@ -357,7 +374,7 @@ bool ComponentEditor(Frame &f, std::shared_ptr<Component> c) {
       c->material = static_cast<ComponentMaterial>(current_material);
     }
 
-    MetaDataEditor(c->data);
+    EntityTreeEditor::MetaDataEditor(c->data);
     ImGui::Separator();
     if (c->storage != nullptr) {
       auto &gm = entt::locator<GameManager>::value();
@@ -404,14 +421,117 @@ bool ComponentEditor(Frame &f, std::shared_ptr<Component> c) {
 }
 
 namespace MM {
+
+template <>
+void ComponentEditorWidget<wl::visual_state>(entt::registry &registry,
+                                             entt::registry::entity_type e) {
+  auto &t = registry.get<wl::visual_state>(e);
+  if (ImGui::Checkbox("Selected", &t.selected)) {
+    registry.emplace_or_replace<wl::visual_state>(e, t);
+  };
+  if (ImGui::Checkbox("Hovered", &t.hovered)) {
+    registry.emplace_or_replace<wl::visual_state>(e, t);
+  };
+  if (ImGui::Checkbox("Ghost", &t.ghost)) {
+    registry.emplace_or_replace<wl::visual_state>(e, t);
+  };
+  if (ImGui::Checkbox("Hidden", &t.hidden)) {
+    registry.emplace_or_replace<wl::visual_state>(e, t);
+  };
+}
+
+template <>
+void ComponentEditorWidget<wl::transform>(entt::registry &registry,
+                                          entt::registry::entity_type e) {
+  auto &t = registry.get<wl::transform>(e);
+  if (ImGui::InputFloat("X", &t.position.x)) {
+    registry.emplace_or_replace<wl::transform>(e, t);
+  };
+  if (ImGui::InputFloat("Y", &t.position.y)) {
+    registry.emplace_or_replace<wl::transform>(e, t);
+  };
+  if (ImGui::InputFloat("Scale", &t.scale)) {
+    registry.emplace_or_replace<wl::transform>(e, t);
+  };
+  if (ImGui::InputFloat("Rotation", &t.rotation)) {
+    registry.emplace_or_replace<wl::transform>(e, t);
+  };
+  if (ImGui::InputText("Layer", t.layer)) {
+    registry.emplace_or_replace<wl::transform>(e, t);
+  };
+  if (ImGui::Checkbox("Relative", &t.relative)) {
+    registry.emplace_or_replace<wl::transform>(e, t);
+  };
+}
+template <>
+void ComponentEditorWidget<wl::text>(entt::registry &registry,
+                                     entt::registry::entity_type e) {
+  auto &t = registry.get<wl::text>(e);
+  if (ImGui::InputText("Text", t.text)) {
+    registry.emplace_or_replace<wl::text>(e, t);
+  };
+  if (ImGui::InputInt("Size", &t.size)) {
+    registry.emplace_or_replace<wl::text>(e, t);
+  };
+}
+template <>
+void ComponentEditorWidget<wl::sprite>(entt::registry &registry,
+                                       entt::registry::entity_type e) {
+  auto &t = registry.get<wl::sprite>(e);
+  if (ImGui::InputText("Sprite", t.sprite)) {
+    registry.emplace_or_replace<wl::sprite>(e, t);
+  };
+  if (ImGui::InputFloat("Width", &t.rect.width)) {
+    registry.emplace_or_replace<wl::sprite>(e, t);
+  };
+  if (ImGui::InputFloat("Height", &t.rect.height)) {
+    registry.emplace_or_replace<wl::sprite>(e, t);
+  };
+}
+
+template <>
+void ComponentEditorWidget<wl::rect>(entt::registry &registry,
+                                     entt::registry::entity_type e) {
+  auto &t = registry.get<wl::rect>(e);
+  if (ImGui::InputFloat("Width", &t.width)) {
+    registry.emplace_or_replace<wl::rect>(e, t);
+  };
+  if (ImGui::InputFloat("Height", &t.height)) {
+    registry.emplace_or_replace<wl::rect>(e, t);
+  };
+}
+} // namespace MM
+
+void FrameStatus(Frame &f) {
+  auto limits = f.limits[f.size];
+  ImGui::SameLine();
+  ImGui::Text(
+      "S: %d/%d",
+      std::count_if(f.components.begin(), f.components.end(),
+                    [](auto &c) { return c->size == ComponentSize::S; }),
+      limits[ComponentSize::S]);
+  ImGui::SameLine();
+  ImGui::Text(
+      "M: %d/%d",
+      std::count_if(f.components.begin(), f.components.end(),
+                    [](auto &c) { return c->size == ComponentSize::M; }),
+      limits[ComponentSize::M]);
+  ImGui::SameLine();
+  ImGui::Text(
+      "L: %d/%d",
+      std::count_if(f.components.begin(), f.components.end(),
+                    [](auto &c) { return c->size == ComponentSize::L; }),
+      limits[ComponentSize::L]);
+}
+void ComponentStatus(std::shared_ptr<Component> c) {}
+
+namespace MM {
 template <>
 void ComponentEditorWidget<Frame>(entt::registry &registry,
                                   entt::registry::entity_type e) {
   auto &f = registry.get<Frame>(e);
 
-  if (ImGui::Button(fmt::format("Inspect##i-{}", f.data.id).c_str())) {
-    entt::monostate<"inspected_frame"_hs>{} = (int)e;
-  }
+  EntityTreeEditor::ComponentsPanel(f);
 
   static const std::array<FrameSize, 4> frame_sizes = {
       FrameSize::S, FrameSize::M, FrameSize::L, FrameSize::G};
@@ -422,95 +542,112 @@ void ComponentEditorWidget<Frame>(entt::registry &registry,
       ComponentMaterial::STEEL,     ComponentMaterial::TITANIUM,
       ComponentMaterial::PLASTIC,   ComponentMaterial::GLASS};
 
-  ImGui::SetNextItemWidth(120 * GUI_SCALE);
-  int current_material = static_cast<int>(f.material);
-  if (ImGui::Combo(
-          fmt::format("Material##f-mat-{}", f.data.id).c_str(),
-          &current_material,
-          [](void *data, int idx, const char **out_text) {
-            *out_text =
-                ComponentMaterialToString(static_cast<ComponentMaterial>(idx));
-            return true;
-          },
-          nullptr, materials.size())) {
-    f.material = static_cast<ComponentMaterial>(current_material);
-  }
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(90 * GUI_SCALE);
-  int current_size = static_cast<int>(f.size);
-  if (ImGui::Combo(
-          fmt::format("Size##f-sz-{}", f.data.id).c_str(), &current_size,
-          [](void *data, int idx, const char **out_text) {
-            *out_text = FrameSizeToString(static_cast<FrameSize>(idx));
-            return true;
-          },
-          nullptr, frame_sizes.size())) {
-    f.size = static_cast<FrameSize>(current_size);
-  }
-  if (ImGui::CollapsingHeader(
-          fmt::format("Data##data-{}", f.data.id).c_str())) {
-    MetaDataEditor(f.data);
-  }
+  ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
+  if (ImGui::BeginTabBar(fmt::format("FrameTabs##f-tabs-{}", f.data.id).c_str(),
+                         tab_bar_flags)) {
+    if (ImGui::BeginTabItem("Components")) {
+      if (ImGui::Button(
+              fmt::format("{}##fact-{}", ICON_FA_PLAY, f.data.id).c_str())) {
+        f.activate();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button(
+              fmt::format("{}##fdeact-{}", ICON_FA_STOP, f.data.id).c_str())) {
+        f.deactivate();
+      }
 
-  if (ImGui::Button(
-          fmt::format("{}##fact-{}", ICON_FA_PLAY, f.data.id).c_str())) {
-    f.activate();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button(
-          fmt::format("{}##fdeact-{}", ICON_FA_STOP, f.data.id).c_str())) {
-    f.deactivate();
-  }
-  ImGui::SameLine();
-  if (ImGui::CollapsingHeader(
-          fmt::format("Components##comp-{}", f.data.id).c_str())) {
-    ImGui::Indent();
-
-    if (ImGui::Button(
-            fmt::format("+ Add Component##ac-{}", f.data.id).c_str())) {
-      ImGui::OpenPopup("Add Component");
-    }
-    auto limits = f.limits[f.size];
-    ImGui::SameLine();
-    ImGui::Text(
-        "S: %d/%d",
-        std::count_if(f.components.begin(), f.components.end(),
-                      [](auto &c) { return c->size == ComponentSize::S; }),
-        limits[ComponentSize::S]);
-    ImGui::SameLine();
-    ImGui::Text(
-        "M: %d/%d",
-        std::count_if(f.components.begin(), f.components.end(),
-                      [](auto &c) { return c->size == ComponentSize::M; }),
-        limits[ComponentSize::M]);
-    ImGui::SameLine();
-    ImGui::Text(
-        "L: %d/%d",
-        std::count_if(f.components.begin(), f.components.end(),
-                      [](auto &c) { return c->size == ComponentSize::L; }),
-        limits[ComponentSize::L]);
-
-    if (ImGui::BeginPopup("Add Component")) {
-      ImGui::TextUnformatted("Available:");
-      ImGui::Separator();
-
-      auto &gm = entt::locator<GameManager>::value();
-      auto &emitter = entt::locator<event_emitter>::value();
-      for (auto &comp_name : gm.components) {
-        ImGui::PushID(comp_name.c_str());
-        if (ImGui::Selectable(comp_name.c_str())) {
-          emitter.publish(add_component{f, comp_name});
+      for (auto &c : f.components) {
+        if (EntityTreeEditor::ComponentEditor(f, c)) {
+          return;
         }
-        ImGui::PopID();
       }
-      ImGui::EndPopup();
+      ImGui::EndTabItem();
     }
+    if (ImGui::BeginTabItem("Temperature")) {
+      float x[100];
+      for (int i = 0; i <= 100; ++i) {
+        x[i] = i;
+      }
+      static ImPlotAxisFlags flags = ImPlotLegendFlags_Outside;
+      auto &current_state = entt::locator<State>::value();
+      auto env = current_state.registry.get<Environment>((entt::entity)0);
 
-    for (auto &c : f.components) {
-      if (ComponentEditor(f, c)) {
-        return;
+      if (ImPlot::BeginPlot(
+              fmt::format("Temperatures##tp-{}", f.data.id).c_str(),
+              ImVec2(800, 0))) {
+
+        ImPlot::SetupLegend(ImPlotLocation_East, flags);
+        ImPlot::SetupAxisLimits(ImAxis_X1, 0, 100);
+        ImPlot::SetupAxisLimits(ImAxis_Y1, -200, 200);
+
+        ImPlot::TagY(ThermalSystem::heat_effect_temp, ImVec4(0, 1, 1, 1),
+                     "Overheat");
+        ImPlot::PlotInfLines("Overheat", &ThermalSystem::heat_effect_temp, 1,
+                             ImPlotInfLinesFlags_Horizontal);
+        ImPlot::TagY(ThermalSystem::cold_effect_temp, ImVec4(0, 1, 1, 1),
+                     "Freeze");
+        ImPlot::PlotInfLines("Freeze", &ThermalSystem::cold_effect_temp, 1,
+                             ImPlotInfLinesFlags_Horizontal);
+
+        ImPlot::TagY(ThermalSystem::max_break_temp, ImVec4(0, 1, 1, 1),
+                     "Fatal Heat");
+        ImPlot::PlotInfLines("Fatal Heat", &ThermalSystem::max_break_temp, 1,
+                             ImPlotInfLinesFlags_Horizontal);
+        ImPlot::TagY(ThermalSystem::min_break_temp, ImVec4(0, 1, 1, 1),
+                     "Fatal Cold");
+        ImPlot::PlotInfLines("Fatal Cold", &ThermalSystem::min_break_temp, 1,
+                             ImPlotInfLinesFlags_Horizontal);
+
+        ImPlot::PlotLine("Environment", x, &env.temperatures[-1][0],
+                         env.temperatures[-1].size());
+        auto &comps = f.components;
+        for (auto &component : comps) {
+          if (env.temperatures.find(component->data.id) ==
+                  env.temperatures.end() ||
+              env.temperatures[component->data.id].size() == 0) {
+            return;
+          }
+          ImPlot::PlotLine(fmt::format("{}", component->data.name).c_str(), x,
+                           &env.temperatures[component->data.id][0],
+                           env.temperatures[component->data.id].size());
+        }
+        ImPlot::EndPlot();
       }
+      ImGui::EndTabItem();
     }
+    if (ImGui::BeginTabItem("Data")) {
+      ImGui::SetNextItemWidth(120 * GUI_SCALE);
+      int current_material = static_cast<int>(f.material);
+      if (ImGui::Combo(
+              fmt::format("Material##f-mat-{}", f.data.id).c_str(),
+              &current_material,
+              [](void *data, int idx, const char **out_text) {
+                *out_text = ComponentMaterialToString(
+                    static_cast<ComponentMaterial>(idx));
+                return true;
+              },
+              nullptr, materials.size())) {
+        f.material = static_cast<ComponentMaterial>(current_material);
+      }
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(90 * GUI_SCALE);
+      int current_size = static_cast<int>(f.size);
+      if (ImGui::Combo(
+              fmt::format("Size##f-sz-{}", f.data.id).c_str(), &current_size,
+              [](void *data, int idx, const char **out_text) {
+                *out_text = FrameSizeToString(static_cast<FrameSize>(idx));
+                return true;
+              },
+              nullptr, frame_sizes.size())) {
+        f.size = static_cast<FrameSize>(current_size);
+      }
+      if (ImGui::CollapsingHeader(
+              fmt::format("Data##data-{}", f.data.id).c_str())) {
+        EntityTreeEditor::MetaDataEditor(f.data);
+      }
+      ImGui::EndTabItem();
+    }
+    ImGui::EndTabBar();
   }
 }
 
@@ -518,10 +655,21 @@ template <>
 void ComponentEditorWidget<Connection>(entt::registry &registry,
                                        entt::registry::entity_type e) {
   auto &c = registry.get<Connection>(e);
-  MetaDataEditor(c.data);
+  EntityTreeEditor::MetaDataEditor(c.data);
 
   ImGui::InputInt("Source", &c.source);
   ImGui::InputInt("Target", &c.target);
+  if (ImGui::Button(fmt::format("Apply##app-{}", c.data.id).c_str())) {
+    registry.emplace_or_replace<Connection>(e, c);
+  }
+
+  const char *connectionTypes[] = {"POWER", "DATA"};
+  int currentType = static_cast<int>(c.type);
+  if (ImGui::Combo("Connection Type", &currentType, connectionTypes,
+                   IM_ARRAYSIZE(connectionTypes))) {
+    c.type = static_cast<ConnectionType>(currentType);
+    registry.emplace_or_replace<Connection>(e, c);
+  }
 }
 
 template <>
@@ -680,30 +828,24 @@ void ComponentEditorWidget<hf::ineditor>(entt::registry &registry,
     ie = registry.get<hf::ineditor>(e);
   }
 
-  ImGui::BeginDisabled();
-  ImGui::InputText("Name", ie.name);
-  ImGui::EndDisabled();
-  if (ImGui::Button(ICON_FA_FLOPPY_DISK)) {
-    ie.name = new_editor_name;
-  }
-  ImGui::SameLine();
-  ImGui::InputText("New Name", new_editor_name);
-  if (ImGui::Checkbox("Selected", &ie.selected)) {
-    registry.emplace_or_replace<hf::ineditor>(e, ie);
-  }
-  if (ie.folders.size() > 0) {
-    std::string path = "";
-    for (auto f : ie.folders) {
-      path = fmt::format("{} > {}", path, f);
-    }
-    ImGui::BulletText("Folders: %s", path.c_str());
-  }
-  if (ImGui::ListEdit("Folders", ie.folders)) {
-    registry.emplace_or_replace<hf::ineditor>(e, ie);
-  }
+  float GUI_SCALE = entt::monostate<"gui_scale"_hs>{};
+  sf::Texture t;
+  sf::Sprite s;
   if (ie.icon != "") {
-    ImGui::BulletText(fmt::format("Icon: {}", ie.icon).c_str());
+    auto assetLoader = entt::locator<AssetLoader>::value();
+    auto ts = assetLoader.getTextures();
+    if (ts.find(ie.icon) != ts.end()) {
+      s.setTexture(*ts[ie.icon]);
+    } else {
+      s.setTexture(t);
+    }
+  } else {
+    s.setTexture(t);
   }
+  ImGui::Image(s, sf::Vector2f(24 * GUI_SCALE, 24 * GUI_SCALE),
+               sf::Color::White, sf::Color::Transparent);
+  ImGui::SameLine();
+  ImGui::InputText(fmt::format("Icon##ie-icon-{}", (int)e).c_str(), ie.icon);
 }
 template <>
 void ComponentEditorWidget<hf::position>(entt::registry &registry,

@@ -40,6 +40,10 @@ class RegistryStore : public Store {
         .template get<Frame>(ar)
         .template get<Connection>(ar)
         .template get<Environment>(ar)
+        .template get<wl::transform>(ar)
+        .template get<wl::sprite>(ar)
+        .template get<wl::relation>(ar)
+        .template get<wl::text>(ar)
         .template get<entt::tag<"proto"_hs>>(ar)
         .orphans();
   };
@@ -65,6 +69,10 @@ class RegistryStore : public Store {
         .template get<Frame>(ar, view.begin(), view.end())
         .template get<Connection>(ar, view.begin(), view.end())
         .template get<Environment>(ar, view.begin(), view.end())
+        .template get<wl::transform>(ar, view.begin(), view.end())
+        .template get<wl::sprite>(ar, view.begin(), view.end())
+        .template get<wl::relation>(ar, view.begin(), view.end())
+        .template get<wl::text>(ar, view.begin(), view.end())
         .template get<entt::tag<"proto"_hs>>(ar, view.begin(), view.end());
   };
 

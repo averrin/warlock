@@ -50,7 +50,7 @@ void Scene::serve() {
   auto sv = sf::View(visibleArea);
   window->setView(sv);
 
-  window->clear(sf::Color::Black);
+  window->clear(sf::Color(25, 25, 25, 255));
 }
 
 void Scene::draw() {

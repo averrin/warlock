@@ -34,7 +34,7 @@ private:
 
 public:
   LayersManager();
-  std::map<std::string_view, std::shared_ptr<Layer>> layers;
+  std::map<std::string, std::shared_ptr<Layer>> layers;
   unsigned int size() {
     auto n = 0;
     for (auto [k, l] : layers) {
@@ -50,7 +50,7 @@ public:
     }
   }
 
-  void invalidate(std::string_view name) { layers[name]->invalidate(); }
+  void invalidate(std::string name) { layers[name]->invalidate(); }
   void invalidate() {
     for (auto [k, l] : layers) {
       l->invalidate();

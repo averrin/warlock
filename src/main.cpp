@@ -101,15 +101,15 @@ int main(int argc, char *argv[]) {
   jobs.sync = true;
 
   auto &scene = entt::locator<Scene>::emplace();
-  // auto &draw_manager = entt::locator<DrawManager>::emplace();
+  auto &draw_manager = entt::locator<DrawManager>::emplace();
 
   std::shared_ptr<DrawEngine> main_engine = nullptr;
   // std::shared_ptr<DrawEngine> alt_engine = nullptr;
   if (!nogui) {
     scene.init(app.log);
-    // draw_manager.init(app.log);
-    // main_engine = draw_manager.addEngine("main");
-    // main_engine->resize(scene.window->getSize());
+    draw_manager.init(app.log);
+    main_engine = draw_manager.addEngine("main");
+    main_engine->resize(scene.window->getSize());
 
     // alt_engine = draw_manager.addEngine("alt");
     // alt_engine->resize(scene.window->getSize());
@@ -167,6 +167,7 @@ int main(int argc, char *argv[]) {
     });
     */
 
+    /*
     sf::RenderTexture rt;
     sf::Sprite s;
     gui.renders.push_back([&]() {
@@ -178,6 +179,7 @@ int main(int argc, char *argv[]) {
                    sf::Color::Transparent);
       ImGui::End();
     });
+    */
   }
 
   if (!nogui) {
@@ -186,7 +188,7 @@ int main(int argc, char *argv[]) {
     rectangle.setSize(
         sf::Vector2f(scene.window->getSize().x, scene.window->getSize().y));
 
-    // main_engine->start();
+    main_engine->start();
     // alt_engine->start();
     // fmt::print("Main Engine: {}\n", fmt::ptr(main_engine.get()));
   }
@@ -199,7 +201,8 @@ int main(int argc, char *argv[]) {
       // draw_manager.serve();
       // draw_manager.draw();
       if (gm.started) {
-        // scene.window->draw(*main_engine->layers);
+        main_engine->_draw();
+        scene.window->draw(main_engine->cache);
       }
       if (!noeditor) {
         gui.serve();

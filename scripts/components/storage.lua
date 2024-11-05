@@ -1,6 +1,7 @@
 return {
 	name = "Storage",
 	description = "Minor Storage",
+	icon = "box.png",
 	attributes = {
 		type = {
 			title = "Type",

@@ -10,4 +10,5 @@ return {
 	outputs = {},
 	timeCost = 5.0,
 	powerCost = 0.0,
+	available = { "Generator" },
 }

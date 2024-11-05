@@ -1,6 +1,7 @@
 return {
 	name = "Heater",
 	description = "Generic heater",
+	icon = "thermometer-hot.png",
 	attributes = {
 		type = {
 			title = "Type",

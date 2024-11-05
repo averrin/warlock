@@ -1,6 +1,6 @@
 return {
 	name = "Generator",
-	description = "Generic generator",
+	description = "Spark Stone generator",
 	attributes = {
 		type = {
 			title = "Type",
@@ -12,7 +12,7 @@ return {
 			title = "Recipe",
 			description = "Active recipe",
 			type = AttributeType.STRING,
-			value = "Consume Spark Ore",
+			value = "Consume Spark Stone",
 		},
 		load = {
 			title = "Load",
@@ -27,7 +27,7 @@ return {
 			value = 1200.0,
 			easing = {
 				type = AttributeEasingType.SIN,
-				range = 0.5,
+				range = 0.3,
 				period = 2000.0,
 			},
 		},

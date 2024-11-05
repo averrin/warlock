@@ -1,6 +1,7 @@
 #include <fstream>
 #include <game/components/frame.hpp>
 #include <game/components/items.hpp>
+#include <game/oracle.hpp>
 #include <game/systems/power.hpp>
 #include <sol/sol.hpp>
 #include <sstream>
@@ -36,6 +37,9 @@ void register_bindings(sol::state &lua) {
                ComponentMaterial::TITANIUM, "PLASTIC",
                ComponentMaterial::PLASTIC, "GLASS", ComponentMaterial::GLASS);
 
+  lua.new_enum("ConnectionType", "POWER", ConnectionType::POWER, "DATA",
+               ConnectionType::DATA);
+
   lua.new_usertype<Environment>("Environment", "temperature",
                                 &Environment::temperature, "minutes",
                                 &Environment::minutes);
@@ -63,16 +67,19 @@ void register_bindings(sol::state &lua) {
       "Metadata", "id", &Metadata::id, "name", &Metadata::name, "description",
       &Metadata::description, "attributes", &Metadata::attributes);
 
+  auto oracle = entt::locator<Oracle>::value();
   lua.new_usertype<Component>(
       "Component", "data", &Component::data, "api", &Component::api, "state",
       &Component::state, "size", &Component::size, "require",
       &Component::require, "conflict", &Component::conflict, "activate",
-      &Component::activate, "deactivate", &Component::deactivate);
+      &Component::activate, "deactivate", &Component::deactivate, "storage",
+      &Component::storage);
   lua.new_usertype<NetworkInfo>(
       "NetworkInfo", "production", &NetworkInfo::production, "consumption",
       &NetworkInfo::consumption, "accumulated", &NetworkInfo::accumulated,
       "accumulated_available", &NetworkInfo::accumulated_available,
       "battery_count", &NetworkInfo::battery_count);
+
   lua.new_usertype<Frame>(
       "Frame", "data", &Frame::data, "components", &Frame::components,
       "getComponentByType", &Frame::getComponentByType, "getPowerInfo",
@@ -84,7 +91,19 @@ void register_bindings(sol::state &lua) {
             return net;
           }
         }
-      });
+      },
+      "getStorages",
+      [](Frame &frame) -> std::vector<std::shared_ptr<ItemStorage>> {
+        auto storages = std::vector<std::shared_ptr<ItemStorage>>{};
+        for (auto c : frame.components) {
+          if (c->data.get<std::string>("type") == "Storage") {
+            storages.push_back(c->storage);
+          }
+        }
+        return storages;
+      },
+      "hasComponentType", &Frame::hasComponentType, "getComponentByName",
+      &Frame::getComponentByName);
 
   lua.new_usertype<ItemDefinition>(
       "ItemDefinition", "name", &ItemDefinition::name, "description",
@@ -92,18 +111,27 @@ void register_bindings(sol::state &lua) {
 
   lua.new_usertype<ItemStack>("ItemStack", "item", &ItemStack::item, "amount",
                               &ItemStack::amount);
+  lua.new_usertype<ItemStorage>(
+      "ItemStorage", "slots", &ItemStorage::slots, "slotsCount",
+      &ItemStorage::slotsCount, "take", &ItemStorage::take, "getStackByItem",
+      &ItemStorage::getStackByItem, "transferTo", &ItemStorage::transferTo,
+      "transferFrom", &ItemStorage::transferFrom);
 
   lua.new_usertype<RecipeDefinition>(
       "RecipeDefinition", "name", &RecipeDefinition::name, "description",
       &RecipeDefinition::description, "outputs", &RecipeDefinition::outputs,
       "inputs", &RecipeDefinition::inputs, "timeCost",
       &RecipeDefinition::timeCost, "powerCost", &RecipeDefinition::powerCost);
+
+  lua.new_usertype<Oracle>("Oracle", "getNFCFrames", &Oracle::getNFCFrames,
+                           "getWiredFrames", &Oracle::getWiredFrames);
+  lua.set("oracle", oracle);
 }
 
 // Function to create a Component from a Lua file
 std::shared_ptr<Component>
 create_component_from_lua(sol::state &lua, const std::string &lua_source) {
-  fmt::print("Lua source: {}\n", lua_source);
+  // fmt::print("Lua source: {}\n", lua_source);
   auto component = std::make_shared<Component>();
 
   sol::table spec = lua.load(lua_source).call();
@@ -151,6 +179,8 @@ create_component_from_lua(sol::state &lua, const std::string &lua_source) {
     component->data.attributes[key] = attribute;
   }
 
+  component->data.icon = spec["icon"].get_or<std::string>("");
+
   Attribute temp("Temperature", "Total frame temperature in Celsius",
                  AttributeType::FLOAT, -1000.0f);
   component->data.attributes["temp"] = std::make_shared<Attribute>(temp);
@@ -164,10 +194,7 @@ create_component_from_lua(sol::state &lua, const std::string &lua_source) {
   component->material = spec["material"].get_or(ComponentMaterial::STEEL);
   // component->spec = spec;
   component->api = spec["api"];
-  fmt::print("Component created: {}\n", component->data.name);
-  if (component->data.get<std::string>("type") == "Charger") {
-    fmt::print("api.test = {}\n", component->api.get<std::string>("test"));
-  }
+  // fmt::print("Component created: {}\n", component->data.name);
 
   return component;
 }

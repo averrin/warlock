@@ -1,5 +1,7 @@
 #include <editors/entity_tree_editor.hpp>
 #include <game/components/frame.hpp>
+#include <utils/entt_draw.hpp>
+#include <utils/entt_lua.hpp>
 
 EntityTreeEditor::EntityTreeEditor(std::string name) : name(name) {
   auto &entityEditor = entt::locator<MM::EntityEditor<entt::entity>>::emplace();
@@ -11,6 +13,12 @@ EntityTreeEditor::EntityTreeEditor(std::string name) : name(name) {
   entityEditor.registerComponent<Frame>("Frame");
   entityEditor.registerComponent<Connection>("Connection");
   entityEditor.registerComponent<Environment>("Environment");
+  entityEditor.registerComponent<wl::transform>("Transform");
+  entityEditor.registerComponent<wl::line>("Line");
+  entityEditor.registerComponent<wl::text>("Text");
+  entityEditor.registerComponent<wl::sprite>("Sprite");
+  entityEditor.registerComponent<wl::visual_state>("State");
+  entityEditor.registerComponent<wl::rect>("Rect");
   /*
   entityEditor.registerComponent<hf::player>("Player");
   entityEditor.registerComponent<hf::creature>("Creature");
@@ -32,38 +40,38 @@ EntityTreeEditor::EntityTreeEditor(std::string name) : name(name) {
 
 void EntityTreeEditor::drawEntityInfo(entt::registry &registry,
                                       entt::entity e) {
-  auto color = (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.99f);
-  auto override = registry.all_of<entt::tag<"override"_hs>>(e);
-  if (override) {
-    // color = (ImVec4)ImColor::HSV(210.f / 255.f, 70.f / 255.f, 100.f / 255.f);
-  }
-  auto t = registry.all_of<hf::meta>(e) ? registry.get<hf::meta>(e).name.c_str()
-                                        : "Entity";
-  t = (registry.all_of<hf::ineditor>(e) &&
-       registry.get<hf::ineditor>(e).name != "")
-          ? registry.get<hf::ineditor>(e).name.c_str()
-          : t;
-  auto icon = (registry.all_of<hf::ineditor>(e) &&
-               registry.get<hf::ineditor>(e).icon != "")
-                  ? registry.get<hf::ineditor>(e).icon.c_str()
-                  : ICON_FA_CUBE;
-  if (override) {
-    icon = fmt::format("{}{}", icon, ICON_FA_CIRCLE).c_str();
-  }
-  auto selected = (registry.all_of<hf::ineditor>(e) &&
-                   registry.get<hf::ineditor>(e).selected);
-  if (selected) {
-    color = (ImVec4)ImColor::HSV(1.f / 6.f, 0.86f, 1.0f);
-  }
-  ImGui::PushStyleColor(ImGuiCol_Text, color);
-  auto title = fmt::format("{} {}: {}", icon, t, (int)e);
-  // Editor::drawEntityEditor();
+  // auto color = (ImVec4)ImColor::HSV(0.0f, 0.0f, 0.99f);
+  // auto override = registry.all_of<entt::tag<"override"_hs>>(e);
+  // if (override) {
+  //   // color = (ImVec4)ImColor::HSV(210.f / 255.f, 70.f / 255.f, 100.f /
+  //   255.f);
+  // }
+  // auto t = registry.all_of<hf::meta>(e) ?
+  // registry.get<hf::meta>(e).name.c_str()
+  //                                       : "Entity";
+  // t = (registry.all_of<hf::ineditor>(e) &&
+  //      registry.get<hf::ineditor>(e).name != "")
+  //         ? registry.get<hf::ineditor>(e).name.c_str()
+  //         : t;
+  // auto icon = (registry.all_of<hf::ineditor>(e) &&
+  //              registry.get<hf::ineditor>(e).icon != "")
+  //                 ? registry.get<hf::ineditor>(e).icon.c_str()
+  //                 : ICON_FA_CUBE;
+  // if (override) {
+  //   icon = fmt::format("{}{}", icon, ICON_FA_CIRCLE).c_str();
+  // }
+  // auto selected = (registry.all_of<hf::ineditor>(e) &&
+  //                  registry.get<hf::ineditor>(e).selected);
+  // if (selected) {
+  //   color = (ImVec4)ImColor::HSV(1.f / 6.f, 0.86f, 1.0f);
+  // }
+  // ImGui::PushStyleColor(ImGuiCol_Text, color);
+  auto title = fmt::format("Details##en-details{}", (int)e);
   if (ImGui::TreeNode(title.c_str())) {
-    ImGui::PopStyleColor(1);
     auto &entityEditor = entt::locator<MM::EntityEditor<entt::entity>>::value();
     entityEditor.renderEditor(registry, e);
     ImGui::TreePop();
   } else {
-    ImGui::PopStyleColor(1);
+    // ImGui::PopStyleColor(1);
   }
 }

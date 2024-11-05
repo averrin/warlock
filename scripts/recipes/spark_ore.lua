@@ -10,4 +10,5 @@ return {
 	},
 	timeCost = 1.0,
 	powerCost = 200.0,
+	available = { "Miner" },
 }

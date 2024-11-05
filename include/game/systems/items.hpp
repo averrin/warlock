@@ -27,34 +27,5 @@ public:
 
     const auto &items = loader->get_items();
     const auto &recipes = loader->get_recipes();
-
-    // Print loaded items
-    std::cout << "Loaded Items:" << std::endl;
-    for (const auto &[name, item] : items) {
-      std::cout << "Name: " << item.name
-                << ", Description: " << item.description
-                << ", Stack: " << item.stack << std::endl;
-    }
-
-    // Print loaded recipes
-    std::cout << "Loaded Recipes:" << std::endl;
-    for (const auto &recipe : recipes) {
-      std::cout << "Name: " << recipe.name
-                << ", Description: " << recipe.description << std::endl;
-      std::cout << "Time Cost: " << recipe.timeCost
-                << ", Power Cost: " << recipe.powerCost << std::endl;
-
-      std::cout << "Inputs:" << std::endl;
-      for (const auto &input : recipe.inputs) {
-        std::cout << "  Item: " << input.item.name
-                  << ", Amount: " << input.amount << std::endl;
-      }
-
-      std::cout << "Outputs:" << std::endl;
-      for (const auto &output : recipe.outputs) {
-        std::cout << "  Item: " << output.item.name
-                  << ", Amount: " << output.amount << std::endl;
-      }
-    }
   }
 };

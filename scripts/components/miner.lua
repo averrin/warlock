@@ -4,13 +4,13 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
-			value = "Item Producer",
+			value = "Miner",
 		},
 		consumption = {
 			title = "Consumption",
 			description = "Power consumption",
 			type = AttributeType.FLOAT,
-			value = 940.0,
+			value = 750.0,
 		},
 		recipe = {
 			title = "Recipe",

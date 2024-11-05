@@ -27,6 +27,7 @@ struct Metadata {
   std::string description = "";
   std::map<std::string, std::shared_ptr<Attribute>> attributes = {};
   std::vector<EffectID> effects = {};
+  std::string icon = "";
 
   static int newId() {
     int new_id = entt::monostate<"id"_hs>{};
@@ -80,10 +81,10 @@ struct Metadata {
 
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
-    ar(id, name, description, attributes);
+    ar(id, name, description, attributes, icon);
   };
   template <class Archive> void load(Archive &ar) {
-    ar(id, name, description, attributes);
+    ar(id, name, description, attributes, icon);
   };
 };
 
@@ -100,7 +101,7 @@ struct Environment {
     ar(temperature, minutes, radioactivity, airFlow, sun, days);
   };
   template <class Archive> void load(Archive &ar) {
-    ar(temperature, minutes, radioactivity, airFlow, sun);
+    ar(temperature, minutes, radioactivity, airFlow, sun, days);
   };
 
   std::map<int, std::deque<float>> temperatures = {};
@@ -131,7 +132,7 @@ enum class ComponentSize { S, M, L };
 
 enum class FrameSize { S, M, L, G };
 
-class ItemStorage {
+class ItemStorage : public std::enable_shared_from_this<ItemStorage> {
 public:
   int slotsCount = 0;
   std::vector<ItemSlot> slots;
@@ -147,36 +148,120 @@ public:
     }
   }
 
-  bool add(ItemStack stack) {
+  bool canAdd(const ItemStack &stack) const {
+    int remaining_amount = stack.amount;
+    for (const auto &slot : slots) {
+      if (slot.stack == nullptr) {
+        return true; // Found an empty slot
+      } else if (slot.stack->item.name == stack.item.name) {
+        int available_space = slot.stack->item.stack - slot.stack->amount;
+        if (available_space > 0) {
+          remaining_amount -= available_space;
+          if (remaining_amount <= 0) {
+            return true; // Enough space found
+          }
+        }
+      }
+    }
+    return false; // Not enough space
+  }
+
+  bool canRemove(const ItemStack &stack) const {
+    int remaining_amount = stack.amount;
+    for (const auto &slot : slots) {
+      if (slot.stack != nullptr && slot.stack->item.name == stack.item.name) {
+        remaining_amount -= slot.stack->amount;
+        if (remaining_amount <= 0) {
+          return true; // Enough items found
+        }
+      }
+    }
+    return false; // Not enough items
+  }
+
+  bool add(ItemStack &stack) {
+    fmt::print("Adding {} ({}) to storage\n", stack.item.name, stack.amount);
+    if (!canAdd(stack))
+      return false;
     for (auto &slot : slots) {
       if (slot.stack == nullptr) {
         slot.stack = std::make_shared<ItemStack>(stack);
         return true;
       } else if (slot.stack->item.name == stack.item.name) {
-        if (slot.stack->amount + stack.amount > slot.stack->item.stack) {
-          return false;
+        int available_space = slot.stack->item.stack - slot.stack->amount;
+        if (available_space > 0) {
+          int amount_to_add = std::min(available_space, stack.amount);
+          slot.stack->amount += amount_to_add;
+          stack.amount -= amount_to_add;
+          if (stack.amount == 0) {
+            return true;
+          }
         }
-        slot.stack->amount += stack.amount;
-        return true;
       }
     }
     return false;
   }
 
-  bool remove(ItemStack stack) {
+  bool remove(ItemStack &stack) {
+    if (!canRemove(stack))
+      return false;
     for (auto &slot : slots) {
       if (slot.stack == nullptr) {
         continue;
       }
       if (slot.stack->item.name == stack.item.name) {
-        slot.stack->amount -= stack.amount;
+        int amount_to_remove = std::min(slot.stack->amount, stack.amount);
+        slot.stack->amount -= amount_to_remove;
+        stack.amount -= amount_to_remove;
         if (slot.stack->amount <= 0) {
           slot.stack = nullptr;
         }
-        return true;
+        if (stack.amount == 0) {
+          return true;
+        }
       }
     }
     return false;
+  }
+
+  bool transferTo(std::shared_ptr<ItemStorage> storage,
+                  std::shared_ptr<ItemStack> stack) {
+    auto slot = std::find_if(slots.begin(), slots.end(),
+                             [=](ItemSlot s) { return s.stack == stack; });
+    if (slot == slots.end()) {
+      return false;
+    }
+
+    if (storage->add(*stack)) {
+      slot->stack = nullptr;
+      return true;
+    }
+    return false;
+  }
+
+  bool transferFrom(std::shared_ptr<ItemStorage> storage,
+                    std::shared_ptr<ItemStack> stack) {
+    return storage->transferTo(shared_from_this(), stack);
+  }
+
+  std::shared_ptr<ItemStack> getStackByItem(std::string itemName) {
+    for (auto &slot : slots) {
+      if (slot.stack != nullptr && slot.stack->item.name == itemName) {
+        return slot.stack;
+      }
+    }
+    return nullptr;
+  }
+
+  std::shared_ptr<ItemStack> take(int stackId) {
+    for (auto &slot : slots) {
+      if (slot.stack != nullptr && slot.id == stackId) {
+        auto takenStack = slot.stack;
+        slot.stack = nullptr;
+        return takenStack;
+      }
+    }
+    return nullptr;
   }
 };
 
@@ -268,6 +353,16 @@ struct Frame {
     }
   }
 
+  bool hasComponentType(std::string type, bool needActive = false) {
+    for (auto c : components) {
+      if (c->data.get<std::string>("type") == type &&
+          (!needActive || c->state == ComponentState::ACTIVE)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   void addComponent(std::shared_ptr<Component> c) {
     c->frame = this;
     components.push_back(c);
@@ -287,9 +382,18 @@ struct Frame {
     return true;
   }
 
-  std::shared_ptr<Component> getComponentByType(std::string type) {
+  std::shared_ptr<Component> getComponentByType(std::string t) {
     for (auto &c : components) {
-      if (c->data.get<std::string>("type") == type) {
+      if (c->data.get<std::string>("type") == t) {
+        return c;
+      }
+    }
+    return nullptr;
+  }
+
+  std::shared_ptr<Component> getComponentByName(std::string n) {
+    for (auto &c : components) {
+      if (c->data.name == n) {
         return c;
       }
     }
@@ -305,16 +409,24 @@ struct Frame {
   };
 };
 
+enum class ConnectionType {
+  POWER,
+  DATA,
+};
+
 struct Connection {
   Metadata data;
-  int source;
-  int target;
+  int source = -1;
+  int target = -1;
+  ConnectionType type = ConnectionType::POWER;
 
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
-    ar(data, source, target);
+    ar(data, source, target, type);
   };
-  template <class Archive> void load(Archive &ar) { ar(data, source, target); };
+  template <class Archive> void load(Archive &ar) {
+    ar(data, source, target, type);
+  };
 };
 
 std::shared_ptr<Component>

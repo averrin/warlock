@@ -6,5 +6,6 @@ return {
 		"Miner",
 		"Storage",
 		"Power Wire Connector",
+		"Near Field Communicator",
 	},
 }

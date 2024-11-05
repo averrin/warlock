@@ -32,7 +32,7 @@ public:
       std::string str((std::istreambuf_iterator<char>(t)),
                       std::istreambuf_iterator<char>());
       // sources[name] = str;
-      fmt::print("Script read: {}\n", name);
+      // fmt::print("Script read: {}\n", name);
       sol::table spec = lua.load(str).call();
       auto title = spec["name"].get_or<std::string>("");
       sources[title] = str;
@@ -46,7 +46,7 @@ public:
                       std::istreambuf_iterator<char>());
       sol::table spec = lua.load(str).call();
       auto title = spec["name"].get_or<std::string>("");
-      fmt::print("Blueprint read: {} -> {}\n", name, title);
+      // fmt::print("Blueprint read: {} -> {}\n", name, title);
       blueprints[title] = str;
     }
     fmt::print("Blueprints: {}\n", blueprints.size());

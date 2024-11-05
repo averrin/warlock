@@ -14,7 +14,7 @@ void ItemsSystem::fixedUpdate() {
     auto frame = current_state.registry.get<Frame>(f);
     std::vector<std::shared_ptr<Component>> storages = {};
     for (auto &c : frame.components) {
-      if (c->data.get<std::string>("type") == "Storage") {
+      if (c->data.get_or<int>("slots", 0) > 0) {
         if (c->storage == nullptr) {
           c->storage = std::make_shared<ItemStorage>(c->data.get<int>("slots"));
         }
@@ -52,12 +52,12 @@ void ItemsSystem::fixedUpdate() {
             if (lastRecipe.find(c->data.id) == lastRecipe.end() ||
                 recipe_name != lastRecipe[c->data.id]) {
               if (modifiers.find(lastRecipe[c->data.id]) != modifiers.end()) {
-                fmt::print("Removing modifier for {}\n",
-                           lastRecipe[c->data.id]);
+                // fmt::print("Removing modifier for {}\n",
+                //            lastRecipe[c->data.id]);
                 consumption->RemoveModifier(modifiers[lastRecipe[c->data.id]]);
               }
               if (modifiers.find(recipe_name) != modifiers.end()) {
-                fmt::print("Setting modifier for {}\n", recipe_name);
+                // fmt::print("Setting modifier for {}\n", recipe_name);
                 consumption->AddModifier(modifiers[recipe_name]);
               }
             }
@@ -65,7 +65,8 @@ void ItemsSystem::fixedUpdate() {
           lastRecipe[c->data.id] = recipe_name;
 
           if (storages.size() == 0) {
-            fmt::print("No storage found for item producer {}\n", c->data.id);
+            // fmt::print("No storage found for item producer {}\n",
+            // c->data.id);
             continue;
           }
 
@@ -74,6 +75,7 @@ void ItemsSystem::fixedUpdate() {
           lastExecutionTime[entity] += targetInterval;
 
           if (lastExecutionTime[entity] >= timecost) {
+
             auto satisfied = false;
             auto inputs_count = recipe->inputs.size();
             if (recipe->inputs.size() == 0) {
@@ -82,32 +84,62 @@ void ItemsSystem::fixedUpdate() {
             for (auto input : recipe->inputs) {
               auto stack = ItemStack(input.item, input.amount);
               for (auto storage : storages) {
-                if (storage->storage->remove(stack)) {
-                  fmt::print("Removed {} ({}) from storage\n", input.item.name,
-                             input.amount);
+                if (storage->storage->canRemove(stack)) {
                   inputs_count--;
                   break;
                 }
               }
             }
+
             if (inputs_count == 0) {
               satisfied = true;
             }
-
             if (!satisfied) {
-              fmt::print("Not enough items in storage for recipe {}\n",
-                         recipe_name);
-              // c->deactivate();
               c->state = ComponentState::ERROR;
-            } else {
-              for (auto output : recipe->outputs) {
-                auto stack = ItemStack(output.item, output.amount);
-                for (auto storage : storages) {
-                  if (storage->storage->add(stack)) {
-                    fmt::print("Added {} ({}) to storage\n", output.item.name,
-                               output.amount);
-                    break;
-                  }
+              c->error = "Not enough input components";
+              lastExecutionTime[entity] = 0.0;
+              continue;
+            }
+
+            for (auto input : recipe->inputs) {
+              auto stack = ItemStack(input.item, input.amount);
+              for (auto storage : storages) {
+                if (storage->storage->remove(stack)) {
+                  break;
+                }
+              }
+            }
+
+            satisfied = false;
+            auto outputs_count = recipe->outputs.size();
+            if (recipe->outputs.size() == 0) {
+              satisfied = true;
+            }
+            for (auto output : recipe->outputs) {
+              auto stack = ItemStack(output.item, output.amount);
+              for (auto storage : storages) {
+                if (storage->storage->canAdd(stack)) {
+                  outputs_count--;
+                  break;
+                }
+              }
+            }
+
+            if (outputs_count == 0) {
+              satisfied = true;
+            }
+            if (!satisfied) {
+              c->state = ComponentState::ERROR;
+              c->error = "Not enough space for output components";
+              lastExecutionTime[entity] = 0.0;
+              continue;
+            }
+
+            for (auto output : recipe->outputs) {
+              auto stack = ItemStack(output.item, output.amount);
+              for (auto storage : storages) {
+                if (storage->storage->add(stack)) {
+                  break;
                 }
               }
             }

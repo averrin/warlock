@@ -7,5 +7,6 @@ return {
 		"Power Wire Connector",
 		"Cooler",
 		"Storage",
+		"Near Field Communicator",
 	},
 }

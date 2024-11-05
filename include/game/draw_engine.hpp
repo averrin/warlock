@@ -10,6 +10,19 @@
 #include <utils/entt.hpp>
 
 class DrawEngine {
+  entt::observer transform_observer;
+  entt::observer text_observer;
+  entt::observer line_observer;
+  entt::observer sprite_observer;
+  entt::observer state_observer;
+
+  void drawTexts();
+  void drawLines();
+  void drawSprites();
+  void drawHitboxes();
+
+  std::vector<int> ignored = {};
+
 public:
   LibLog::Logger log = LibLog::Logger(fmt::color::light_green, "DRAW");
   sf::Color bgColor;
@@ -39,4 +52,8 @@ public:
   sf::Font font;
   std::shared_ptr<sf::Text> text;
   std::mutex renderMutex;
+
+  bool fullRedraw = true;
+  std::shared_ptr<sf::RenderTexture> _cache;
+  sf::Sprite cache;
 };

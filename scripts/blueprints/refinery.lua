@@ -4,7 +4,9 @@ return {
 	components = {
 		"Core",
 		"Refinery",
+		"Packer",
 		"Big Storage",
 		"Power Wire Connector",
+		"Near Field Communicator",
 	},
 }

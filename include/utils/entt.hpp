@@ -12,6 +12,7 @@ using namespace entt::literals;
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 
+/*
 struct event_emitter : entt::emitter<event_emitter> {
   std::map<entt::id_type, std::vector<std::function<void(void *)>>> handlers;
 
@@ -26,6 +27,43 @@ struct event_emitter : entt::emitter<event_emitter> {
         handler(&event);
       }
     });
+  }
+};
+*/
+
+struct event_emitter : entt::emitter<event_emitter> {
+  std::map<entt::id_type,
+           std::vector<std::pair<size_t, std::function<void(void *)>>>>
+      handlers;
+  size_t handler_id_counter = 0;
+
+  template <typename Type>
+  size_t connect(std::function<void(Type &, const event_emitter &)> func) {
+    auto id = entt::type_id<Type>().hash();
+    size_t handler_id = handler_id_counter++;
+    handlers[id].emplace_back(handler_id, [func = std::move(func),
+                                           this](void *value) {
+      func(*static_cast<Type *>(value), static_cast<event_emitter &>(*this));
+    });
+    on<Type>([this, id](Type &event, const event_emitter &emitter) {
+      for (auto &handler : handlers[id]) {
+        handler.second(&event);
+      }
+    });
+    return handler_id;
+  }
+
+  template <typename Type> void disconnect(size_t handler_id) {
+    auto id = entt::type_id<Type>().hash();
+    auto &handler_list = handlers[id];
+    handler_list.erase(std::remove_if(handler_list.begin(), handler_list.end(),
+                                      [handler_id](const auto &pair) {
+                                        return pair.first == handler_id;
+                                      }),
+                       handler_list.end());
+    if (handler_list.empty()) {
+      clear<Type>();
+    }
   }
 };
 
@@ -50,6 +88,18 @@ struct key_event {
   bool shift;
 };
 
+namespace wl {
+struct relation {
+  std::vector<entt::entity> children;
+  entt::entity parent = entt::null;
+  friend class cereal::access;
+  template <class Archive> void serialize(Archive &ar) {
+    ar(children, parent);
+  };
+};
+}; // namespace wl
+
+// namespace wl
 namespace hf {
 struct ingame {
   friend class cereal::access;
@@ -71,17 +121,12 @@ struct meta {
 };
 struct ineditor {
   std::string name = "";
-  std::vector<std::string> folders;
   std::string icon = "";
   bool selected = false;
 
   friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const {
-    ar(name, folders, icon, selected);
-  };
-  template <class Archive> void load(Archive &ar) {
-    ar(name, folders, icon, selected);
-  };
+  template <class Archive> void save(Archive &ar) const { ar(icon); };
+  template <class Archive> void load(Archive &ar) { ar(icon); };
 };
 
 struct position {

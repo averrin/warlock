@@ -16,7 +16,7 @@ CPMAddPackage("gh:fmtlib/fmt#${FMT_VERSION}")
 CPMAddPackage("gh:averrin/libcolor#master")
 CPMAddPackage("gh:averrin/libprint#master")
 CPMAddPackage("gh:averrin/liblog#master")
-CPMAddPackage("gh:bobluppes/graaf#main")
+# CPMAddPackage("gh:bobluppes/graaf#main")
 CPMAddPackage("gh:mobius3/tweeny#master")
 
 CPMAddPackage("gh:nlohmann/json@3.11.3")

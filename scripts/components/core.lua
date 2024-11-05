@@ -1,6 +1,7 @@
 return {
 	name = "Core",
 	description = "Computation core",
+	icon = "microchip.png",
 	attributes = {
 		type = {
 			title = "Type",

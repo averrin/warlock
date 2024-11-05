@@ -1,6 +1,7 @@
 return {
 	name = "Clock",
 	description = "Clock",
+	icon = "alarm-clock.png",
 	attributes = {
 		type = {
 			title = "Type",

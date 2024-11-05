@@ -33,6 +33,7 @@ public:
   std::vector<ItemStack> inputs;
   float timeCost;
   float powerCost;
+  std::vector<std::string> availableOn;
 
   RecipeDefinition() : timeCost(0.0f), powerCost(0.0f) {}
 };

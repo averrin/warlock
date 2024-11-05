@@ -4,7 +4,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
-			value = "Item Producer",
+			value = "Refinery",
 		},
 		consumption = {
 			title = "Consumption",

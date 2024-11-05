@@ -18,6 +18,7 @@ RecipeDefinition ItemLoader::parse_recipe(const sol::table &t) {
   recipe.description = t["description"];
   recipe.timeCost = t["timeCost"];
   recipe.powerCost = t["powerCost"];
+  recipe.availableOn = t["available"].get_or<std::vector<std::string>>({});
 
   for (const auto &input : t["inputs"].get<std::vector<sol::table>>()) {
     ItemStack io;
@@ -40,7 +41,7 @@ RecipeDefinition ItemLoader::parse_recipe(const sol::table &t) {
 
 void ItemLoader::load_items(const std::string &path, sol::state &lua) {
   for (const auto &entry : fs::directory_iterator(path)) {
-    fmt::print("Loading item: {}\n", entry.path().string());
+    // fmt::print("Loading item: {}\n", entry.path().string());
     sol::table t = lua.load_file(entry.path().string()).call();
     ItemDefinition item = parse_item(t);
     item_map[item.name] = item; // Store the item in the map
@@ -49,7 +50,7 @@ void ItemLoader::load_items(const std::string &path, sol::state &lua) {
 
 void ItemLoader::load_recipes(const std::string &path, sol::state &lua) {
   for (const auto &entry : fs::directory_iterator(path)) {
-    fmt::print("Loading recipe: {}\n", entry.path().string());
+    // fmt::print("Loading recipe: {}\n", entry.path().string());
     sol::table t = lua.load_file(entry.path().string()).call();
     recipes.push_back(parse_recipe(t));
   }
