@@ -79,6 +79,7 @@ target_link_libraries(${EXE_NAME} PUBLIC Backward::Interface)
 IF (NOT CPM_SKIP_UPDATE)
 CPMAddPackage("gh:juliettef/IconFontCppHeaders#main")
 CPMAddPackage("gh:USCiLab/cereal#v1.3.2")
+CPMAddPackage("gh:webview/webview#master")
 ENDIF()
 
 if(IconFontCppHeaders_ADDED)

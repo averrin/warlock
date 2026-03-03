@@ -16,11 +16,6 @@ class DrawEngine {
   entt::observer sprite_observer;
   entt::observer state_observer;
 
-  void drawTexts();
-  void drawLines();
-  void drawSprites();
-  void drawHitboxes();
-
   std::vector<int> ignored = {};
 
 public:
@@ -35,7 +30,6 @@ public:
   ~DrawEngine() = default;
   std::shared_ptr<Viewport> viewport;
 
-  std::shared_ptr<LayersManager> layers;
   bool started = false;
 
   void init(/*LibLog::Logger parentLog*/);
@@ -49,11 +43,7 @@ public:
 
   std::shared_ptr<Job> drawJob;
 
-  sf::Font font;
-  std::shared_ptr<sf::Text> text;
   std::mutex renderMutex;
 
   bool fullRedraw = true;
-  std::shared_ptr<sf::RenderTexture> _cache;
-  sf::Sprite cache;
 };

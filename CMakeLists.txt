@@ -26,4 +26,5 @@ include(cmake/deps.cmake)
 # set(CMAKE_EXE_LINKER_FLAGS "-fPIE")
 target_sources(${PROJECT_NAME} PRIVATE ${DEPS_SOURCES})
 target_compile_options(${PROJECT_NAME} PRIVATE -Wno-format-security -Wno-switch)
+target_link_libraries(${PROJECT_NAME} PRIVATE webview)
 

@@ -16,6 +16,8 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <app/ide.hpp>
 #include <app/scene.hpp>
 #include <game/draw_engine.hpp>
+#include <webview/webview.h>
+#include <thread>
 #include <game/draw_manager.hpp>
 #include <game/game_manager.hpp>
 #include <utils/entt.hpp>
@@ -86,6 +88,11 @@ int main(int argc, char *argv[]) {
   Application app(APP_NAME, path, VERSION, seed);
   app.log.start(APP_NAME);
   auto &emitter = entt::locator<event_emitter>::value();
+
+  app.w_handle = webview_create(1, nullptr);
+  entt::monostate<"webview"_hs>{} = app.w_handle;
+  webview_navigate(app.w_handle, "http://localhost:5173");
+  std::thread([&] { webview_run(app.w_handle); }).detach();
 
   if (nostate) {
     auto &lua = entt::locator<sol::state>::value();
@@ -202,7 +209,6 @@ int main(int argc, char *argv[]) {
       // draw_manager.draw();
       if (gm.started) {
         main_engine->_draw();
-        scene.window->draw(main_engine->cache);
       }
       if (!noeditor) {
         gui.serve();
