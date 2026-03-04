@@ -3,7 +3,7 @@ bin_name := "hellfrost"
 [no-cd, private]
 _init:
   rm -rf ./build
-  cmake -S . -B ./build
+  cmake -S . -B ./build -DCMAKE_POLICY_VERSION_MINIMUM=3.5
   -rm compile_commands.json
   ln -s ./build/compile_commands.json .
 
@@ -21,4 +21,4 @@ build:
 
 [no-cd]
 run args="": build
-  ./build/bin/{{bin_name}} {{args}}
+  DISPLAY=:1 ./build/bin/{{bin_name}} {{args}}

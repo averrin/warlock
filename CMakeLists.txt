@@ -1,5 +1,6 @@
-cmake_minimum_required(VERSION 3.20...3.29.3)
+cmake_minimum_required(VERSION 3.1...3.29.3)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+
 
 set(APP_NAME "Hellfrost")
 project(hellfrost VERSION 0.1.0)
@@ -26,5 +27,5 @@ include(cmake/deps.cmake)
 # set(CMAKE_EXE_LINKER_FLAGS "-fPIE")
 target_sources(${PROJECT_NAME} PRIVATE ${DEPS_SOURCES})
 target_compile_options(${PROJECT_NAME} PRIVATE -Wno-format-security -Wno-switch)
-target_link_libraries(${PROJECT_NAME} PRIVATE webview)
+target_link_libraries(${PROJECT_NAME} PRIVATE webview::core)
 

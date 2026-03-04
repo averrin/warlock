@@ -89,11 +89,6 @@ int main(int argc, char *argv[]) {
   app.log.start(APP_NAME);
   auto &emitter = entt::locator<event_emitter>::value();
 
-  app.w_handle = webview_create(1, nullptr);
-  entt::monostate<"webview"_hs>{} = app.w_handle;
-  webview_navigate(app.w_handle, "http://localhost:5173");
-  std::thread([&] { webview_run(app.w_handle); }).detach();
-
   if (nostate) {
     auto &lua = entt::locator<sol::state>::value();
     fs::path PATH = entt::monostate<"path"_hs>{};
@@ -117,10 +112,12 @@ int main(int argc, char *argv[]) {
     draw_manager.init(app.log);
     main_engine = draw_manager.addEngine("main");
     main_engine->resize(scene.window->getSize());
-
-    // alt_engine = draw_manager.addEngine("alt");
-    // alt_engine->resize(scene.window->getSize());
   }
+
+  app.w_handle = webview_create(1, nullptr);
+  entt::monostate<"webview"_hs>{} = app.w_handle;
+  webview_navigate(app.w_handle, "http://localhost:5173");
+  std::thread([&] { webview_run(app.w_handle); }).detach();
 
   auto &gui = entt::locator<Gui>::emplace();
   if (!noeditor) {

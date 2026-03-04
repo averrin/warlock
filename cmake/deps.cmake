@@ -88,6 +88,9 @@ endif()
 if(cereal_ADDED)
   target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${cereal_SOURCE_DIR}/include")
 endif()
+if(webview_ADDED)
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${webview_SOURCE_DIR}/core/include")
+endif()
 
 FetchContent_Declare(
     argparse
