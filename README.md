@@ -29,17 +29,19 @@ Automation is not achieved through simple drag-and-drop logic gates but through 
 ### Hardcore Simulation
 
 The environment is unforgiving and fully simulated:
+*   **Procedural Generation:** The world features randomized landscape and resource generation, forcing players to adapt their logistics and base layouts to the terrain.
 *   **Thermal Simulation:** Temperature is a critical factor. Components generate heat (e.g., batteries discharging, generators running). If heat is not dissipated using coolers or heat sinks, components can overheat (or freeze in extreme cold), leading to the `ERROR` or `BROKEN` states.
+*   **Area of Effect (AoE) Systems:** Heat transfer, wireless networks, and operational boosts all utilize an extensive AoE system, making physical component placement and frame proximity crucial for optimal performance.
 *   **Day-Night Cycle:** The environment features a realistic day-night cycle, directly affecting solar power generation and ambient temperature.
 *   **Weather/Environment:** Factors like sun intensity, airflow, and ambient temperature fluctuate dynamically.
 *   **Power & Data Networks:** Frames must be connected via Power and Data networks. Players must balance power production (generators, solar) with consumption and storage (batteries). The power system models production, consumption, load, and battery charging/discharging rates.
 
 ## Advanced Systems
 
-*   **Data Links:** Built on an Ethernet-like protocol. 1-to-1 links are straightforward, but complex topologies require Routers, DHCP/DNS servers, etc. UUIDs are used for addressing, and advanced components can expose an RPC abstraction. Environmental factors matter: solar radiation or other hazards can cause data loss or corruption, forcing players to write fault-tolerant code.
+*   **Data Links & Tethering:** Built on an Ethernet-like protocol. 1-to-1 links are straightforward, but complex topologies require Routers, DHCP/DNS servers, etc. UUIDs are used for addressing, and advanced components expose an RPC abstraction. The data network is also used for "tethering" – broadcasting map markers, telemetry info, and even sharing Lua libraries across the network. Environmental factors matter: solar radiation or other hazards can cause data loss or corruption, forcing players to write fault-tolerant code.
+*   **Meta Layer:** Rather than simple omniscient UI menus, the "Meta Layer" consists of specialized components that expose APIs to the Lua runtime, allowing code to perform actions, read overarching base indicators, or fire off notifications.
 *   **Link Constraints:** Connections between frames must be routed carefully, as links are not allowed to intersect with frames.
 *   **Character Survival:** The player starts with a Life Support Module that must be protected. Initially, the player character can move around, but their building ability is limited to a set range around them. Later in the game, this range can be extended by deploying camera networks.
-*   **Meta Layer:** A dedicated interface layer exists to provide players with notifications, indicators, and the ability to set custom map markers.
 *   **Logistics & Delivery:** Traditional conveyors are eschewed in favor of "gravitational links" or more advanced systems. There will be specific components dedicated to movement, allowing players to build complex delivery networks. Alternatively, drone delivery offers an easier setup but with a severely limited throughput.
 
 ## Technical Architecture
@@ -55,8 +57,8 @@ The game is built using modern C++ with an Entity Component System (ECS) archite
 ## The Challenge
 
 To survive and thrive, a player must:
-1.  Design optimal physical layouts within the constraints of Frames.
-2.  Wire robust power and data networks, ensuring data integrity.
+1.  Design optimal physical layouts considering AoE systems and Frame constraints.
+2.  Wire robust power and data networks, ensuring data integrity and sharing crucial Lua libraries via tethering.
 3.  Write resilient Lua code to handle normal operations, edge cases, data corruption, and emergency shutdowns.
 4.  Manage thermodynamics to prevent catastrophic meltdowns or freezing.
-5.  Adapt to a dynamic, ever-changing environment while expanding logistics networks to support survival.
+5.  Adapt to a procedurally generated, dynamic, ever-changing environment while expanding logistics networks to support survival.
