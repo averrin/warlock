@@ -1,6 +1,7 @@
 #pragma once
 #include <chrono>
 #include <liblog/liblog.hpp>
+#include <game/well_known_entities.hpp>
 #include <utils/entt.hpp>
 #include <utils/jobs.hpp>
 using hr_clock = std::chrono::high_resolution_clock;

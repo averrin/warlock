@@ -54,6 +54,7 @@ public:
 
   sol::state &getState(int id);
   std::string getScript(std::string name);
+  Frame *findFrameById(int id);
 
   void executeCoreFunction(std::shared_ptr<Component> component,
                            std::string function_name);

@@ -169,9 +169,10 @@ entt::entity GameManager::addConnection(int source, int target,
   current_state.registry.emplace_or_replace<hf::meta>(e, meta);
 
   auto &relation = current_state.registry.get_or_emplace<wl::relation>(e);
-  relation.parent = (entt::entity)2;
+  auto &wk_conn = entt::locator<WellKnownEntities>::value();
+  relation.parent = wk_conn.connections_folder;
   auto &p_relation =
-      current_state.registry.get_or_emplace<wl::relation>((entt::entity)2);
+      current_state.registry.get_or_emplace<wl::relation>(wk_conn.connections_folder);
   p_relation.children.push_back(e);
   return e;
 }
@@ -230,9 +231,10 @@ entt::entity GameManager::addFrame(std::string name) {
   transform.position.y = std::round(transform.position.y / snap) * snap;
 
   auto &relation = current_state.registry.get_or_emplace<wl::relation>(e);
-  relation.parent = (entt::entity)1;
+  auto &wk_frames = entt::locator<WellKnownEntities>::value();
+  relation.parent = wk_frames.frames_folder;
   auto &p_relation =
-      current_state.registry.get_or_emplace<wl::relation>((entt::entity)1);
+      current_state.registry.get_or_emplace<wl::relation>(wk_frames.frames_folder);
   p_relation.children.push_back(e);
   return e;
 }
@@ -292,17 +294,31 @@ void GameManager::start() {
   });
 
   if (current_state.registry.template storage<entt::entity>().size() > 0) {
+    // Populate WellKnownEntities from existing registry
+    WellKnownEntities wk;
+    for (auto e : current_state.registry.view<Environment>()) {
+      wk.environment = e;
+      break;
+    }
+    for (auto e : current_state.registry.view<hf::meta>()) {
+      auto &meta = current_state.registry.get<hf::meta>(e);
+      if (meta.name == "Frames") wk.frames_folder = e;
+      if (meta.name == "Connections") wk.connections_folder = e;
+    }
+    entt::locator<WellKnownEntities>::emplace(wk);
     log.setAsync(false);
     log.setParent(p);
     started = true;
     return;
   }
 
-  EnttTools::createEntityFromPrototype("ENV", current_state.registry);
-  EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
+  WellKnownEntities wk;
+  wk.environment = EnttTools::createEntityFromPrototype("ENV", current_state.registry);
+  wk.frames_folder = EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
                                        "Frames");
-  EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
+  wk.connections_folder = EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
                                        "Connections");
+  entt::locator<WellKnownEntities>::emplace(wk);
   lua.load_file((PATH / "scripts/game_init.lua").string()).call();
 
   log.setAsync(false);

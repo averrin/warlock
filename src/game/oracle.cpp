@@ -6,7 +6,7 @@ std::vector<Frame> Oracle::getNFCFrames(int id = 0, float distance = 1.0f) {
 
   std::vector<Frame> frames = {};
   for (auto &f : current_state.registry.view<Frame>()) {
-    auto frame = current_state.registry.get<Frame>(f);
+    auto &frame = current_state.registry.get<Frame>(f);
     if (frame.data.id == id)
       continue;
     if (!frame.hasComponentType("NFC", true))
@@ -93,7 +93,7 @@ std::vector<Frame> Oracle::getWiredFrames(int id = 0) {
     return frames;
 
   for (auto &f : current_state.registry.view<Frame>()) {
-    auto frame = current_state.registry.get<Frame>(f);
+    auto &frame = current_state.registry.get<Frame>(f);
     if (frame.data.id == id)
       continue;
     if (std::ranges::find(nets[0], frame.data.id) == nets[0].end())

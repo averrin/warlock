@@ -19,7 +19,7 @@ void ThermalSystem::fixedUpdate() {
   }
 
   for (auto &f : current_state.registry.view<Frame>()) {
-    auto frame = current_state.registry.get<Frame>(f);
+    auto &frame = current_state.registry.get<Frame>(f);
     auto surfaceArea = surfaceAreas[frame.size];
 
     auto acTemp = 0.0f;

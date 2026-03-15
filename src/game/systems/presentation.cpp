@@ -15,7 +15,7 @@ void PresentationSystem::resetDrawables() {
   std::map<int, entt::entity> frames;
 
   for (auto &f : current_state.registry.view<Frame>()) {
-    auto frame = current_state.registry.get<Frame>(f);
+    auto &frame = current_state.registry.get<Frame>(f);
     auto frame_transform = current_state.registry.get<wl::transform>(f);
     frames[frame.data.id] = f;
     if (!current_state.registry.all_of<wl::relation>(f)) {
@@ -85,7 +85,7 @@ void PresentationSystem::resetDrawables() {
   }
 
   for (auto &c : current_state.registry.view<Connection>()) {
-    auto connection = current_state.registry.get<Connection>(c);
+    auto &connection = current_state.registry.get<Connection>(c);
     auto source_frame = frames[connection.source];
     auto target_frame = frames[connection.target];
 

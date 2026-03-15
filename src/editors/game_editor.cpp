@@ -58,7 +58,8 @@ void GameEditor::render() {
   ImGui::Separator();
   ImGui::Separator();
 
-  auto env = current_state.registry.get<Environment>((entt::entity)0);
+  auto &wk = entt::locator<WellKnownEntities>::value();
+  auto env = current_state.registry.get<Environment>(wk.environment);
   ImGui::Text(
       fmt::format(fmt::runtime("Time: {:#02d}:{:#02d} Temperature: {:#02f}C"),
                   env.minutes / 60, env.minutes % 60, env.temperature)
@@ -169,7 +170,7 @@ void GameEditor::render() {
         ImGui::Separator();
         if (ImGui::Button("Activate all")) {
           for (auto &f : current_state.registry.view<Frame>()) {
-            auto frame = current_state.registry.get<Frame>(f);
+            auto &frame = current_state.registry.get<Frame>(f);
             frame.activate();
           }
         }

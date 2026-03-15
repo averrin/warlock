@@ -14,7 +14,7 @@ void TweeningSystem::fixedUpdate() {
   const std::chrono::duration<double, std::milli> delta(targetInterval);
 
   for (auto &f : current_state.registry.view<Frame>()) {
-    auto frame = current_state.registry.get<Frame>(f);
+    auto &frame = current_state.registry.get<Frame>(f);
     for (auto &c : frame.components) {
       if (c->state != ComponentState::DEACTIVATED) {
         for (auto [key, attribute] : c->data.attributes) {

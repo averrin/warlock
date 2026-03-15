@@ -276,7 +276,7 @@ struct Component {
   int time_switch = -1;
   ComponentState next_state = ComponentState::DEACTIVATED;
   sol::table api = {};
-  Frame *frame = nullptr;
+  int frame_id = -1;
   ComponentMaterial material = ComponentMaterial::STEEL;
 
   std::shared_ptr<ItemStorage> storage = nullptr;
@@ -364,7 +364,7 @@ struct Frame {
   }
 
   void addComponent(std::shared_ptr<Component> c) {
-    c->frame = this;
+    c->frame_id = data.id;
     components.push_back(c);
   }
 

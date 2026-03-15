@@ -29,20 +29,36 @@ std::string CodeExecutionSystem::getScript(std::string name) {
   return sources[name];
 }
 
+Frame *CodeExecutionSystem::findFrameById(int id) {
+  auto &current_state = entt::locator<State>::value();
+  for (auto &e : current_state.registry.view<Frame>()) {
+    auto &frame = current_state.registry.get<Frame>(e);
+    if (frame.data.id == id) {
+      return &frame;
+    }
+  }
+  return nullptr;
+}
+
 void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
                                               std::string function_name) {
   auto &current_state = entt::locator<State>::value();
+  auto fid = c->frame_id;
+
   // get Environment
   for (auto &env : current_state.registry.view<Environment>()) {
-    auto environment = current_state.registry.get<Environment>(env);
-    getState(c->frame->data.id).set("environment", environment);
+    auto &environment = current_state.registry.get<Environment>(env);
+    getState(fid).set("environment", environment);
     break;
   }
 
+  auto *frame_ptr = findFrameById(fid);
+  if (!frame_ptr) return;
+
   auto code = c->data.get<std::string>("code");
-  getState(c->frame->data.id).set("frame", c->frame);
+  getState(fid).set("frame", frame_ptr);
   sol::safe_function_result result =
-      getState(c->frame->data.id).safe_script(code, sol::script_pass_on_error);
+      getState(fid).safe_script(code, sol::script_pass_on_error);
   if (!result.valid()) {
     sol::error err = result;
     fmt::print("Lua script error: {}\n", err.what());
@@ -51,7 +67,7 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
   } else {
     auto f = result.get<sol::table>()[function_name];
     if (f.valid()) {
-      sol::safe_function_result result = f(c->frame);
+      sol::safe_function_result result = f(frame_ptr);
       if (!result.valid()) {
         sol::error err = result;
         fmt::print("Lua script error: {}\n", err.what());
@@ -69,7 +85,7 @@ void CodeExecutionSystem::fixedUpdate() {
   auto &current_state = entt::locator<State>::value();
 
   for (auto &f : current_state.registry.view<Frame>()) {
-    auto frame = current_state.registry.get<Frame>(f);
+    auto &frame = current_state.registry.get<Frame>(f);
     for (auto &c : frame.components) {
       if (c->state != ComponentState::ACTIVE) {
         continue;

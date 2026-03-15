@@ -2,6 +2,7 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <game/components/frame.hpp>
+#include <game/well_known_entities.hpp>
 #include <game/state.hpp>
 #include <game/systems/environment.hpp>
 #include <liblog/liblog.hpp>
@@ -43,7 +44,8 @@ void EnvironmentSystem::fixedUpdate() {
   auto max_minutes = 1440;
 
   auto &current_state = entt::locator<State>::value();
-  auto &environment = current_state.registry.get<Environment>((entt::entity)0);
+  auto &wk = entt::locator<WellKnownEntities>::value();
+  auto &environment = current_state.registry.get<Environment>(wk.environment);
 
   if (!ready) {
     onNewDay(environment);
@@ -82,7 +84,7 @@ void EnvironmentSystem::fixedUpdate() {
   }
 
   for (auto &f : current_state.registry.view<Frame>()) {
-    auto frame = current_state.registry.get<Frame>(f);
+    auto &frame = current_state.registry.get<Frame>(f);
     for (auto &component : frame.components) {
       if (component->data.get<std::string>("type") == "Solar" &&
           component->state == ComponentState::ACTIVE) {

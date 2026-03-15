@@ -11,7 +11,7 @@ void ItemsSystem::fixedUpdate() {
   auto &current_state = entt::locator<State>::value();
 
   for (auto &f : current_state.registry.view<Frame>()) {
-    auto frame = current_state.registry.get<Frame>(f);
+    auto &frame = current_state.registry.get<Frame>(f);
     std::vector<std::shared_ptr<Component>> storages = {};
     for (auto &c : frame.components) {
       if (c->data.get_or<int>("slots", 0) > 0) {

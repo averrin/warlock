@@ -570,7 +570,8 @@ void ComponentEditorWidget<Frame>(entt::registry &registry,
       }
       static ImPlotAxisFlags flags = ImPlotLegendFlags_Outside;
       auto &current_state = entt::locator<State>::value();
-      auto env = current_state.registry.get<Environment>((entt::entity)0);
+      auto &wk = entt::locator<WellKnownEntities>::value();
+      auto env = current_state.registry.get<Environment>(wk.environment);
 
       if (ImPlot::BeginPlot(
               fmt::format("Temperatures##tp-{}", f.data.id).c_str(),
