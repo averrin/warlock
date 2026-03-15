@@ -33,9 +33,19 @@ CPMAddPackage(
     GITHUB_REPOSITORY Neargye/magic_enum
     GIT_TAG v0.9.6
 )
+CPMAddPackage(
+  NAME ixwebsocket
+  GITHUB_REPOSITORY machinezone/IXWebSocket
+  GIT_TAG v11.4.5
+  OPTIONS
+    "IXWEBSOCKET_INSTALL OFF"
+    "USE_TLS OFF"
+    "USE_ZLIB OFF"
+)
 ENDIF()
 
 target_link_libraries(${EXE_NAME} PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(${EXE_NAME} PRIVATE ixwebsocket)
 if(libcolor_ADDED)
   target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${libcolor_SOURCE_DIR}/include")
 endif()

@@ -1,3 +1,5 @@
+#include <rpc/server.hpp>
+#include <rpc/handlers/session_handler.hpp>
 #include <app/application.hpp>
 #include <backward.hpp>
 #include <chrono>
@@ -60,6 +62,11 @@ int main(int argc, char *argv[]) {
       .default_value(false)
       .implicit_value(true);
 
+  program.add_argument("--rpc-port")
+      .help("WebSocket RPC server port")
+      .default_value(9800)
+      .scan<'i', int>();
+
   try {
     program.parse_args(argc, argv);
   } catch (const std::exception &err) {
@@ -72,6 +79,7 @@ int main(int argc, char *argv[]) {
 
   bool nostate = program["--new"] == true;
   bool nodebug = program["--no-debug"] == true;
+  int rpcPort = program.get<int>("--rpc-port");
 
   auto seed = time(NULL);
   auto path = get_selfpath();
@@ -119,6 +127,10 @@ int main(int argc, char *argv[]) {
   auto &gm = entt::locator<GameManager>::emplace();
   gm.init(app.log);
   jobs.add(gm.startJob, true);
+
+  auto &rpcServer = entt::locator<rpc::Server>::emplace(rpcPort);
+  rpc::registerSessionHandlers(rpcServer);
+  rpcServer.start();
 
   if (!noeditor) {
     gui.renders.push_back([&]() {
@@ -173,6 +185,7 @@ int main(int argc, char *argv[]) {
       std::this_thread::sleep_for(50ms);
     }
   }
+  rpcServer.stop();
   app.log.stop(APP_NAME);
   return EXIT_SUCCESS;
 }
