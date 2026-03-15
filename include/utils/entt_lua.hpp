@@ -33,5 +33,13 @@ struct script {
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const { ar(path, enabled); };
   template <class Archive> void load(Archive &ar) { ar(path, enabled); };
+  void field_save(FieldOutputArchive &ar) const {
+    FIELD(ar, path);
+    FIELD(ar, enabled);
+  }
+  void field_load(FieldInputArchive &ar) {
+    FIELD(ar, path);
+    FIELD(ar, enabled);
+  }
 };
 } // namespace hf

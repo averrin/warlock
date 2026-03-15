@@ -85,19 +85,28 @@ public:
     std::shared_ptr<RegistryStore> store = container.create("state", path);
     store->initEmpty();
     RegistryContainer::copyRegistry(container.registry, store->registry);
-      store->attributes["saved_at"] = getCurrentDateTime();
-      auto file =
-          fs::relative(store->path, entt::monostate<"path"_hs>{}).string();
-      // log.debug("Try to save {}", path);
+    store->attributes["saved_at"] = getCurrentDateTime();
+    auto file =
+        fs::relative(store->path, entt::monostate<"path"_hs>{}).string();
+    log.var("Path", file);
+    log.info(
+        "{}: {} (type: {}, ver: {})",
+        LibPrint::utils::color(fmt::terminal_color::bright_red, " Save"),
+        LibPrint::utils::italic(store->name), store->type, store->version);
+    try {
+      fs::create_directories(fs::path(path).parent_path());
       std::ofstream ofs(path, std::ios::out | std::ios::binary);
+      if (!ofs.is_open()) {
+        log.error("Failed to open file for writing: {}", path);
+        return;
+      }
       cereal::BinaryOutputArchive oarchive(ofs);
-      // cereal::JSONOutputArchive oarchive(ofs);
-      log.var("Path", file);
-      log.info(
-          "{}: {} (type: {}, ver: {})",
-          LibPrint::utils::color(fmt::terminal_color::bright_red, " Save"),
-          LibPrint::utils::italic(store->name), store->type, store->version);
       oarchive(*store);
+    } catch (cereal::Exception &e) {
+      log.error("Serialization error saving {}: {}", path, e.what());
+    } catch (std::exception &e) {
+      log.error("Error saving {}: {}", path, e.what());
+    }
   }
 
   template <typename ContainerType> void save(ContainerType &container) {
@@ -106,16 +115,26 @@ public:
       store->attributes["saved_at"] = getCurrentDateTime();
       auto file =
           fs::relative(store->path, entt::monostate<"path"_hs>{}).string();
-      // log.debug("Try to save {}", path);
-      std::ofstream ofs(path, std::ios::out | std::ios::binary);
-      cereal::BinaryOutputArchive oarchive(ofs);
-      // cereal::JSONOutputArchive oarchive(ofs);
       log.var("Path", file);
       log.info(
           "{}: {} (type: {}, ver: {})",
-          LibPrint::utils::color(fmt::terminal_color::bright_red, " Save"),
+          LibPrint::utils::color(fmt::terminal_color::bright_red, " Save"),
           LibPrint::utils::italic(store->name), store->type, store->version);
-      oarchive(*store);
+      try {
+        fs::create_directories(fs::path(path).parent_path());
+        std::ofstream ofs(path, std::ios::out | std::ios::binary);
+        if (!ofs.is_open()) {
+          log.error("Failed to open file for writing: {}", path);
+          continue;
+        }
+        cereal::BinaryOutputArchive oarchive(ofs);
+        oarchive(*store);
+      } catch (cereal::Exception &e) {
+        log.error("Serialization error saving {}: {}", path, e.what());
+      } catch (std::exception &e) {
+        log.error("Error saving {}: {}", path, e.what());
+      }
     }
   }
+
 };

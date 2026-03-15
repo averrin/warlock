@@ -17,7 +17,9 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <app/scene.hpp>
 #include <game/draw_engine.hpp>
 #include <webview/webview.h>
-#include <thread>
+#include <gtk/gtk.h>
+#include <gdk/gdkx.h>
+#include <X11/Xlib.h>
 #include <game/draw_manager.hpp>
 #include <game/game_manager.hpp>
 #include <utils/entt.hpp>
@@ -114,10 +116,49 @@ int main(int argc, char *argv[]) {
     main_engine->resize(scene.window->getSize());
   }
 
+  // Force GTK to use X11 backend to match SFML's X11 window
+  setenv("GDK_BACKEND", "x11", 1);
+
   app.w_handle = webview_create(1, nullptr);
   entt::monostate<"webview"_hs>{} = app.w_handle;
   webview_navigate(app.w_handle, "http://localhost:5173");
-  std::thread([&] { webview_run(app.w_handle); }).detach();
+
+  // Embed the webview window inside the SFML window as a background
+  if (!nogui) {
+    auto sfml_size = scene.window->getSize();
+
+    // Get the GTK window and configure it before showing
+    GtkWidget *gtk_win = static_cast<GtkWidget *>(webview_get_window(app.w_handle));
+    gtk_window_set_decorated(GTK_WINDOW(gtk_win), FALSE);
+
+    // Set webview size (triggers window_show internally)
+    webview_set_size(app.w_handle, sfml_size.x, sfml_size.y, WEBVIEW_HINT_FIXED);
+
+    // Show and realize the GTK window
+    gtk_widget_show_all(gtk_win);
+    gtk_widget_realize(gtk_win);
+
+    // Pump GTK events until the window is fully mapped
+    for (int i = 0; i < 100; i++) {
+      g_main_context_iteration(nullptr, FALSE);
+    }
+
+    GdkWindow *gdk_win = gtk_widget_get_window(gtk_win);
+    if (gdk_win && GDK_IS_X11_WINDOW(gdk_win)) {
+      Display *x_display = gdk_x11_display_get_xdisplay(gdk_display_get_default());
+      Window wv_xid = gdk_x11_window_get_xid(gdk_win);
+      Window sfml_xid = scene.window->getSystemHandle();
+
+      // Reparent the webview's X11 window into the SFML window
+      XReparentWindow(x_display, wv_xid, sfml_xid, 0, 0);
+      XMoveResizeWindow(x_display, wv_xid, 0, 0, sfml_size.x, sfml_size.y);
+      XLowerWindow(x_display, wv_xid);
+      XMapWindow(x_display, wv_xid);
+      XFlush(x_display);
+    } else {
+      fmt::print("WARNING: GDK window is not X11, webview embedding skipped\n");
+    }
+  }
 
   auto &gui = entt::locator<Gui>::emplace();
   if (!noeditor) {
@@ -198,6 +239,9 @@ int main(int argc, char *argv[]) {
   }
 
   while (nogui || scene.window->isOpen()) {
+    // Pump GTK/WebKit events non-blockingly on the main thread
+    while (g_main_context_iteration(nullptr, FALSE)) {}
+
     app.serve();
     gm.serve();
     if (!nogui) {

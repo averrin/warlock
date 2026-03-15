@@ -20,6 +20,11 @@ set_target_properties(${PROJECT_NAME} PROPERTIES CXX_EXTENSIONS OFF)
 include(cmake/common.cmake)
 include(cmake/deps.cmake)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${GTK3_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${GTK3_LIBRARIES} X11)
+
 # set(THREADS_PREFER_PTHREAD_FLAG ON)
 # find_package(Threads REQUIRED)
 # target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)

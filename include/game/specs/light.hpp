@@ -7,6 +7,8 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/archives/json.hpp>
 
+#include <utils/data/field_archive.hpp>
+
 
 enum class LightType { NONE, CLEAR, FIRE, MAGIC, ACID, FROST, INHERIT };
 
@@ -42,5 +44,21 @@ struct glow {
   template <class Archive> void load(Archive &ar) {
     ar(distance, type, bright, flick, passive, pulse);
   };
+  void field_save(FieldOutputArchive &ar) const {
+    FIELD(ar, distance);
+    FIELD(ar, type);
+    FIELD(ar, bright);
+    FIELD(ar, flick);
+    FIELD(ar, passive);
+    FIELD(ar, pulse);
+  }
+  void field_load(FieldInputArchive &ar) {
+    FIELD(ar, distance);
+    FIELD(ar, type);
+    FIELD(ar, bright);
+    FIELD(ar, flick);
+    FIELD(ar, passive);
+    FIELD(ar, pulse);
+  }
 };
 }
