@@ -1,5 +1,6 @@
 #include <game/oracle.hpp>
 #include <game/state.hpp>
+#include <utils/graph.hpp>
 
 std::vector<Frame> Oracle::getNFCFrames(int id = 0, float distance = 1.0f) {
   auto &current_state = entt::locator<State>::value();
@@ -16,50 +17,14 @@ std::vector<Frame> Oracle::getNFCFrames(int id = 0, float distance = 1.0f) {
   return frames;
 }
 
-// TODO: move to helpers
-void dfs2(int node, const std::unordered_map<int, std::vector<int>> &graph,
-          std::unordered_set<int> &visited) {
-  visited.insert(node);
-
-  for (int neighbor : graph.at(node)) {
-    if (visited.find(neighbor) == visited.end()) {
-      dfs2(neighbor, graph, visited);
-    }
-  }
-}
-
 std::vector<std::vector<int>>
 findUnconnectedNets(const std::vector<Connection> &connections) {
-  // Step 1: Create adjacency list for the graph
-  std::unordered_map<int, std::vector<int>> graph;
-
+  std::unordered_map<int, std::vector<int>> adj;
   for (const auto &connection : connections) {
-    graph[connection.source].push_back(connection.target);
-    graph[connection.target].push_back(connection.source);
+    adj[connection.source].push_back(connection.target);
+    adj[connection.target].push_back(connection.source);
   }
-
-  // Step 2: Find all unconnected components using flood fill (DFS)
-  std::unordered_set<int> visited;
-  std::vector<std::vector<int>> components;
-
-  for (const auto &node_neighbors : graph) {
-    int node = node_neighbors.first;
-
-    if (visited.find(node) == visited.end()) {
-      std::vector<int> component;
-      std::unordered_set<int> net;
-      dfs2(node, graph, net);
-
-      for (int visited_node : net) {
-        component.push_back(visited_node);
-        visited.insert(visited_node);
-      }
-
-      components.push_back(component);
-    }
-  }
-
-  return components;
+  return graph::find_connected_components(adj, {});
 }
 
 std::vector<Frame> Oracle::getWiredFrames(int id = 0) {

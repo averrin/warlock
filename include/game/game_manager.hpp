@@ -9,7 +9,9 @@ using hr_clock = std::chrono::high_resolution_clock;
 #include <game/systems/code_execution.hpp>
 #include <game/systems/input.hpp>
 #include <game/systems/items.hpp>
+#include <functional>
 #include <mutex>
+#include <queue>
 
 class GameManager {
   LibLog::Logger log = LibLog::Logger(fmt::color::purple, "GM");
@@ -38,10 +40,16 @@ public:
   entt::entity addConnection(int source, int target, ConnectionType);
 
   std::shared_ptr<Job> startJob;
-  std::mutex updateMutex;
+  std::recursive_mutex updateMutex;
 
   void initScript(entt::registry &registry, entt::entity entity);
   void releaseScript(entt::registry &registry, entt::entity entity);
 
+  void enqueueCommand(std::function<void()> cmd);
+
   void startFramePlacement();
+
+private:
+  std::queue<std::function<void()>> pending_commands_;
+  std::mutex command_mutex_;
 };

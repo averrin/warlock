@@ -1,6 +1,7 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <game/components/frame.hpp>
+#include <game/well_known_entities.hpp>
 #include <game/state.hpp>
 #include <game/systems/thermal.hpp>
 #include <liblog/liblog.hpp>
@@ -9,13 +10,11 @@
 
 void ThermalSystem::fixedUpdate() {
   auto &current_state = entt::locator<State>::value();
-  for (auto &e : current_state.registry.view<Environment>()) {
-    environment = &current_state.registry.get<Environment>(e);
-    environment->temperatures[-1].push_back(environment->temperature);
-    if (environment->temperatures[-1].size() > 100) {
-      environment->temperatures[-1].pop_front();
-    }
-    break;
+  auto &wk = entt::locator<WellKnownEntities>::value();
+  environment = &current_state.registry.get<Environment>(wk.environment);
+  environment->temperatures[-1].push_back(environment->temperature);
+  if (environment->temperatures[-1].size() > 100) {
+    environment->temperatures[-1].pop_front();
   }
 
   for (auto &f : current_state.registry.view<Frame>()) {

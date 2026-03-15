@@ -3,6 +3,7 @@
 #include <game/components/frame.hpp>
 #include <game/state.hpp>
 #include <game/systems/code_execution.hpp>
+#include <game/well_known_entities.hpp>
 #include <liblog/liblog.hpp>
 #include <ranges> // For ranges
 #include <string>
@@ -46,11 +47,9 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
   auto fid = c->frame_id;
 
   // get Environment
-  for (auto &env : current_state.registry.view<Environment>()) {
-    auto &environment = current_state.registry.get<Environment>(env);
-    getState(fid).set("environment", environment);
-    break;
-  }
+  auto &wk = entt::locator<WellKnownEntities>::value();
+  auto &environment = current_state.registry.get<Environment>(wk.environment);
+  getState(fid).set("environment", environment);
 
   auto *frame_ptr = findFrameById(fid);
   if (!frame_ptr) return;

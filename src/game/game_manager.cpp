@@ -150,6 +150,7 @@ void GameManager::init(LibLog::Logger parentLog) {
 
 entt::entity GameManager::addConnection(int source, int target,
                                         ConnectionType type) {
+  std::lock_guard<std::recursive_mutex> lock(updateMutex);
   auto &current_state = entt::locator<State>::value();
   auto e = EnttTools::createEntityFromPrototype("CONNECTION",
                                                 current_state.registry);
@@ -178,6 +179,7 @@ entt::entity GameManager::addConnection(int source, int target,
 }
 
 int GameManager::addFrameFromBlueprint(std::string name) {
+  std::lock_guard<std::recursive_mutex> lock(updateMutex);
   log.var("Adding frame from blueprint", name);
   auto &current_state = entt::locator<State>::value();
   std::string bp_source = exec->blueprints[name];
@@ -205,6 +207,7 @@ int GameManager::addFrameFromBlueprint(std::string name) {
 }
 
 entt::entity GameManager::addFrame(std::string name) {
+  std::lock_guard<std::recursive_mutex> lock(updateMutex);
   auto &current_state = entt::locator<State>::value();
   auto e =
       EnttTools::createEntityFromPrototype("FRAME", current_state.registry);
@@ -326,12 +329,25 @@ void GameManager::start() {
   started = true;
 }
 
+void GameManager::enqueueCommand(std::function<void()> cmd) {
+  std::lock_guard<std::mutex> lock(command_mutex_);
+  pending_commands_.push(std::move(cmd));
+}
+
 void GameManager::serve() {
   if (!started)
     return;
   auto &current_state = entt::locator<State>::value();
   if (current_state.registry.template storage<entt::entity>().size() == 0) {
     return;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(command_mutex_);
+    while (!pending_commands_.empty()) {
+      pending_commands_.front()();
+      pending_commands_.pop();
+    }
   }
 
   updateMutex.lock();

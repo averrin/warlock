@@ -37,7 +37,7 @@ void PresentationSystem::resetDrawables() {
     auto text_entity = getChildByName(current_state.registry, "Frame Text", f);
 
     text.content = fmt::format("{} [{}]", frame.data.name, frame.data.id);
-    text.color = sf::Color(100, 100, 255, 255);
+    text.color = wl::color{100, 100, 255, 255};
     text.size = 20;
 
     auto &rect =
@@ -110,8 +110,8 @@ void PresentationSystem::resetDrawables() {
     line.layer = "connections";
     line.position1 = {x1, y1};
     line.position2 = {x2, y2};
-    line.color = connection.type == ConnectionType::POWER ? sf::Color::Yellow
-                                                          : sf::Color::Blue;
+    line.color = connection.type == ConnectionType::POWER ? wl::color{255, 255, 0, 255}
+                                                          : wl::color{0, 0, 255, 255};
     line.thickness = 3;
     current_state.registry.emplace_or_replace<wl::line>(c, line);
   }

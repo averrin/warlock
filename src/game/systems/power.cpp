@@ -8,59 +8,19 @@
 #include <ranges> // For ranges
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
+#include <utils/graph.hpp>
 using Random = effolkronium::random_static;
 using hr_clock = std::chrono::high_resolution_clock;
 
-// TODO: move to helpers
-void dfs(int node, const std::unordered_map<int, std::vector<int>> &graph,
-         std::unordered_set<int> &visited) {
-  visited.insert(node);
-
-  for (int neighbor : graph.at(node)) {
-    if (visited.find(neighbor) == visited.end()) {
-      dfs(neighbor, graph, visited);
-    }
-  }
-}
-
 std::vector<std::vector<int>>
 findUnconnectedNets(const std::vector<Connection> &connections,
-                    std::vector<int> all_nodes) {
-  // Step 1: Create adjacency list for the graph
-  std::unordered_map<int, std::vector<int>> graph;
-
+                    const std::vector<int> &all_nodes) {
+  std::unordered_map<int, std::vector<int>> adj;
   for (const auto &connection : connections) {
-    graph[connection.source].push_back(connection.target);
-    graph[connection.target].push_back(connection.source);
+    adj[connection.source].push_back(connection.target);
+    adj[connection.target].push_back(connection.source);
   }
-
-  // Step 2: Find all unconnected components using flood fill (DFS)
-  std::unordered_set<int> visited;
-  std::vector<std::vector<int>> components;
-
-  for (const auto &node_neighbors : graph) {
-    int node = node_neighbors.first;
-
-    if (visited.find(node) == visited.end()) {
-      std::vector<int> component;
-      std::unordered_set<int> net;
-      dfs(node, graph, net);
-
-      for (int visited_node : net) {
-        component.push_back(visited_node);
-        visited.insert(visited_node);
-      }
-
-      components.push_back(component);
-    }
-  }
-  for (int node : all_nodes) {
-    if (visited.find(node) == visited.end()) {
-      components.push_back({node});
-    }
-  }
-
-  return components;
+  return graph::find_connected_components(adj, all_nodes);
 }
 
 void PowerSystem::fixedUpdate() {

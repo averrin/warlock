@@ -4,6 +4,12 @@
 
 namespace wl {
 
+struct color {
+  uint8_t r = 255, g = 255, b = 255, a = 255;
+  operator sf::Color() const { return sf::Color(r, g, b, a); }
+  static color from_sf(sf::Color c) { return {c.r, c.g, c.b, c.a}; }
+};
+
 struct visual_state {
   bool selected = false;
   bool hovered = false;
@@ -30,8 +36,8 @@ enum class shape_type { rectangle, circle };
 struct shape {
   shape_type type;
   wl::rect rect;
-  sf::Color fill_color = sf::Color::White;
-  sf::Color outline_color = sf::Color::Black;
+  wl::color fill_color;
+  wl::color outline_color = {0, 0, 0, 255};
   float stroke = 1.0f;
 };
 
@@ -52,7 +58,7 @@ struct transform {
 
 struct text {
   std::string content = "";
-  sf::Color color = sf::Color::White;
+  wl::color color;
   int size = 12;
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const { ar(content, size); };
@@ -60,7 +66,7 @@ struct text {
 };
 struct sprite {
   std::string key = "";
-  sf::Color color = sf::Color::White;
+  wl::color color;
   wl::rect rect;
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const { ar(key, rect); };
@@ -72,6 +78,6 @@ struct line {
   wl::position position2;
   std::string layer = "";
   float thickness = 1.0f;
-  sf::Color color = sf::Color::White;
+  wl::color color;
 };
 }; // namespace wl
