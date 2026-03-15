@@ -1,5 +1,9 @@
 #include <rpc/server.hpp>
 #include <rpc/handlers/session_handler.hpp>
+#include <rpc/handlers/game_handler.hpp>
+#include <rpc/handlers/frame_handler.hpp>
+#include <rpc/handlers/state_handler.hpp>
+#include <rpc/event_bridge.hpp>
 #include <app/application.hpp>
 #include <backward.hpp>
 #include <chrono>
@@ -130,6 +134,10 @@ int main(int argc, char *argv[]) {
 
   auto &rpcServer = entt::locator<rpc::Server>::emplace(rpcPort);
   rpc::registerSessionHandlers(rpcServer);
+  rpc::registerGameHandlers(rpcServer);
+  rpc::registerFrameHandlers(rpcServer);
+  rpc::registerStateHandlers(rpcServer);
+  rpc::initEventBridge(rpcServer);
   rpcServer.start();
 
   if (!noeditor) {
