@@ -91,6 +91,7 @@ void register_bindings(sol::state &lua) {
             return net;
           }
         }
+        return NetworkInfo{};
       },
       "getStorages",
       [](Frame &frame) -> std::vector<std::shared_ptr<ItemStorage>> {
