@@ -36,3 +36,6 @@ else()
   target_compile_options(${PROJECT_NAME} PRIVATE -Wno-format-security -Wno-switch)
 endif()
 
+
+# Tests
+add_subdirectory(tests)
