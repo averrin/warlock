@@ -716,14 +716,6 @@ void ComponentEditorWidget<hf::size>(entt::registry &registry,
   }
 }
 
-// template <>
-// void ComponentEditorWidget<hf::room>(entt::registry &registry,
-//                                      entt::registry::entity_type e) {
-//   auto &r = registry.get<hf::room>(e);
-//   ImGui::Text(
-//       fmt::format("Type: {}", magic_enum::enum_name(r.room->type)).c_str());
-// }
-
 template <>
 void ComponentEditorWidget<hf::children>(entt::registry &registry,
                                          entt::registry::entity_type e) {
@@ -736,59 +728,6 @@ void ComponentEditorWidget<hf::children>(entt::registry &registry,
     ImGui::TreePop();
   }
 }
-// template <>
-// void ComponentEditorWidget<hf::cell>(entt::registry &registry,
-//                                      entt::registry::entity_type e) {
-//   auto &p = registry.get<hf::cell>(e);
-//   auto &emitter = entt::locator<event_emitter>::value();
-//   auto cell = p.cell;
-//
-//   auto cti = 0;
-//   auto n = 0;
-//   std::vector<std::string> ct_names;
-//   for (auto ct : Cell::types) {
-//     ct_names.push_back(ct.name);
-//     if (cell != nullptr && ct == cell->type) {
-//       cti = n;
-//     }
-//     n++;
-//   }
-//   if (ImGui::Combo("Type##cell_type", &cti, ct_names)) {
-//     if (cell != nullptr) {
-//       // auto &engine = entt::locator<DrawEngine>::value();
-//       // mapUtils::updateCell(cell, Cell::types[cti], cell->tags.tags);
-//       // engine.tilesCache.clear();
-//       // emitter.publish(redraw_event{});
-//     }
-//   }
-// }
-
-// template <>
-// void ComponentEditorWidget<hf::pickable>(entt::registry &registry,
-//                                          entt::registry::entity_type e) {
-//   auto &p = registry.get<hf::pickable>(e);
-//   ImGui::InputText("Category", p.category.name);
-//   ImGui::InputText("Unidentified name", p.unidName);
-//   ImGui::InputInt("Count", &p.count);
-//   ImGui::Checkbox("Identfied", &p.identified);
-// }
-// template <>
-// void ComponentEditorWidget<hf::wearable>(entt::registry &registry,
-//                                          entt::registry::entity_type e) {
-//   auto &w = registry.get<hf::wearable>(e);
-//
-//   constexpr auto types = magic_enum::enum_values<WearableType>();
-//   constexpr auto types_names = magic_enum::enum_names<WearableType>();
-//   std::vector<std::string> names;
-//   for (auto n : types_names) {
-//     names.push_back(std::string(n));
-//   }
-//   auto wt = static_cast<int>(w.wearableType);
-//   if (ImGui::Combo("Wearable type", &wt, names)) {
-//     w.wearableType = types[wt];
-//   }
-//   ImGui::InputInt("Durability", &w.durability);
-// }
 
 template <>
 void ComponentEditorWidget<hf::visible>(entt::registry &registry,

@@ -47,8 +47,6 @@ public:
     tileSet = other.tileSet;
     colors = other.colors;
     tilesTextures = other.tilesTextures;
-    // regions = other.regions;
-
     scale = other.scale;
     width = other.width;
     height = other.height;
@@ -70,50 +68,11 @@ public:
   int view_z = 0;
 
   std::vector<std::shared_ptr<sf::Texture>> tilesTextures;
-  // std::vector<std::shared_ptr<Region>> regions;
 
   void setSize(std::pair<int, int> size) {
     width = size.first;
     height = size.second;
   }
-
-  // std::pair<std::optional<std::shared_ptr<Cell>>, int> getCell(int x, int y,
-  //                                                              int z) {
-  //   std::optional<std::shared_ptr<Cell>> cell = std::nullopt;
-  //   for (auto region : regions) {
-  //     if (!region->cells.empty() && region->active && region->z == z &&
-  //         x >= region->position.first &&
-  //         x < (int)(region->position.first + region->cells[0].size()) &&
-  //         y >= region->position.second &&
-  //         y < (int)(region->position.second + region->cells.size())) {
-  //       cell = region->cells[y - region->position.second]
-  //                           [x - region->position.first];
-  //     }
-  //   }
-  //   if (z > 0 && !cell) {
-  //     return getCell(x, y, z - 1);
-  //   }
-  //   return std::make_pair(cell, z);
-  // }
-
-  // std::pair<std::optional<std::shared_ptr<Region>>, int> getRegion(int x, int
-  // y,
-  //                                                                  int z) {
-  //   std::optional<std::shared_ptr<Region>> reg = std::nullopt;
-  //   for (auto region : regions) {
-  //     if (!region->cells.empty() && region->active && region->z == z &&
-  //         x >= region->position.first &&
-  //         x < (int)(region->position.first + region->cells[0].size()) &&
-  //         y >= region->position.second &&
-  //         y < (int)(region->position.second + region->cells.size())) {
-  //       return std::make_pair(region, z);
-  //     }
-  //   }
-  //   if (z > 0 && !reg) {
-  //     return getRegion(x, y, z - 1);
-  //   }
-  //   return std::make_pair(reg, z);
-  // }
 
   sf::Color getColor(std::string color);
   sf::Color getColor(std::string cat, std::string key);
@@ -121,13 +80,4 @@ public:
 
   std::shared_ptr<sf::Sprite> makeSprite(std::string cat, std::string key);
   std::shared_ptr<sf::Sprite> makeSprite(TileSpec spec);
-
-  // std::optional<std::shared_ptr<Tile>> getTile(int x, int y, int z);
-
-  // std::pair<int, int> getCoords(std::shared_ptr<Cell> cell) {
-  //   return std::make_pair<int, int>(cell->anchor.first + cell->x,
-  //                                   cell->anchor.second + cell->y);
-  // }
-
-  // TileSpec getWallSpec(std::shared_ptr<Cell> cell);
 };

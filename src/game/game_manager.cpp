@@ -113,7 +113,6 @@ void GameManager::saveData() {
   log.start(label);
   auto loader = entt::locator<Loader>::value();
   auto &metaData = entt::locator<MetaData>::value();
-  // fmt::print("test: {}\n", metaData.mapFeatures["DUNGEON-"]["test"]);
   loader.save(metaData);
   auto &prototypes = entt::locator<Prototypes>::value();
   loader.save(prototypes);
@@ -248,31 +247,13 @@ void GameManager::start() {
 
   fs::path PATH = entt::monostate<"path"_hs>{};
   auto assetLoader = entt::locator<AssetLoader>::emplace((PATH / "assets").string());
-  fmt::print("Assets: {}\n", assetLoader.getTextures().size());
+  log.var("Assets", assetLoader.getTextures().size());
 
   log.setParent(nullptr);
   log.setAsync(true);
   auto label = "Location generation";
   log.start(label);
   auto &current_state = entt::locator<State>::value();
-
-  /*
-  auto e = current_state.registry.create();
-  current_state.registry.emplace<hf::script>(
-      e, hf::script{"scripts/entities/test.lua"});
-      */
-  // auto &script = current_state.registry.get<hf::script>(e);
-  // script.self["counter"] = 24;
-
-  /*
-  std::this_thread::sleep_for(2s);
-  startJob->progress += 25;
-  emitter.publish(job_update_event{startJob});
-  std::this_thread::sleep_for(2s);
-  startJob->progress += 25;
-  */
-  // emitter.publish(job_update_event{startJob});
-  // std::this_thread::sleep_for(2s);
 
   emitter.publish(ready_event{"game_manager"});
   log.stop(label);
@@ -345,17 +326,6 @@ void GameManager::serve() {
       system->update(delta);
     }
   }
-  /*
-   * Make it system
-  for (auto &e : current_state.registry.view<hf::script>()) {
-    auto &script = current_state.registry.get<hf::script>(e);
-    if (!script.enabled)
-      continue;
-    const std::chrono::duration<double, std::milli> delta =
-        hr_clock::now() - lastUpdate;
-    script.handlers.update(script.self, delta.count());
-  }
-*/
   lastUpdate = hr_clock::now();
   updateMutex.unlock();
 }
@@ -386,6 +356,5 @@ void GameManager::releaseScript(entt::registry &registry, entt::entity entity) {
 }
 
 void GameManager::startFramePlacement() {
-  // input->startPositionSelection("MARKER", 64);
   input->startPositionSelection("FRAME_GHOST_M", 128);
 }

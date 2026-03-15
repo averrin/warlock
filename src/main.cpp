@@ -74,9 +74,6 @@ int main(int argc, char *argv[]) {
   bool nodebug = program["--no-debug"] == true;
 
   auto seed = time(NULL);
-  // if (argc > 1) {
-  //   seed = std::atoi(argv[1]);
-  // }
   auto path = get_selfpath();
   entt::monostate<"id"_hs>{} = -1;
   entt::monostate<"path"_hs>{} = path;
@@ -104,15 +101,11 @@ int main(int argc, char *argv[]) {
   auto &draw_manager = entt::locator<DrawManager>::emplace();
 
   std::shared_ptr<DrawEngine> main_engine = nullptr;
-  // std::shared_ptr<DrawEngine> alt_engine = nullptr;
   if (!nogui) {
     scene.init(app.log);
     draw_manager.init(app.log);
     main_engine = draw_manager.addEngine("main");
     main_engine->resize(scene.window->getSize());
-
-    // alt_engine = draw_manager.addEngine("alt");
-    // alt_engine->resize(scene.window->getSize());
   }
 
   auto &gui = entt::locator<Gui>::emplace();
@@ -124,10 +117,7 @@ int main(int argc, char *argv[]) {
   loader.init(app.log);
 
   auto &gm = entt::locator<GameManager>::emplace();
-  // auto gm = GameManager();
   gm.init(app.log);
-
-  // emitter.publish(add_job_event{gm.startJob, true});
   jobs.add(gm.startJob, true);
 
   if (!noeditor) {
@@ -135,7 +125,6 @@ int main(int argc, char *argv[]) {
       ImGui::ShowDemoWindow();
       ImPlot::ShowDemoWindow();
     });
-    // auto md_editor = std::make_shared<MetaDataEditor>("Meta Data Editor");
     auto md_editor = MetaDataEditor("Meta Data Editor");
     gui.renders.push_back([&]() { md_editor.render(); });
     auto et_editor = EntityTreeEditor("Prototype Editor");
@@ -145,10 +134,7 @@ int main(int argc, char *argv[]) {
     });
     auto state_editor = StateEditor("State Editor");
     jobs.add(state_editor.startJob, true);
-    // emitter.publish(add_job_event{state_editor.startJob, true});
     gui.renders.push_back([&]() { state_editor.render(); });
-    // auto ts_editor = TilesetEditor("Tileset Editor");
-    // gui.renders.push_back([&]() { ts_editor.render(); });
 
     auto ide = std::make_shared<IDE>();
     ide->init(path);
@@ -159,27 +145,6 @@ int main(int argc, char *argv[]) {
 
     auto game_editor = std::make_shared<GameEditor>("Game Editor");
     gui.editors.push_back(game_editor);
-    /*
-    gui.renders.push_back([&]() {
-      // if (gm.started) {
-        game_editor->render();
-      // }
-    });
-    */
-
-    /*
-    sf::RenderTexture rt;
-    sf::Sprite s;
-    gui.renders.push_back([&]() {
-      ImGui::Begin("Test window");
-      // rt.draw(*alt_engine->layers);
-      rt.display();
-      s.setTexture(rt.getTexture());
-      ImGui::Image(s, sf::Vector2f(800, 600), sf::Color::White,
-                   sf::Color::Transparent);
-      ImGui::End();
-    });
-    */
   }
 
   if (!nogui) {
@@ -189,8 +154,6 @@ int main(int argc, char *argv[]) {
         sf::Vector2f(scene.window->getSize().x, scene.window->getSize().y));
 
     main_engine->start();
-    // alt_engine->start();
-    // fmt::print("Main Engine: {}\n", fmt::ptr(main_engine.get()));
   }
 
   while (nogui || scene.window->isOpen()) {
@@ -198,8 +161,6 @@ int main(int argc, char *argv[]) {
     gm.serve();
     if (!nogui) {
       scene.serve();
-      // draw_manager.serve();
-      // draw_manager.draw();
       if (gm.started) {
         main_engine->_draw();
         scene.window->draw(main_engine->cache);

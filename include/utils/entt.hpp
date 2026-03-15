@@ -12,25 +12,6 @@ using namespace entt::literals;
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 
-/*
-struct event_emitter : entt::emitter<event_emitter> {
-  std::map<entt::id_type, std::vector<std::function<void(void *)>>> handlers;
-
-  template <typename Type>
-  void connect(std::function<void(Type &, const event_emitter &)> func) {
-    handlers[entt::type_id<Type>().hash()].push_back([func = std::move(func),
-                                                      this](void *value) {
-      func(*static_cast<Type *>(value), static_cast<event_emitter &>(*this));
-    });
-    on<Type>([&](Type &event, const event_emitter &emitter) {
-      for (auto &handler : handlers[entt::type_id<Type>().hash()]) {
-        handler(&event);
-      }
-    });
-  }
-};
-*/
-
 struct event_emitter : entt::emitter<event_emitter> {
   std::map<entt::id_type,
            std::vector<std::pair<size_t, std::function<void(void *)>>>>
@@ -99,7 +80,6 @@ struct relation {
 };
 }; // namespace wl
 
-// namespace wl
 namespace hf {
 struct ingame {
   friend class cereal::access;
@@ -156,41 +136,6 @@ struct visible {
   template <class Archive> void load(Archive &ar) {
     ar(type, sign, hidden, seeThrough, passThrough);
   };
-};
-
-struct pickable {
-  // ItemCategory category;
-  // bool identified = false;
-  // int count;
-  // std::string unidName;
-
-  // friend class cereal::access;
-  // template <class Archive> void save(Archive &ar) const {
-  //   ar(category, identified, count, unidName);
-  // };
-  // template <class Archive> void load(Archive &ar) {
-  //   ar(category, identified, count, unidName);
-  // };
-};
-struct wearable {
-  // WearableType wearableType = WearableType::INVALID;
-  // int durability = -1;
-
-  // friend class cereal::access;
-  // template <class Archive> void save(Archive &ar) const {
-  //   ar(wearableType, durability);
-  // };
-  // template <class Archive> void load(Archive &ar) {
-  //   ar(wearableType, durability);
-  // };
-};
-
-struct cell {
-  // std::shared_ptr<Cell> cell = nullptr;
-};
-
-struct room {
-  // std::shared_ptr<Room> room;
 };
 
 struct children {
@@ -266,8 +211,4 @@ struct vision {
   template <class Archive> void load(Archive &ar) { ar(distance); };
 };
 
-// TODO
-struct usable {};
-struct consumable {};
-struct destructable {};
 }; // namespace hf

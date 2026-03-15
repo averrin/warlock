@@ -12,12 +12,9 @@ DrawEngine::DrawEngine(std::shared_ptr<Viewport> viewport)
     : viewport(viewport) {
   _cache = std::make_shared<sf::RenderTexture>();
 }
-// DrawEngine::~DrawEngine() {}
-
 void DrawEngine::resize(sf::Vector2u size) { layers->resize(size); }
 
-void DrawEngine::init(/*LibLog::Logger parentLog*/) {
-  // log.setParent(&parentLog);
+void DrawEngine::init() {
   auto label = "Initializing DrawEngine";
   log.start(label);
   started = false;
@@ -57,7 +54,7 @@ void DrawEngine::serve() {}
 void DrawEngine::start() {
   auto &lua = entt::locator<sol::state>::value();
   for (auto &l : layers->layers) {
-    fmt::print("Layer: {}\n", l.first);
+    log.var("Layer", l.first);
   }
 
   auto settings = lua["gui"];
@@ -77,10 +74,6 @@ void DrawEngine::start() {
                           entt::collector.update<wl::sprite>());
   state_observer.connect(current_state.registry,
                          entt::collector.update<wl::visual_state>());
-  auto &emitter = entt::locator<event_emitter>::value();
-  // drawJob =
-  //     std::make_shared<Job>("Draw Job", std::bind(&DrawEngine::draw, this));
-  // emitter.publish(add_job_event{drawJob, true});
 }
 
 void DrawEngine::draw() {
@@ -88,7 +81,6 @@ void DrawEngine::draw() {
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
     count++;
     _draw();
-    // fmt::print("DrawEngine {}: {}\n", fmt::ptr(this), count);
   }
 }
 

@@ -31,20 +31,6 @@ std::string CodeExecutionSystem::getScript(std::string name) {
 
 void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
                                               std::string function_name) {
-  // auto &lua = entt::locator<sol::state>::value();
-  // component->lua.open_libraries(sol::lib::base, sol::lib::package,
-  // sol::lib::string,
-  //                    sol::lib::table, sol::lib::math, sol::lib::os);
-  // register_bindings(component->lua);
-  // for (auto &f : current_state.registry.view<Frame>()) {
-  //   auto frame = current_state.registry.get<Frame>(f);
-  //   for (auto &comp : frame.components) {
-  //     if (c == comp) {
-  //       fmt::print("Frame id: {}\n", frame.data.id);
-  //     }
-  //   }
-  // }
-
   auto &current_state = entt::locator<State>::value();
   // get Environment
   for (auto &env : current_state.registry.view<Environment>()) {
@@ -59,7 +45,7 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
       getState(c->frame->data.id).safe_script(code, sol::script_pass_on_error);
   if (!result.valid()) {
     sol::error err = result;
-    std::cout << "Lua script error: " << err.what() << std::endl;
+    fmt::print("Lua script error: {}\n", err.what());
     c->state = ComponentState::COMP_ERROR;
     c->error = err.what();
   } else {
@@ -68,7 +54,7 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
       sol::safe_function_result result = f(c->frame);
       if (!result.valid()) {
         sol::error err = result;
-        std::cout << "Lua script error: " << err.what() << std::endl;
+        fmt::print("Lua script error: {}\n", err.what());
         c->state = ComponentState::COMP_ERROR;
         c->error = err.what();
       }

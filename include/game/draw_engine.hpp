@@ -38,7 +38,7 @@ public:
   std::shared_ptr<LayersManager> layers;
   bool started = false;
 
-  void init(/*LibLog::Logger parentLog*/);
+  void init();
   void serve();
   void start();
   void draw();
