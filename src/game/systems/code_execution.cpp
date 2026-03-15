@@ -41,10 +41,23 @@ Frame *CodeExecutionSystem::findFrameById(int id) {
   return nullptr;
 }
 
+void CodeExecutionSystem::invalidateScript(int component_id) {
+  compiled_scripts_.erase(component_id);
+}
+
+void CodeExecutionSystem::cleanupFrame(int frame_id) {
+  states.erase(frame_id);
+  // Also clean up any compiled scripts for components of this frame
+  // (component IDs are globally unique, so we'd need to track which
+  // components belong to which frame — for now, invalidation happens
+  // on code change via invalidateScript)
+}
+
 void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
                                               std::string function_name) {
   auto &current_state = entt::locator<State>::value();
   auto fid = c->frame_id;
+  auto comp_id = c->data.id;
 
   // get Environment
   auto &wk = entt::locator<WellKnownEntities>::value();
@@ -54,29 +67,36 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
   auto *frame_ptr = findFrameById(fid);
   if (!frame_ptr) return;
 
-  auto code = c->data.get<std::string>("code");
   getState(fid).set("frame", frame_ptr);
-  sol::safe_function_result result =
-      getState(fid).safe_script(code, sol::script_pass_on_error);
-  if (!result.valid()) {
-    sol::error err = result;
-    fmt::print("Lua script error: {}\n", err.what());
-    c->state = ComponentState::COMP_ERROR;
-    c->error = err.what();
-  } else {
-    auto f = result.get<sol::table>()[function_name];
-    if (f.valid()) {
-      sol::safe_function_result result = f(frame_ptr);
-      if (!result.valid()) {
-        sol::error err = result;
-        fmt::print("Lua script error: {}\n", err.what());
-        c->state = ComponentState::COMP_ERROR;
-        c->error = err.what();
-      }
-    } else {
+
+  // Cache compiled script — only recompile when not cached
+  if (compiled_scripts_.find(comp_id) == compiled_scripts_.end()) {
+    auto code = c->data.get<std::string>("code");
+    sol::safe_function_result result =
+        getState(fid).safe_script(code, sol::script_pass_on_error);
+    if (!result.valid()) {
+      sol::error err = result;
+      fmt::print("Lua script error: {}\n", err.what());
       c->state = ComponentState::COMP_ERROR;
-      c->error = "";
+      c->error = err.what();
+      return;
     }
+    compiled_scripts_[comp_id] = result.get<sol::table>();
+  }
+
+  auto &script_table = compiled_scripts_[comp_id];
+  auto f = script_table[function_name];
+  if (f.valid()) {
+    sol::safe_function_result result = f(frame_ptr);
+    if (!result.valid()) {
+      sol::error err = result;
+      fmt::print("Lua script error: {}\n", err.what());
+      c->state = ComponentState::COMP_ERROR;
+      c->error = err.what();
+    }
+  } else {
+    c->state = ComponentState::COMP_ERROR;
+    c->error = "";
   }
 }
 

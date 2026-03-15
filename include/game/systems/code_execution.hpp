@@ -14,6 +14,7 @@ namespace fs = std::filesystem;
 
 class CodeExecutionSystem : public System {
   std::map<int, sol::state> states = {};
+  std::map<int, sol::table> compiled_scripts_ = {};
 
 public:
   std::map<std::string, std::string> sources = {};
@@ -58,4 +59,7 @@ public:
 
   void executeCoreFunction(std::shared_ptr<Component> component,
                            std::string function_name);
+
+  void invalidateScript(int component_id);
+  void cleanupFrame(int frame_id);
 };
