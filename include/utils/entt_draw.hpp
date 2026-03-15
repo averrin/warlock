@@ -54,6 +54,20 @@ struct transform {
   template <class Archive> void load(Archive &ar) {
     ar(position, scale, rotation, relative, layer);
   };
+  void field_save(FieldOutputArchive &ar) const {
+    FIELD(ar, position);
+    FIELD(ar, scale);
+    FIELD(ar, rotation);
+    FIELD(ar, relative);
+    FIELD(ar, layer);
+  }
+  void field_load(FieldInputArchive &ar) {
+    FIELD(ar, position);
+    FIELD(ar, scale);
+    FIELD(ar, rotation);
+    FIELD(ar, relative);
+    FIELD(ar, layer);
+  }
 };
 
 struct text {
@@ -63,6 +77,14 @@ struct text {
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const { ar(content, size); };
   template <class Archive> void load(Archive &ar) { ar(content, size); };
+  void field_save(FieldOutputArchive &ar) const {
+    FIELD(ar, content);
+    FIELD(ar, size);
+  }
+  void field_load(FieldInputArchive &ar) {
+    FIELD(ar, content);
+    FIELD(ar, size);
+  }
 };
 struct sprite {
   std::string key = "";
@@ -71,6 +93,14 @@ struct sprite {
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const { ar(key, rect); };
   template <class Archive> void load(Archive &ar) { ar(key, rect); };
+  void field_save(FieldOutputArchive &ar) const {
+    FIELD(ar, key);
+    FIELD(ar, rect);
+  }
+  void field_load(FieldInputArchive &ar) {
+    FIELD(ar, key);
+    FIELD(ar, rect);
+  }
 };
 
 struct line {

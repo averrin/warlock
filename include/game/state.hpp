@@ -14,7 +14,7 @@ class State : public RegistryContainer {
   int8_t getType() override { return type; }
 
 public:
-  int8_t version = 1;
+  int8_t version = 2;
   int8_t type = 3;
 
   using RegistryContainer::RegistryContainer;
