@@ -24,13 +24,17 @@ class Store {
       throw std::runtime_error(
           fmt::format("Invalid type: {} != {}", type, expected_type));
     }
-    if (version != expected_version) {
-      throw std::runtime_error("Invalid version");
+    if (version > expected_version) {
+      throw std::runtime_error(fmt::format(
+          "Version too new: {} > {} -- update the application",
+          (int)version, (int)expected_version));
     }
+    // Store the actual file version so subclasses can branch for migration.
+    file_version = version;
   };
   template <class Archive> void save(Archive &ar) const {
-    ar(magic, type, version, name, attributes);
-    // ar(expected_magic, expected_type, expected_version, name, attributes);
+    // Always write the correct expected values, not whatever was loaded.
+    ar(expected_magic, expected_type, expected_version, name, attributes);
   };
 
 public:
@@ -38,6 +42,9 @@ public:
   int8_t version = 0;
   int8_t expected_type = 0;
   int8_t expected_version = 0;
+  // Set after load() — the version that was actually in the file.
+  // Subclasses use this to pick the correct deserialization path.
+  int8_t file_version = 0;
   std::string name;
   fs::path path;
   std::map<std::string, std::string> attributes = {};
@@ -46,6 +53,7 @@ public:
     type = expected_type;
     version = expected_version;
     magic = expected_magic;
+    file_version = expected_version;
   }
 
   Store(int8_t type, std::string name, fs::path path, int version)

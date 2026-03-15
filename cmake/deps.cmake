@@ -79,6 +79,7 @@ target_link_libraries(${EXE_NAME} PUBLIC Backward::Interface)
 IF (NOT CPM_SKIP_UPDATE)
 CPMAddPackage("gh:juliettef/IconFontCppHeaders#main")
 CPMAddPackage("gh:USCiLab/cereal#v1.3.2")
+CPMAddPackage("gh:webview/webview#master")
 ENDIF()
 
 if(IconFontCppHeaders_ADDED)
@@ -86,6 +87,9 @@ if(IconFontCppHeaders_ADDED)
 endif()
 if(cereal_ADDED)
   target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${cereal_SOURCE_DIR}/include")
+endif()
+if(webview_ADDED)
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${webview_SOURCE_DIR}/core/include")
 endif()
 
 FetchContent_Declare(

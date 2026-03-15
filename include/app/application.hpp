@@ -12,6 +12,8 @@ public:
   fs::path PATH;
   std::string PATH_STR;
 
+  void* w_handle = nullptr;
+
   LibLog::Logger &log = LibLog::Logger::getInstance();
   LibLog::Logger luaLog = LibLog::Logger(fmt::color::aqua, "LUA");
 

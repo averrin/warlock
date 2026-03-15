@@ -11,6 +11,7 @@
 #include <map>
 #include <ranges>
 #include <stdexcept>
+#include <utils/data/field_archive.hpp>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 
@@ -103,6 +104,23 @@ struct Environment {
   template <class Archive> void load(Archive &ar) {
     ar(temperature, minutes, radioactivity, airFlow, sun, days);
   };
+  void field_save(FieldOutputArchive &ar) const {
+    FIELD(ar, temperature);
+    FIELD(ar, minutes);
+    FIELD(ar, radioactivity);
+    FIELD(ar, airFlow);
+    FIELD(ar, sun);
+    FIELD(ar, days);
+    // isDay is derived at runtime; temperatures/named_history are transient
+  }
+  void field_load(FieldInputArchive &ar) {
+    FIELD(ar, temperature);
+    FIELD(ar, minutes);
+    FIELD(ar, radioactivity);
+    FIELD(ar, airFlow);
+    FIELD(ar, sun);
+    FIELD(ar, days);
+  }
 
   std::map<int, std::deque<float>> temperatures = {};
   std::map<std::string, std::deque<float>> named_history = {};
@@ -407,6 +425,18 @@ struct Frame {
   template <class Archive> void load(Archive &ar) {
     ar(data, components, size, material);
   };
+  void field_save(FieldOutputArchive &ar) const {
+    FIELD(ar, data);
+    FIELD(ar, components);
+    FIELD(ar, size);
+    FIELD(ar, material);
+  }
+  void field_load(FieldInputArchive &ar) {
+    FIELD(ar, data);
+    FIELD(ar, components);
+    FIELD(ar, size);
+    FIELD(ar, material);
+  }
 };
 
 enum class ConnectionType {
@@ -427,6 +457,18 @@ struct Connection {
   template <class Archive> void load(Archive &ar) {
     ar(data, source, target, type);
   };
+  void field_save(FieldOutputArchive &ar) const {
+    FIELD(ar, data);
+    FIELD(ar, source);
+    FIELD(ar, target);
+    FIELD(ar, type);
+  }
+  void field_load(FieldInputArchive &ar) {
+    FIELD(ar, data);
+    FIELD(ar, source);
+    FIELD(ar, target);
+    FIELD(ar, type);
+  }
 };
 
 std::shared_ptr<Component>
