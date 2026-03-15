@@ -16,14 +16,22 @@ add_executable(${PROJECT_NAME}
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_EXTENSIONS OFF)
+
+# Skip cereal's Boost-based performance tests
+set(SKIP_PERFORMANCE_COMPARISON ON CACHE BOOL "" FORCE)
+set(BUILD_DOC OFF CACHE BOOL "" FORCE)
+set(BUILD_SANDBOX OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+
 include(cmake/common.cmake)
 include(cmake/deps.cmake)
 
-# set(THREADS_PREFER_PTHREAD_FLAG ON)
-# find_package(Threads REQUIRED)
-# target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)
-
-# set(CMAKE_EXE_LINKER_FLAGS "-fPIE")
 target_sources(${PROJECT_NAME} PRIVATE ${DEPS_SOURCES})
-target_compile_options(${PROJECT_NAME} PRIVATE -Wno-format-security -Wno-switch)
+
+if(MSVC)
+  target_compile_options(${PROJECT_NAME} PRIVATE /W3 /wd4244 /wd4267 /wd4996 /wd4305 /Zc:__cplusplus /bigobj)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+else()
+  target_compile_options(${PROJECT_NAME} PRIVATE -Wno-format-security -Wno-switch)
+endif()
 

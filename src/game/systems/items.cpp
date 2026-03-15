@@ -95,7 +95,7 @@ void ItemsSystem::fixedUpdate() {
               satisfied = true;
             }
             if (!satisfied) {
-              c->state = ComponentState::ERROR;
+              c->state = ComponentState::COMP_ERROR;
               c->error = "Not enough input components";
               lastExecutionTime[entity] = 0.0;
               continue;
@@ -129,7 +129,7 @@ void ItemsSystem::fixedUpdate() {
               satisfied = true;
             }
             if (!satisfied) {
-              c->state = ComponentState::ERROR;
+              c->state = ComponentState::COMP_ERROR;
               c->error = "Not enough space for output components";
               lastExecutionTime[entity] = 0.0;
               continue;

@@ -223,11 +223,11 @@ void PowerSystem::fixedUpdate() {
                       "heat", battery->data.get<float>("charge_heat"));
                 }
               } else {
-                c->state = ComponentState::ERROR;
+                c->state = ComponentState::COMP_ERROR;
                 c->error = "Incorrect or deactivated battery selected";
               }
             } else {
-              c->state = ComponentState::ERROR;
+              c->state = ComponentState::COMP_ERROR;
               c->error = "No battery selected";
             }
           }

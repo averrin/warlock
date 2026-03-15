@@ -75,7 +75,7 @@ const char *ComponentStateToString(ComponentState state) {
     return "Active";
   case ComponentState::DEACTIVATING:
     return "Deactivating";
-  case ComponentState::ERROR:
+  case ComponentState::COMP_ERROR:
     return "Error";
   case ComponentState::DESTROYED:
     return "Destroyed";
@@ -98,7 +98,7 @@ const char *ComponentStateToIcon(ComponentState state) {
     return ICON_FA_CHECK;
   case ComponentState::DEACTIVATING:
     return ICON_FA_GEARS;
-  case ComponentState::ERROR:
+  case ComponentState::COMP_ERROR:
     return ICON_FA_TRIANGLE_EXCLAMATION;
   case ComponentState::DESTROYED:
     return ICON_FA_SKULL_CROSSBONES;

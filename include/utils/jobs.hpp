@@ -4,7 +4,7 @@
 #include <memory>
 
 enum JobStatus {
-  INIT, PROGRESS, COMPLETE, ERROR
+  INIT, PROGRESS, COMPLETE, JOB_ERROR
 };
 
 struct Job {

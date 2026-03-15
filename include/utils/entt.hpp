@@ -62,7 +62,7 @@ struct event_emitter : entt::emitter<event_emitter> {
                                       }),
                        handler_list.end());
     if (handler_list.empty()) {
-      clear<Type>();
+      this->template erase<Type>();
     }
   }
 };

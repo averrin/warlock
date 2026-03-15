@@ -51,20 +51,20 @@ struct transform {
 };
 
 struct text {
-  std::string text = "";
+  std::string content = "";
   sf::Color color = sf::Color::White;
   int size = 12;
   friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const { ar(text, size); };
-  template <class Archive> void load(Archive &ar) { ar(text, size); };
+  template <class Archive> void save(Archive &ar) const { ar(content, size); };
+  template <class Archive> void load(Archive &ar) { ar(content, size); };
 };
 struct sprite {
-  std::string sprite = "";
+  std::string key = "";
   sf::Color color = sf::Color::White;
   wl::rect rect;
   friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const { ar(sprite, rect); };
-  template <class Archive> void load(Archive &ar) { ar(sprite, rect); };
+  template <class Archive> void save(Archive &ar) const { ar(key, rect); };
+  template <class Archive> void load(Archive &ar) { ar(key, rect); };
 };
 
 struct line {

@@ -38,7 +38,7 @@ void Application::initConfig() {
     log.error("config.lua doesn't exist!");
     exit(111);
   }
-  sol::table settings = lua.script_file(cp);
+  sol::table settings = lua.script_file(cp.string());
   entt::monostate<"settings"_hs>{} = settings;
 }
 

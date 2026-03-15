@@ -51,10 +51,10 @@ void PowerEditor::render() {
     }
     */
 
-    int history = 100;
+    constexpr int history = 100;
     float x[history];
     for (int i = 0; i < history; ++i) {
-      x[i] = i;
+      x[i] = static_cast<float>(i);
     }
 
     std::vector<float> combined_range = {};
@@ -79,12 +79,15 @@ void PowerEditor::render() {
                           ImVec2(0, 0))) {
       ImPlot::SetupAxisLimits(ImAxis_X1, 0, history);
       ImPlot::SetupAxisLimits(ImAxis_Y1, min_value - vpad, max_value + vpad);
-      ImPlot::PlotLine("Production", x, &net.history["production"][0],
-                       net.history["production"].size());
-      ImPlot::PlotLine("Total", x, &net.history["total"][0],
-                       net.history["total"].size());
-      ImPlot::PlotLine("Consumption", x, &net.history["consumption"][0],
-                       net.history["consumption"].size());
+      std::vector<float> prod_v(net.history["production"].begin(), net.history["production"].end());
+      std::vector<float> total_v(net.history["total"].begin(), net.history["total"].end());
+      std::vector<float> cons_v(net.history["consumption"].begin(), net.history["consumption"].end());
+      ImPlot::PlotLine("Production", x, prod_v.data(),
+                       static_cast<int>(prod_v.size()));
+      ImPlot::PlotLine("Total", x, total_v.data(),
+                       static_cast<int>(total_v.size()));
+      ImPlot::PlotLine("Consumption", x, cons_v.data(),
+                       static_cast<int>(cons_v.size()));
       ImPlot::EndPlot();
     }
 

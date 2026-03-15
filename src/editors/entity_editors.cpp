@@ -42,7 +42,7 @@ void EntityTreeEditor::ComponentsPanel(Frame &frame) {
     case ComponentState::ACTIVE:
       color = sf::Color::Green;
       break;
-    case ComponentState::ERROR:
+    case ComponentState::COMP_ERROR:
       color = sf::Color::Red;
       break;
     case ComponentState::DEACTIVATED:
@@ -280,7 +280,7 @@ bool EntityTreeEditor::ComponentEditor(Frame &f, std::shared_ptr<Component> c) {
   static const std::array<ComponentState, 8> component_states = {
       ComponentState::DEACTIVATED, ComponentState::ACTIVATING,
       ComponentState::ACTIVE,      ComponentState::DEACTIVATING,
-      ComponentState::ERROR,       ComponentState::DESTROYED,
+      ComponentState::COMP_ERROR,       ComponentState::DESTROYED,
       ComponentState::BLOCKED,     ComponentState::BROKEN,
   };
 
@@ -467,7 +467,7 @@ template <>
 void ComponentEditorWidget<wl::text>(entt::registry &registry,
                                      entt::registry::entity_type e) {
   auto &t = registry.get<wl::text>(e);
-  if (ImGui::InputText("Text", t.text)) {
+  if (ImGui::InputText("Text", t.content)) {
     registry.emplace_or_replace<wl::text>(e, t);
   };
   if (ImGui::InputInt("Size", &t.size)) {
@@ -478,7 +478,7 @@ template <>
 void ComponentEditorWidget<wl::sprite>(entt::registry &registry,
                                        entt::registry::entity_type e) {
   auto &t = registry.get<wl::sprite>(e);
-  if (ImGui::InputText("Sprite", t.sprite)) {
+  if (ImGui::InputText("Sprite", t.key)) {
     registry.emplace_or_replace<wl::sprite>(e, t);
   };
   if (ImGui::InputFloat("Width", &t.rect.width)) {
@@ -583,20 +583,20 @@ void ComponentEditorWidget<Frame>(entt::registry &registry,
         ImPlot::TagY(ThermalSystem::heat_effect_temp, ImVec4(0, 1, 1, 1),
                      "Overheat");
         ImPlot::PlotInfLines("Overheat", &ThermalSystem::heat_effect_temp, 1,
-                             ImPlotInfLinesFlags_Horizontal);
+                             ImPlotSpec(ImPlotProp_Flags, ImPlotInfLinesFlags_Horizontal));
         ImPlot::TagY(ThermalSystem::cold_effect_temp, ImVec4(0, 1, 1, 1),
                      "Freeze");
         ImPlot::PlotInfLines("Freeze", &ThermalSystem::cold_effect_temp, 1,
-                             ImPlotInfLinesFlags_Horizontal);
+                             ImPlotSpec(ImPlotProp_Flags, ImPlotInfLinesFlags_Horizontal));
 
         ImPlot::TagY(ThermalSystem::max_break_temp, ImVec4(0, 1, 1, 1),
                      "Fatal Heat");
         ImPlot::PlotInfLines("Fatal Heat", &ThermalSystem::max_break_temp, 1,
-                             ImPlotInfLinesFlags_Horizontal);
+                             ImPlotSpec(ImPlotProp_Flags, ImPlotInfLinesFlags_Horizontal));
         ImPlot::TagY(ThermalSystem::min_break_temp, ImVec4(0, 1, 1, 1),
                      "Fatal Cold");
         ImPlot::PlotInfLines("Fatal Cold", &ThermalSystem::min_break_temp, 1,
-                             ImPlotInfLinesFlags_Horizontal);
+                             ImPlotSpec(ImPlotProp_Flags, ImPlotInfLinesFlags_Horizontal));
 
         ImPlot::PlotLine("Environment", x, &env.temperatures[-1][0],
                          env.temperatures[-1].size());

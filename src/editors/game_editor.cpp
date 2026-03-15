@@ -195,20 +195,20 @@ void GameEditor::render() {
           ImPlot::TagY(ThermalSystem::heat_effect_temp, ImVec4(0, 1, 1, 1),
                        "Overheat");
           ImPlot::PlotInfLines("Overheat", &ThermalSystem::heat_effect_temp, 1,
-                               ImPlotInfLinesFlags_Horizontal);
+                               ImPlotSpec(ImPlotProp_Flags, ImPlotInfLinesFlags_Horizontal));
           ImPlot::TagY(ThermalSystem::cold_effect_temp, ImVec4(0, 1, 1, 1),
                        "Freeze");
           ImPlot::PlotInfLines("Freeze", &ThermalSystem::cold_effect_temp, 1,
-                               ImPlotInfLinesFlags_Horizontal);
+                               ImPlotSpec(ImPlotProp_Flags, ImPlotInfLinesFlags_Horizontal));
 
           ImPlot::TagY(ThermalSystem::max_break_temp, ImVec4(0, 1, 1, 1),
                        "Fatal Heat");
           ImPlot::PlotInfLines("Fatal Heat", &ThermalSystem::max_break_temp, 1,
-                               ImPlotInfLinesFlags_Horizontal);
+                               ImPlotSpec(ImPlotProp_Flags, ImPlotInfLinesFlags_Horizontal));
           ImPlot::TagY(ThermalSystem::min_break_temp, ImVec4(0, 1, 1, 1),
                        "Fatal Cold");
           ImPlot::PlotInfLines("Fatal Cold", &ThermalSystem::min_break_temp, 1,
-                               ImPlotInfLinesFlags_Horizontal);
+                               ImPlotSpec(ImPlotProp_Flags, ImPlotInfLinesFlags_Horizontal));
 
           ImPlot::PlotLine("Environment", x, &env.temperatures[-1][0],
                            env.temperatures[-1].size());

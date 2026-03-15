@@ -49,7 +49,7 @@ void JobManager::init(LibLog::Logger parentLog) {
                         &Job::status, "progress", &Job::progress, "error",
                         &Job::error, "func", &Job::func);
   lua.new_enum("JobStatus", "PROGRESS", JobStatus::PROGRESS, "COMPLETE",
-               JobStatus::COMPLETE, "ERROR", JobStatus::ERROR);
+               JobStatus::COMPLETE, "ERROR", JobStatus::JOB_ERROR);
 
   lua.new_usertype<JobManager>("JobManager", "new", sol::no_constructor, "add",
                                &JobManager::add);
@@ -102,7 +102,7 @@ int JobManager::add(std::shared_ptr<Job> job, bool start) {
             } catch (const std::exception &e) {
               std::cerr << e.what() << std::endl;
               throw e;
-              job->status = JobStatus::ERROR;
+              job->status = JobStatus::JOB_ERROR;
               job->error = e.what();
               emitter.publish(job_error_event{job});
               return;

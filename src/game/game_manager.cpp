@@ -247,7 +247,7 @@ void GameManager::start() {
   saveData();
 
   fs::path PATH = entt::monostate<"path"_hs>{};
-  auto assetLoader = entt::locator<AssetLoader>::emplace(PATH / "assets");
+  auto assetLoader = entt::locator<AssetLoader>::emplace((PATH / "assets").string());
   fmt::print("Assets: {}\n", assetLoader.getTextures().size());
 
   log.setParent(nullptr);
@@ -322,7 +322,7 @@ void GameManager::start() {
                                        "Frames");
   EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
                                        "Connections");
-  lua.load_file(PATH / "scripts/game_init.lua").call();
+  lua.load_file((PATH / "scripts/game_init.lua").string()).call();
 
   log.setAsync(false);
   log.setParent(p);
@@ -365,7 +365,7 @@ void GameManager::initScript(entt::registry &registry, entt::entity entity) {
   registry.patch<hf::script>(entity, [&](auto &script) {
     auto &lua = entt::locator<sol::state>::value();
     log.var("Script", script.path);
-    script.self = lua.load_file(PATH / script.path).call();
+    script.self = lua.load_file((PATH / script.path).string()).call();
     script.self["id"] = entity;
     script.handlers.init = script.self["init"];
     script.handlers.create = script.self["create"];

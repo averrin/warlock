@@ -22,7 +22,7 @@ void register_bindings(sol::state &lua) {
   lua.new_enum("ComponentState", "DEACTIVATED", ComponentState::DEACTIVATED,
                "ACTIVATING", ComponentState::ACTIVATING, "ACTIVE",
                ComponentState::ACTIVE, "DEACTIVATING",
-               ComponentState::DEACTIVATING, "ERROR", ComponentState::ERROR,
+               ComponentState::DEACTIVATING, "ERROR", ComponentState::COMP_ERROR,
                "DESTROYED", ComponentState::DESTROYED, "BLOCKED",
                ComponentState::BLOCKED, "BROKEN", ComponentState::BROKEN);
 

@@ -112,7 +112,7 @@ void DrawEngine::drawTexts() {
     auto t = std::make_shared<sf::Text>();
     t->setFont(font); // font is a sf::Font
     t->setPosition(transform.position.x, transform.position.y);
-    t->setString(text.text);
+    t->setString(text.content);
     t->setCharacterSize(text.size);
     t->setFillColor(text.color);
     layers->layers["overlay"]->draw(t, (int)f);
@@ -162,7 +162,7 @@ void DrawEngine::drawSprites() {
     }
 
     auto sprite = std::make_shared<sf::Sprite>();
-    auto texture = assetsLoader.getTextures().at(s.sprite);
+    auto texture = assetsLoader.getTextures().at(s.key);
     sprite->setTexture(*texture);
     if (current_state.registry.all_of<wl::visual_state>(c)) {
       auto state = current_state.registry.get<wl::visual_state>(c);

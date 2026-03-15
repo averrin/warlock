@@ -50,19 +50,19 @@ public:
       // }
       for (const fs::path &file : fs::directory_iterator(p)) {
         if (file.extension() == ".lua") {
-          ImGui::Text(file.filename().c_str());
+          ImGui::Text("%s", file.filename().string().c_str());
           ImGui::SameLine();
           if (ImGui::Button(
                   fmt::format("{}##{}", ICON_FA_FOLDER_OPEN, file.string())
                       .c_str())) {
-            currentFile = file;
+            currentFile = file.string();
             luaEditor->SetText(content[currentFile]);
           }
           ImGui::SameLine();
           if (ImGui::Button(
                   fmt::format("{}##{}", ICON_FA_PLAY, file.string()).c_str())) {
             fmt::print("run {}", file.string());
-            lua.script_file(file);
+            lua.script_file(file.string());
           }
         }
       }

@@ -1,4 +1,6 @@
-set(CMAKE_BUILD_TYPE Debug)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Debug)
+endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 set(PROJECT_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
 set(EXE_NAME ${PROJECT_NAME})
@@ -13,9 +15,6 @@ include_directories(
   "${PROJECT_PATH}/include"
 )
 
-target_link_libraries(${EXE_NAME} PRIVATE
-  #stdc++fs
-)
 set_target_properties(${EXE_NAME}
     PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

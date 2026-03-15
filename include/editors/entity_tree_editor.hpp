@@ -7,6 +7,25 @@
 #include <imgui-stl.hpp>
 #include <imgui.h>
 #include <imgui_entt_entity_editor.hpp>
+#include <game/components/frame.hpp>
+#include <utils/entt_draw.hpp>
+
+// Forward declarations of template specializations to prevent
+// duplicate instantiations across translation units (MSVC LNK2005)
+template <> void MM::ComponentEditorWidget<hf::meta>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<hf::position>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<hf::visible>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<hf::renderable>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<hf::ineditor>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<Frame>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<Connection>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<Environment>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<wl::transform>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<wl::text>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<wl::sprite>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<wl::visual_state>(entt::registry &, entt::entity);
+template <> void MM::ComponentEditorWidget<wl::rect>(entt::registry &, entt::entity);
+
 #include <map>
 #include <memory>
 #include <string>

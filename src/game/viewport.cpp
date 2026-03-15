@@ -136,7 +136,7 @@ void Viewport::loadTileset(fs::path path) {
   for (auto t_path : tileSet.maps) {
     log.var("Texture", t_path);
     sf::Texture t;
-    t.loadFromFile(path / t_path);
+    t.loadFromFile((path / t_path).string());
     tilesTextures.push_back(std::make_shared<sf::Texture>(t));
   }
   log.stop(label);

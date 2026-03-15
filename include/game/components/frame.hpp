@@ -122,7 +122,7 @@ enum class ComponentState {
   ACTIVATING,
   ACTIVE,
   DEACTIVATING,
-  ERROR,
+  COMP_ERROR,
   DESTROYED,
   BLOCKED,
   BROKEN,
@@ -287,7 +287,7 @@ struct Component {
     }
 
     if (state == ComponentState::DEACTIVATED ||
-        state == ComponentState::ERROR) {
+        state == ComponentState::COMP_ERROR) {
       error = "";
       state = ComponentState::ACTIVATING;
       time_switch = data.get_or<int>("activation_time", 0);
@@ -302,7 +302,7 @@ struct Component {
       return false;
     }
     if (state == ComponentState::ACTIVE ||
-        state == ComponentState::ACTIVATING || state == ComponentState::ERROR) {
+        state == ComponentState::ACTIVATING || state == ComponentState::COMP_ERROR) {
       state = ComponentState::DEACTIVATING;
       time_switch = data.get_or<int>("activation_time", 0);
       next_state = ComponentState::DEACTIVATED;
@@ -336,7 +336,7 @@ struct Frame {
   FrameSize size = FrameSize::M;
   ComponentMaterial material = ComponentMaterial::STEEL;
 
-  std::map<FrameSize, std::map<ComponentSize, uint>> limits = {
+  std::map<FrameSize, std::map<ComponentSize, unsigned int>> limits = {
       {FrameSize::S, {{ComponentSize::S, 8}, {ComponentSize::M, 1}}},
       {FrameSize::M, {{ComponentSize::S, 16}, {ComponentSize::M, 2}}},
       {FrameSize::L,

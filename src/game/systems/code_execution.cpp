@@ -60,7 +60,7 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
   if (!result.valid()) {
     sol::error err = result;
     std::cout << "Lua script error: " << err.what() << std::endl;
-    c->state = ComponentState::ERROR;
+    c->state = ComponentState::COMP_ERROR;
     c->error = err.what();
   } else {
     auto f = result.get<sol::table>()[function_name];
@@ -69,11 +69,11 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
       if (!result.valid()) {
         sol::error err = result;
         std::cout << "Lua script error: " << err.what() << std::endl;
-        c->state = ComponentState::ERROR;
+        c->state = ComponentState::COMP_ERROR;
         c->error = err.what();
       }
     } else {
-      c->state = ComponentState::ERROR;
+      c->state = ComponentState::COMP_ERROR;
       c->error = "";
     }
   }

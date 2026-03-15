@@ -36,7 +36,7 @@ void PresentationSystem::resetDrawables() {
     auto &text = makeEntity<wl::text>(current_state.registry, "Frame Text", f);
     auto text_entity = getChildByName(current_state.registry, "Frame Text", f);
 
-    text.text = fmt::format("{} [{}]", frame.data.name, frame.data.id);
+    text.content = fmt::format("{} [{}]", frame.data.name, frame.data.id);
     text.color = sf::Color(100, 100, 255, 255);
     text.size = 20;
 
@@ -72,7 +72,7 @@ void PresentationSystem::resetDrawables() {
         makeEntity<wl::sprite>(current_state.registry, "Frame Sprite", f);
     auto sprite_entity =
         getChildByName(current_state.registry, "Frame Sprite", f);
-    sprite.sprite = "d6.png";
+    sprite.key = "d6.png";
     sprite.rect = rect;
     current_state.registry.emplace_or_replace<wl::transform>(
         sprite_entity, wl::transform{
