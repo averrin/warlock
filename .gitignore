@@ -1,0 +1,5 @@
+build*
+.worktrees/
+.claude
+web/node_modules
+web/dist
