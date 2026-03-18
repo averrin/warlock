@@ -3,6 +3,7 @@ import type { RpcClient } from "../../rpc/client";
 import type { ComponentDTO } from "../../rpc/types";
 import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS } from "../ui";
 import { useGameStore } from "../../stores/game";
+import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { ComponentControls } from "./ComponentControls";
 import { ComponentAttributes } from "./ComponentAttributes";
 import { StoragePanelWithSubscription } from "../storage/StoragePanel";
@@ -55,10 +56,21 @@ function CardExpandControl({
   );
 }
 
+/** Extract the string value from a raw code attribute (bare string or AttributeDTO). */
+function extractCodeString(val: unknown): string {
+  if (typeof val === "string") return val;
+  if (typeof val === "object" && val !== null && "base_value" in val) {
+    const bv = (val as { base_value: unknown }).base_value;
+    return typeof bv === "string" ? bv : "";
+  }
+  return "";
+}
+
 export function ComponentCard({ component, frameId, rpcClient }: Props) {
   const [expanded, setExpanded] = useState(false);
   const setComponentSize = useGameStore((s) => s.setComponentSize);
   const setComponentMaterial = useGameStore((s) => s.setComponentMaterial);
+  const openComponentCodeEditor = useWindowLayoutStore((s) => s.openComponentCodeEditor);
 
   const stateColor = STATE_COLORS[component.state] ?? "#1f2937";
   const effects = (component.effects ?? []).map((e) => EFFECT_LABELS[e] ?? e);
@@ -71,9 +83,33 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
   if (isFrozen) borderColor = "#3b82f6";
   else if (isOverheat) borderColor = "#f97316";
 
+  const codeAttrRaw = component.attributes?.["code"];
+  const hasCodeAttr = codeAttrRaw !== undefined;
+
+  const openLuaDef = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    openComponentCodeEditor(
+      { mode: "source", sourceName: component.name.toLowerCase() },
+      `λ ${component.name}`,
+    );
+  };
+
+  const openCodeAttr = () => {
+    openComponentCodeEditor(
+      {
+        mode: "attribute",
+        frameId,
+        componentId: component.id,
+        attrKey: "code",
+        initialCode: extractCodeString(codeAttrRaw),
+      },
+      `📝 ${component.name} #${component.id} — code`,
+    );
+  };
+
   return (
     <div style={{ border: "1px solid #334155", borderRadius: 6, padding: "6px 8px", display: "grid", gap: 6 }}>
-      {/* Header: icon | name id effects badge | flex-1 | action buttons | expand control */}
+      {/* Header: icon | name id effects badge | flex-1 | λ | action buttons | expand control */}
       <div
         style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
         onClick={() => setExpanded((v) => !v)}
@@ -107,6 +143,30 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
         <Badge label={component.state} variant="state" />
 
         <div style={{ flex: 1 }} />
+
+        {/* Lua def button — always shown */}
+        <button
+          type="button"
+          title={`Open ${component.name} Lua definition`}
+          onClick={openLuaDef}
+          style={{
+            border: "1px solid #334155",
+            borderRadius: 4,
+            width: 20,
+            height: 20,
+            background: "#020617",
+            color: "#6b7280",
+            cursor: "pointer",
+            fontSize: 11,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            flexShrink: 0,
+          }}
+        >
+          λ
+        </button>
 
         <ComponentControls
           frameId={frameId}
@@ -149,6 +209,26 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
             attributes={component.attributes as Record<string, unknown> | undefined}
             rpcClient={rpcClient}
           />
+          {/* Code attribute editor button */}
+          {hasCodeAttr && (
+            <button
+              type="button"
+              onClick={openCodeAttr}
+              style={{
+                fontSize: 11,
+                padding: "4px 10px",
+                background: "#0f1f35",
+                border: "1px solid #1d4ed8",
+                borderRadius: 4,
+                color: "#60a5fa",
+                cursor: "pointer",
+                textAlign: "left",
+                alignSelf: "flex-start",
+              }}
+            >
+              📝 Edit Instance Code
+            </button>
+          )}
           {component.storage && (
             <StoragePanelWithSubscription frameId={frameId} componentId={component.id} mode="full" rpcClient={rpcClient} />
           )}
