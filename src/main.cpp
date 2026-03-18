@@ -6,53 +6,39 @@
 #include <rpc/handlers/component_handler.hpp>
 #include <rpc/handlers/connection_handler.hpp>
 #include <rpc/handlers/code_handler.hpp>
+#include <rpc/handlers/items_handler.hpp>
+#include <rpc/handlers/storage_handler.hpp>
+#include <rpc/handlers/patch_handler.hpp>
 #include <rpc/event_bridge.hpp>
 #include <app/application.hpp>
 #include <backward.hpp>
 #include <chrono>
+#include <thread>
+#include <ixwebsocket/IXNetSystem.h>
 #include <fmt/format.h>
-#include <imgui-SFML.h>
-#include <imgui-stl.hpp>
-#include <implot.h>
 #include <meta.hpp>
-#include <misc/cpp/imgui_stdlib.h>
 #include <utils/data/loader.hpp>
 #include <utils/job_manager.hpp>
 #include <utils/selfpath.hpp>
 using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
-#include <app/gui.hpp>
-#include <app/ide.hpp>
-#include <app/scene.hpp>
-#include <game/draw_engine.hpp>
-#include <game/draw_manager.hpp>
 #include <game/game_manager.hpp>
 #include <utils/entt.hpp>
 
-#include <IconsFontAwesome6.h>
 #include <argparse/argparse.hpp>
-#include <imgui.h>
-
-#include <editors/entity_tree_editor.hpp>
-#include <editors/game_editor.hpp>
-#include <editors/meta_data_editor.hpp>
-#include <editors/power_editor.hpp>
-#include <editors/state_editor.hpp>
-#include <editors/tileset_editor.hpp>
-#include <game/prototypes.hpp>
 
 namespace backward {
 backward::SignalHandling sh;
 } // namespace backward
 
 int main(int argc, char *argv[]) {
+  ix::initNetSystem();
 
   argparse::ArgumentParser program(APP_NAME);
 
-  program.add_argument("--no-gui")
-      .help("disable gui")
-      .default_value(false)
-      .implicit_value(true);
+  program.add_argument("--ui-mode")
+      .help("UI runtime mode: web | native | headless")
+      .default_value(std::string("web"));
 
   program.add_argument("--no-editor")
       .help("disable editor")
@@ -81,8 +67,15 @@ int main(int argc, char *argv[]) {
     std::cerr << program;
     std::exit(1);
   }
-  bool nogui = program["--no-gui"] == true;
-  bool noeditor = nogui || program["--no-editor"] == true;
+  std::string uiMode = program.get<std::string>("--ui-mode");
+  bool noeditor = program["--no-editor"] == true;
+  bool useNativeUi = uiMode == "native";
+  bool headless = uiMode == "headless" || uiMode == "web";
+
+  if (uiMode != "web" && uiMode != "native" && uiMode != "headless") {
+    fmt::print(stderr, "Invalid --ui-mode '{}'. Expected: web, native, headless.\n", uiMode);
+    return EXIT_FAILURE;
+  }
 
   bool nostate = program["--new"] == true;
   bool nodebug = program["--no-debug"] == true;
@@ -112,22 +105,6 @@ int main(int argc, char *argv[]) {
   jobs.init(app.log);
   jobs.sync = true;
 
-  auto &scene = entt::locator<Scene>::emplace();
-  auto &draw_manager = entt::locator<DrawManager>::emplace();
-
-  std::shared_ptr<DrawEngine> main_engine = nullptr;
-  if (!nogui) {
-    scene.init(app.log);
-    draw_manager.init(app.log);
-    main_engine = draw_manager.addEngine("main");
-    main_engine->resize(scene.window->getSize());
-  }
-
-  auto &gui = entt::locator<Gui>::emplace();
-  if (!noeditor) {
-    gui.init(app.log);
-  }
-
   auto &loader = entt::locator<Loader>::emplace();
   loader.init(app.log);
 
@@ -143,63 +120,31 @@ int main(int argc, char *argv[]) {
   rpc::registerComponentHandlers(rpcServer);
   rpc::registerConnectionHandlers(rpcServer);
   rpc::registerCodeHandlers(rpcServer);
+  rpc::registerItemsHandlers(rpcServer);
+  rpc::registerStorageHandlers(rpcServer);
+  rpc::registerPatchHandlers(rpcServer);
   rpc::initEventBridge(rpcServer);
-  rpcServer.start();
-
-  if (!noeditor) {
-    gui.renders.push_back([&]() {
-      ImGui::ShowDemoWindow();
-      ImPlot::ShowDemoWindow();
-    });
-    auto md_editor = MetaDataEditor("Meta Data Editor");
-    gui.renders.push_back([&]() { md_editor.render(); });
-    auto et_editor = EntityTreeEditor("Prototype Editor");
-    gui.renders.push_back([&]() {
-      et_editor.render<Prototypes, entt::tag<"proto"_hs> /*, hf::meta*/>(
-          entt::locator<Prototypes>::value());
-    });
-    auto state_editor = StateEditor("State Editor");
-    jobs.add(state_editor.startJob, true);
-    gui.renders.push_back([&]() { state_editor.render(); });
-
-    auto ide = std::make_shared<IDE>();
-    ide->init(path);
-    gui.renders.push_back([=]() { ide->render(); });
-
-    auto power_editor = std::make_shared<PowerEditor>("Power Editor");
-    gui.editors.push_back(power_editor);
-
-    auto game_editor = std::make_shared<GameEditor>("Game Editor");
-    gui.editors.push_back(game_editor);
+  if (!rpcServer.start()) {
+    app.log.error("RPC server startup failed. Try another port with --rpc-port <port>.");
+    app.log.stop(APP_NAME);
+    ix::uninitNetSystem();
+    return EXIT_FAILURE;
   }
 
-  if (!nogui) {
-    sf::RectangleShape rectangle;
-    rectangle.setPosition(0, 0);
-    rectangle.setSize(
-        sf::Vector2f(scene.window->getSize().x, scene.window->getSize().y));
-
-    main_engine->start();
+  if (useNativeUi) {
+    app.log.warn("Native ImGui/SFML UI is retired from primary runtime. Use web GUI instead.");
+    if (!noeditor) {
+      app.log.warn("Ignoring editor startup in native mode.");
+    }
   }
 
-  while (nogui || scene.window->isOpen()) {
+  while (headless || useNativeUi) {
     app.serve();
     gm.serve();
-    if (!nogui) {
-      scene.serve();
-      if (gm.started) {
-        main_engine->_draw();
-        scene.window->draw(main_engine->cache);
-      }
-      if (!noeditor) {
-        gui.serve();
-      }
-      scene.draw();
-    } else {
-      std::this_thread::sleep_for(50ms);
-    }
+    std::this_thread::sleep_for(16ms);
   }
   rpcServer.stop();
   app.log.stop(APP_NAME);
+  ix::uninitNetSystem();
   return EXIT_SUCCESS;
 }
