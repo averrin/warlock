@@ -197,7 +197,6 @@ public:
   }
 
   bool add(ItemStack &stack) {
-    fmt::print("Adding {} ({}) to storage\n", stack.item.name, stack.amount);
     if (!canAdd(stack))
       return false;
     for (auto &slot : slots) {
@@ -328,6 +327,17 @@ struct Component {
     return false;
   }
 
+  bool repair() {
+    if (state == ComponentState::COMP_ERROR || state == ComponentState::BROKEN) {
+      error = "";
+      state = ComponentState::DEACTIVATED;
+      time_switch = -1;
+      next_state = ComponentState::DEACTIVATED;
+      return true;
+    }
+    return false;
+  }
+
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
     ar(data, size, state, require, conflict, material);
@@ -441,6 +451,7 @@ struct Frame {
 enum class ConnectionType {
   POWER,
   DATA,
+  CONVEYOR,
 };
 
 struct Connection {

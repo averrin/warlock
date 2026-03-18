@@ -2,6 +2,10 @@
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
+#include <game/game_manager.hpp>
+#include <game/state.hpp>
+#include <game/components/frame.hpp>
+#include <utils/entt.hpp>
 #include <thread>
 #include <chrono>
 #include <future>
@@ -165,6 +169,175 @@ TEST_CASE("frame.update — updates frame name") {
   // Verify the name was updated
   auto frame = client.call("frame.get", {{"id", entity_id}});
   CHECK(frame["name"].get<std::string>() == "RenamedFrame");
+}
+
+TEST_CASE("state.snapshot — frames include canvas_badges") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+
+  auto snapshot = client.call("state.snapshot");
+  REQUIRE(snapshot.contains("frames"));
+  REQUIRE(snapshot["frames"].is_array());
+  REQUIRE(snapshot["frames"].size() >= 1);
+
+  for (const auto& frame : snapshot["frames"]) {
+    REQUIRE(frame.contains("canvas_badges"));
+    auto& badges = frame["canvas_badges"];
+    REQUIRE(badges.is_object());
+
+    // health must be one of ok/warn/bad
+    REQUIRE(badges.contains("health"));
+    CHECK(std::set<std::string>{"ok","warn","bad"}.count(badges["health"].get<std::string>()));
+
+    // power must be one of offline/deficit/balanced/surplus
+    REQUIRE(badges.contains("power"));
+    CHECK(std::set<std::string>{"offline","deficit","balanced","surplus"}.count(badges["power"].get<std::string>()));
+
+    // has_error must be boolean
+    REQUIRE(badges.contains("has_error"));
+    CHECK(badges["has_error"].is_boolean());
+
+    // temperature is optional but if present must be number
+    if (badges.contains("temperature") && !badges["temperature"].is_null()) {
+      CHECK(badges["temperature"].is_number());
+    }
+  }
+}
+
+TEST_CASE("state.snapshot — new empty frame has health ok and no error") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+
+  client.call("session.claim");
+  client.call("frame.create", {{"name", "BadgeTestFrame"}});
+  h.tick(5);
+
+  auto snapshot = client.call("state.snapshot");
+  for (const auto& frame : snapshot["frames"]) {
+    if (frame["name"].get<std::string>() == "BadgeTestFrame") {
+      auto& badges = frame["canvas_badges"];
+      CHECK(badges["health"].get<std::string>() == "ok");
+      CHECK(badges["has_error"].get<bool>() == false);
+      // Power status depends on network membership
+      CHECK(std::set<std::string>{"offline","balanced","surplus","deficit"}.count(
+        badges["power"].get<std::string>()));
+      return;
+    }
+  }
+  FAIL("BadgeTestFrame not found in snapshot");
+}
+
+TEST_CASE("state.snapshot — component storage includes summary fields") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+
+  client.call("session.claim");
+
+  auto list = client.call("frame.list");
+  REQUIRE(list.contains("frames"));
+  REQUIRE(list["frames"].is_array());
+  REQUIRE(list["frames"].size() >= 1);
+
+  int frame_id = list["frames"][0]["id"].get<int>(); // data.id
+
+  // Add a storage component.
+  (void)client.call("component.add", {{"frame_id", frame_id}, {"component_name", "Big Storage"}});
+  h.tick(2); // ensure storage is initialized by ItemsSystem
+
+  // Inject a couple of stacks directly for determinism.
+  {
+    auto& gm = h.game_manager();
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+
+    entt::entity frame_entity = entt::null;
+    auto view = state.registry.view<Frame>();
+    for (auto e : view) {
+      if (view.get<Frame>(e).data.id == frame_id) { frame_entity = e; break; }
+    }
+    REQUIRE(static_cast<uint32_t>(frame_entity) != static_cast<uint32_t>(entt::null));
+
+    auto& frame = state.registry.get<Frame>(frame_entity);
+    std::shared_ptr<Component> storage_comp = nullptr;
+    for (auto& c : frame.components) {
+      if (!c) continue;
+      if (c->data.get_or<std::string>("type", "") == "Storage") { storage_comp = c; break; }
+    }
+    REQUIRE(storage_comp != nullptr);
+    REQUIRE(storage_comp->storage != nullptr);
+    REQUIRE(storage_comp->storage->slots.size() >= 2);
+
+    storage_comp->storage->slots[0].stack = std::make_shared<ItemStack>(
+      ItemDefinition{"Spark Ore", "test", 999}, 3);
+    storage_comp->storage->slots[1].stack = std::make_shared<ItemStack>(
+      ItemDefinition{"Spark Stone", "test", 999}, 2);
+  }
+
+  auto snapshot = client.call("state.snapshot");
+  REQUIRE(snapshot.contains("frames"));
+  REQUIRE(snapshot["frames"].is_array());
+
+  for (const auto& frame : snapshot["frames"]) {
+    if (!frame.contains("id") || frame["id"].get<int>() != frame_id) continue;
+    REQUIRE(frame.contains("components"));
+    REQUIRE(frame["components"].is_array());
+
+    for (const auto& comp : frame["components"]) {
+      if (!comp.contains("storage") || comp["storage"].is_null()) continue;
+      auto& storage = comp["storage"];
+
+      REQUIRE(storage.contains("slots_count"));
+      REQUIRE(storage.contains("slots"));
+
+      REQUIRE(storage.contains("slots_total"));
+      REQUIRE(storage.contains("slots_used"));
+      REQUIRE(storage.contains("top_items"));
+
+      CHECK(storage["slots_total"].is_number_integer());
+      CHECK(storage["slots_used"].is_number_integer());
+      CHECK(storage["top_items"].is_array());
+
+      CHECK(storage["slots_total"].get<int>() == storage["slots_count"].get<int>());
+      CHECK(storage["slots_used"].get<int>() >= 0);
+      CHECK(storage["top_items"].size() <= 3);
+
+      // Ensure top_items includes at least 2 distinct items after production.
+      std::set<std::string> names;
+      for (const auto& ti : storage["top_items"]) {
+        REQUIRE(ti.contains("name"));
+        REQUIRE(ti.contains("amount"));
+        CHECK(ti["name"].is_string());
+        CHECK(ti["amount"].is_number_integer());
+        if (ti["name"].is_string()) {
+          names.insert(ti["name"].get<std::string>());
+        }
+      }
+      CHECK(names.size() >= 2);
+      return;
+    }
+  }
+
+  FAIL("Target frame with storage component not found in snapshot");
+}
+
+TEST_CASE("frame.get — full frame also includes canvas_badges") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+
+  auto list_result = client.call("frame.list");
+  REQUIRE(list_result["frames"].size() >= 1);
+
+  int entity_id = list_result["frames"][0]["entity_id"].get<int>();
+  auto frame = client.call("frame.get", {{"id", entity_id}});
+  REQUIRE(frame.contains("canvas_badges"));
+  auto& badges = frame["canvas_badges"];
+  REQUIRE(badges.contains("health"));
+  REQUIRE(badges.contains("power"));
+  REQUIRE(badges.contains("has_error"));
 }
 
 TEST_CASE("frame.list — game_init frames plus created ones") {

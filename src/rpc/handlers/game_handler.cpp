@@ -70,7 +70,9 @@ void registerGameHandlers(Server& server) {
     requireClaim(server, ctx);
     auto& gm = entt::locator<GameManager>::value();
     if (gm.started) {
-      return {{"status", "already_started"}};
+      nlohmann::json result = {{"status", "already_started"}};
+      logWebAction(server, "game.start", "already_started");
+      return result;
     }
     bool do_new = false;
     if (params.contains("new") && params["new"].is_boolean()) {
@@ -82,7 +84,9 @@ void registerGameHandlers(Server& server) {
       }
       gm.start();
     });
-    return {{"status", "starting"}};
+    nlohmann::json result = {{"status", "starting"}};
+    logWebAction(server, "game.start", "starting", {{"new", do_new}});
+    return result;
   });
 
   // game.pause — pause the game loop
@@ -90,6 +94,7 @@ void registerGameHandlers(Server& server) {
     requireClaim(server, ctx);
     auto& gm = entt::locator<GameManager>::value();
     gm.setPaused(true);
+    logWebAction(server, "game.pause", "ok");
     return nlohmann::json::object();
   });
 
@@ -98,7 +103,35 @@ void registerGameHandlers(Server& server) {
     requireClaim(server, ctx);
     auto& gm = entt::locator<GameManager>::value();
     gm.setPaused(false);
+    logWebAction(server, "game.resume", "ok");
     return nlohmann::json::object();
+  });
+
+  // game.speed.set — set game speed multiplier (1, 5, 10)
+  server.router().on("game.speed.set", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    int multiplier = 1;
+    if (params.contains("multiplier") && params["multiplier"].is_number_integer()) {
+      multiplier = params["multiplier"].get<int>();
+    }
+    if (multiplier != 1 && multiplier != 5 && multiplier != 10) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "multiplier must be one of: 1, 5, 10"};
+    }
+    gm.setSpeedMultiplier(static_cast<float>(multiplier));
+    auto effective = gm.speedMultiplier();
+    nlohmann::json result = {{"multiplier", effective}};
+    logWebAction(server, "game.speed.set", "ok", {{"multiplier", effective}});
+    return result;
+  });
+
+  // game.speed.get — get current speed state
+  server.router().on("game.speed.get", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    return {
+      {"paused", gm.paused()},
+      {"multiplier", gm.speedMultiplier()}
+    };
   });
 
   // game.tick — current timing info
@@ -118,7 +151,7 @@ void registerGameHandlers(Server& server) {
       auto& env = registry.get<Environment>(wk.environment);
       result["minutes"] = env.minutes;
       result["days"] = env.days;
-      result["is_day"] = env.isDay;
+      result["isDay"] = env.isDay;
     }
     return result;
   });
@@ -131,7 +164,90 @@ void registerGameHandlers(Server& server) {
       throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "No environment entity"};
     }
     auto& env = reg.get<Environment>(wk.environment);
-    return nlohmann::json{{"env", rpc::serializeEnvironment(env)}};
+    auto result = rpc::serializeEnvironment(env);
+
+    // Export stable chart keys from the environment history buffers.
+    auto toJsonArray = [](const std::deque<float>& values) {
+      nlohmann::json out = nlohmann::json::array();
+      for (float value : values) {
+        out.push_back(value);
+      }
+      return out;
+    };
+    const auto findHistory = [&env](const std::string& key) -> const std::deque<float>* {
+      auto it = env.named_history.find(key);
+      if (it == env.named_history.end()) {
+        return nullptr;
+      }
+      return &it->second;
+    };
+
+    nlohmann::json history = nlohmann::json::object();
+    if (const auto* values = findHistory("temperature")) {
+      history["temperature"] = toJsonArray(*values);
+    } else {
+      history["temperature"] = nlohmann::json::array();
+    }
+    if (const auto* values = findHistory("air_flow")) {
+      history["air_flow"] = toJsonArray(*values);
+    } else if (const auto* values = findHistory("airFlow")) {
+      history["air_flow"] = toJsonArray(*values);
+    } else {
+      history["air_flow"] = nlohmann::json::array();
+    }
+    if (const auto* values = findHistory("sun")) {
+      history["sun"] = toJsonArray(*values);
+    } else {
+      history["sun"] = nlohmann::json::array();
+    }
+    result["history"] = history;
+
+    return nlohmann::json{{"env", result}};
+  });
+
+  // env.set_field — mutate a single environment field
+  server.router().on("env.set_field", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+
+    if (!params.contains("field") || !params["field"].is_string()) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "missing 'field' string"};
+    }
+    if (!params.contains("value") || !params["value"].is_number()) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "missing 'value' number"};
+    }
+
+    std::string field = params["field"].get<std::string>();
+    float value = params["value"].get<float>();
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& wk = entt::locator<WellKnownEntities>::value();
+    auto& reg = entt::locator<State>::value().registry;
+    if (wk.environment == entt::null || !reg.valid(wk.environment) || !reg.all_of<Environment>(wk.environment)) {
+      throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "No environment entity"};
+    }
+    auto& env = reg.get<Environment>(wk.environment);
+
+    if (field == "temperature") {
+      env.temperature = value;
+    } else if (field == "air_flow") {
+      env.airFlow = value;
+    } else if (field == "sun") {
+      env.sun = value;
+    } else if (field == "minutes") {
+      env.minutes = static_cast<int>(value);
+    } else if (field == "days") {
+      env.days = static_cast<int>(value);
+    } else {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS,
+        "unknown field '" + field + "'; valid: temperature, air_flow, sun, minutes, days"};
+    }
+
+    logWebAction(server, "env.set_field", "ok", {{"field", field}, {"value", value}});
+    return {{"ok", true}};
   });
 }
 

@@ -24,32 +24,13 @@ export function ComponentPalette({ rpcClient }: Props) {
       .catch(() => setComponents([]));
   }, [rpcClient, supported]);
 
+  // Component addition UI has been moved into the Frame Inspector Components tab
+  // to keep frame-related actions in a single place. We keep this panel minimal
+  // and deprecated to avoid duplicate controls.
   return (
     <Panel title="Component Palette" unsupported={supported ? undefined : "component add"}>
-      <div style={{ display: "grid", gap: 8 }}>
-        <select id="component-select">
-          <option value="">Select component source</option>
-          {components.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-        <button
-          disabled={!supported || selectedFrameId === null}
-          onClick={() => {
-            if (selectedFrameId === null) {
-              return;
-            }
-            const select = document.getElementById("component-select") as HTMLSelectElement | null;
-            if (!select?.value) {
-              return;
-            }
-            void addComponent(rpcClient, selectedFrameId, select.value);
-          }}
-        >
-          Add to Selected Frame
-        </button>
+      <div style={{ fontSize: 12, color: "#9ca3af" }}>
+        Component addition is now available in the Frame Inspector (Components tab).
       </div>
     </Panel>
   );

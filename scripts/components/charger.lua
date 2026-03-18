@@ -42,6 +42,7 @@ return {
 	},
 	state = ComponentState.DEACTIVATED,
 	size = ComponentSize.S,
+	require = { "Battery" },
 	api = {
 		test = "yes",
 		setTarget = function(self, battery)

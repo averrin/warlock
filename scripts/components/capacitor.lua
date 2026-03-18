@@ -66,6 +66,7 @@ return {
 	},
 	state = ComponentState.DEACTIVATED,
 	size = ComponentSize.M,
+	require = { "Power Wire Connector" },
 	api = {
 		getStatus = function(self)
 			return self.data.attributes["status"]:GetFinalValue()

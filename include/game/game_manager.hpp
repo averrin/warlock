@@ -31,9 +31,14 @@ public:
   void init(LibLog::Logger parentLog);
   void start();
   bool started = false;
+  bool headless = false;   // skip PresentationSystem and InputSystem
   bool paused_ = false;
   uint64_t tick_count_ = 0;
+  float speed_multiplier_ = 1.0f;
   void setPaused(bool p) { paused_ = p; }
+  bool paused() const { return paused_; }
+  void setSpeedMultiplier(float m) { if (m >= 1.0f && m <= 10.0f) speed_multiplier_ = m; }
+  float speedMultiplier() const { return speed_multiplier_; }
   uint64_t tick_count() const { return tick_count_; }
   void serve();
 
@@ -53,7 +58,17 @@ public:
 
   void startFramePlacement();
 
+  // Autosave
+  bool autosave_enabled_ = false;
+  std::chrono::seconds autosave_interval_{60};
+  std::chrono::time_point<hr_clock> last_save_{};
+  std::string last_saved_at_;
+  const std::string& lastSavedAt() const { return last_saved_at_; }
+
 private:
   std::queue<std::function<void()>> pending_commands_;
   std::mutex command_mutex_;
+  std::chrono::time_point<hr_clock> last_state_push_{};
+  std::chrono::time_point<hr_clock> last_env_push_{};
+  std::chrono::time_point<hr_clock> last_power_push_{};
 };

@@ -20,6 +20,12 @@ return {
 			type = AttributeType.INT,
 			value = 0,
 		},
+		max_connections = {
+			title = "Max Connections",
+			description = "Maximum number of connections",
+			type = AttributeType.INT,
+			value = 10,
+		},
 		temp_proof = {
 			title = "Temp Proof",
 			description = "Does not overheat or freeze",
@@ -29,6 +35,7 @@ return {
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
+	require = {},
 	api = {
 		getConnections = function(component)
 			return component.data.attributes["connections"]:GetFinalValue()

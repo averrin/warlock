@@ -32,5 +32,6 @@ return {
 	},
 	state = ComponentState.DEACTIVATED,
 	size = ComponentSize.M,
+	require = { "Power Wire Connector" },
 	api = {},
 }

@@ -183,12 +183,24 @@ void PowerSystem::fixedUpdate() {
                       "heat", battery->data.get<float>("charge_heat"));
                 }
               } else {
+                auto prev = c->state;
                 c->state = ComponentState::COMP_ERROR;
                 c->error = "Incorrect or deactivated battery selected";
+                auto &emitter = entt::locator<event_emitter>::value();
+                emitter.publish(component_state_changed{
+                  c->frame_id, c->data.id, c->data.name,
+                  static_cast<int>(prev), static_cast<int>(c->state), c->error
+                });
               }
             } else {
+              auto prev = c->state;
               c->state = ComponentState::COMP_ERROR;
               c->error = "No battery selected";
+              auto &emitter = entt::locator<event_emitter>::value();
+              emitter.publish(component_state_changed{
+                c->frame_id, c->data.id, c->data.name,
+                static_cast<int>(prev), static_cast<int>(c->state), c->error
+              });
             }
           }
         }
@@ -247,7 +259,16 @@ void PowerSystem::fixedUpdate() {
               c->data.get_or<bool>("passive", false)) {
             continue;
           }
+          auto prev = c->state;
           c->state = ComponentState::DEACTIVATED;
+          if (prev != ComponentState::DEACTIVATED) {
+            c->error = "insufficient power";
+            auto &emitter = entt::locator<event_emitter>::value();
+            emitter.publish(component_state_changed{
+              c->frame_id, c->data.id, c->data.name,
+              static_cast<int>(prev), static_cast<int>(c->state), c->error
+            });
+          }
         }
       }
     }

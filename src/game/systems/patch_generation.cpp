@@ -58,5 +58,16 @@ std::vector<std::pair<int, int>> generateBlob(
     }
   }
   
+  // Fallback: if smoothing eliminated all cells, create a small core
+  if (result.empty()) {
+    int cx = width / 2;
+    int cy = height / 2;
+    result.emplace_back(cx, cy);
+    if (cx > 0) result.emplace_back(cx - 1, cy);
+    if (cx < width - 1) result.emplace_back(cx + 1, cy);
+    if (cy > 0) result.emplace_back(cx, cy - 1);
+    if (cy < height - 1) result.emplace_back(cx, cy + 1);
+  }
+  
   return result;
 }

@@ -10,6 +10,38 @@
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 
+void CodeExecutionSystem::emitLog(const std::string& source,
+                                  const std::string& status,
+                                  const nlohmann::json& args) const {
+  if (log_callback_) {
+    log_callback_(source, status, args);
+  }
+}
+
+void CodeExecutionSystem::installPrintOverride(sol::state& lua, int frame_id) {
+  // Capture `this` and frame_id so print() output is routed through the log callback.
+  lua["print"] = [this, frame_id](sol::variadic_args va) {
+    std::string message;
+    for (size_t i = 0; i < va.size(); ++i) {
+      if (i > 0) message += "\t";
+      sol::object obj = va[i];
+      if (obj.is<std::string>()) {
+        message += obj.as<std::string>();
+      } else if (obj.is<double>()) {
+        message += fmt::format("{}", obj.as<double>());
+      } else if (obj.is<bool>()) {
+        message += obj.as<bool>() ? "true" : "false";
+      } else if (obj.get_type() == sol::type::nil) {
+        message += "nil";
+      } else {
+        message += sol::type_name(va.lua_state(), obj.get_type());
+      }
+    }
+    fmt::print("[lua:{}] {}\n", frame_id, message);
+    emitLog("lua.print", "ok", {{"frame_id", frame_id}, {"message", message}});
+  };
+}
+
 sol::state &CodeExecutionSystem::getState(int id) {
   if (states.find(id) == states.end()) {
     fmt::print("Creating new state for frame {}\n", id);
@@ -18,6 +50,7 @@ sol::state &CodeExecutionSystem::getState(int id) {
                               sol::lib::string, sol::lib::table, sol::lib::math,
                               sol::lib::os, sol::lib::io);
     register_bindings(states[id]);
+    installPrintOverride(states[id], id);
   }
   return states[id];
 }
@@ -47,10 +80,6 @@ void CodeExecutionSystem::invalidateScript(int component_id) {
 
 void CodeExecutionSystem::cleanupFrame(int frame_id) {
   states.erase(frame_id);
-  // Also clean up any compiled scripts for components of this frame
-  // (component IDs are globally unique, so we'd need to track which
-  // components belong to which frame — for now, invalidation happens
-  // on code change via invalidateScript)
 }
 
 void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
@@ -58,9 +87,14 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
   auto &current_state = entt::locator<State>::value();
   auto fid = c->frame_id;
   auto comp_id = c->data.id;
+  auto prev_state = c->state;
 
   // get Environment
   auto &wk = entt::locator<WellKnownEntities>::value();
+  if (wk.environment == entt::null || !current_state.registry.valid(wk.environment) ||
+      !current_state.registry.all_of<Environment>(wk.environment)) {
+    return;
+  }
   auto &environment = current_state.registry.get<Environment>(wk.environment);
   getState(fid).set("environment", environment);
 
@@ -71,7 +105,19 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
 
   // Cache compiled script — only recompile when not cached
   if (compiled_scripts_.find(comp_id) == compiled_scripts_.end()) {
+    if (!c->data.has("code")) return;
     auto code = c->data.get<std::string>("code");
+    if (code.empty()) {
+      c->state = ComponentState::COMP_ERROR;
+      c->error = "empty code";
+      emitLog("lua.compile", "error", {
+        {"frame_id", fid}, {"component_id", comp_id},
+        {"error", c->error},
+        {"prev_state", static_cast<int>(prev_state)},
+        {"new_state", static_cast<int>(c->state)}
+      });
+      return;
+    }
     sol::safe_function_result result =
         getState(fid).safe_script(code, sol::script_pass_on_error);
     if (!result.valid()) {
@@ -79,24 +125,61 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
       fmt::print("Lua script error: {}\n", err.what());
       c->state = ComponentState::COMP_ERROR;
       c->error = err.what();
+      emitLog("lua.compile", "error", {
+        {"frame_id", fid}, {"component_id", comp_id},
+        {"error", c->error},
+        {"prev_state", static_cast<int>(prev_state)},
+        {"new_state", static_cast<int>(c->state)}
+      });
       return;
     }
-    compiled_scripts_[comp_id] = result.get<sol::table>();
+    sol::object result_obj = result;
+    if (result_obj.get_type() != sol::type::table) {
+      c->state = ComponentState::COMP_ERROR;
+      c->error = "script must return a table, got " +
+                 std::string(sol::type_name(getState(fid).lua_state(), result_obj.get_type()));
+      emitLog("lua.compile", "error", {
+        {"frame_id", fid}, {"component_id", comp_id},
+        {"error", c->error},
+        {"prev_state", static_cast<int>(prev_state)},
+        {"new_state", static_cast<int>(c->state)}
+      });
+      return;
+    }
+    compiled_scripts_[comp_id] = result_obj.as<sol::table>();
+    emitLog("lua.compile", "ok", {
+      {"frame_id", fid}, {"component_id", comp_id}
+    });
   }
 
   auto &script_table = compiled_scripts_[comp_id];
-  auto f = script_table[function_name];
-  if (f.valid()) {
-    sol::safe_function_result result = f(frame_ptr);
+  sol::object fn_obj = script_table[function_name];
+  if (fn_obj.valid() && fn_obj.is<sol::function>()) {
+    sol::protected_function fn(fn_obj.as<sol::function>());
+    sol::protected_function_result result = fn(frame_ptr);
     if (!result.valid()) {
       sol::error err = result;
-      fmt::print("Lua script error: {}\n", err.what());
+      fmt::print("Lua runtime error: {}\n", err.what());
       c->state = ComponentState::COMP_ERROR;
       c->error = err.what();
+      emitLog("lua.runtime", "error", {
+        {"frame_id", fid}, {"component_id", comp_id},
+        {"function", function_name},
+        {"error", c->error},
+        {"prev_state", static_cast<int>(prev_state)},
+        {"new_state", static_cast<int>(c->state)}
+      });
     }
   } else {
     c->state = ComponentState::COMP_ERROR;
-    c->error = "";
+    c->error = "function '" + function_name + "' not found in script table";
+    emitLog("lua.runtime", "error", {
+      {"frame_id", fid}, {"component_id", comp_id},
+      {"function", function_name},
+      {"error", c->error},
+      {"prev_state", static_cast<int>(prev_state)},
+      {"new_state", static_cast<int>(c->state)}
+    });
   }
 }
 

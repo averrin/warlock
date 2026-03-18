@@ -367,8 +367,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const drawConnectionsRef = useRef<() => void>(() => {});
 
   const getPatchAtWorldPos = (wx: number, wy: number): Patch | null => {
-    const gridX = Math.floor(wx / CELL);
-    const gridY = Math.floor(wy / CELL);
+    const gridX = Math.floor(wx / SUB_CELL);
+    const gridY = Math.floor(wy / SUB_CELL);
     
     for (const patch of patches) {
       if (patch.cells.some(([cx, cy]) => cx === gridX && cy === gridY)) {
@@ -481,7 +481,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       const alpha = a / 255;
 
       for (const [cx, cy] of patch.cells) {
-        gfx.rect(cx * CELL, cy * CELL, CELL, CELL);
+        gfx.rect(cx * SUB_CELL, cy * SUB_CELL, SUB_CELL, SUB_CELL);
       }
       gfx.fill({ color, alpha });
 
@@ -538,8 +538,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   }, []);
 
   const createPatch = async (type: string, wx: number, wy: number) => {
-    const gridX = Math.floor(wx / CELL);
-    const gridY = Math.floor(wy / CELL);
+    const gridX = Math.floor(wx / SUB_CELL);
+    const gridY = Math.floor(wy / SUB_CELL);
 
     try {
       await rpcClient.call("patches.create", {
@@ -1429,8 +1429,11 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         return;
       }
 
-      // Normal background click behavior
-      if (e.target === app.stage) {
+      // Normal background click behavior - check if we didn't hit a frame
+      const targetNode = e.target as Container;
+      const isFrameClick = targetNode.label?.startsWith("frame-") || 
+                          (targetNode.parent as Container | null)?.label?.startsWith("frame-");
+      if (!isFrameClick) {
         void onBackgroundClick(e);
       }
     });

@@ -42,7 +42,7 @@ test.describe("frame interaction", () => {
     const frameSelect = page.locator("select").first();
     await expect(frameSelect).toBeVisible();
 
-    const canvas = page.locator("canvas");
+    const canvas = page.locator("canvas").last();
     await expect(canvas).toBeVisible();
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();
@@ -74,7 +74,7 @@ test.describe("frame interaction", () => {
     await page.goto("/");
     await waitForConnected(page);
 
-    const canvas = page.locator("canvas");
+    const canvas = page.locator("canvas").last();
     await expect(canvas).toBeVisible();
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();

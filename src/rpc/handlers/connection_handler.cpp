@@ -37,7 +37,10 @@ void registerConnectionHandlers(Server& server) {
     auto& state = entt::locator<State>::value();
     auto& registry = state.registry;
     auto& conn = registry.get<Connection>(entity);
-    return {{"connection", serializeConnection(entity, conn)}};
+    auto connJson = serializeConnection(entity, conn);
+    nlohmann::json result = {{"connection", connJson}};
+    logWebAction(server, "connection.create", "ok", {{"id", conn.data.id}, {"source", source}, {"target", target}, {"type", type_str}});
+    return result;
   });
 
   // connection.list — optional {type: string}
@@ -95,7 +98,9 @@ void registerConnectionHandlers(Server& server) {
       throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Connection not found"};
     }
     registry.destroy(found);
-    return {{"ok", true}};
+    nlohmann::json result = {{"ok", true}};
+    logWebAction(server, "connection.remove", "ok", {{"id", conn_data_id}});
+    return result;
   });
 
   // power.networks — returns power network data from PowerInfo
@@ -124,10 +129,13 @@ void registerConnectionHandlers(Server& server) {
         }
 
         networks.push_back({
+          {"name", net.data.name},
           {"frames", frames_arr},
           {"production", net.production},
           {"consumption", net.consumption},
           {"accumulated", net.accumulated},
+          {"accumulated_available", net.accumulated_available},
+          {"battery_count", net.battery_count},
           {"history", history_obj}
         });
       }

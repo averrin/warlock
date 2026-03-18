@@ -11,6 +11,10 @@
 void ThermalSystem::fixedUpdate() {
   auto &current_state = entt::locator<State>::value();
   auto &wk = entt::locator<WellKnownEntities>::value();
+  if (wk.environment == entt::null || !current_state.registry.valid(wk.environment) ||
+      !current_state.registry.all_of<Environment>(wk.environment)) {
+    return;
+  }
   environment = &current_state.registry.get<Environment>(wk.environment);
   environment->temperatures[-1].push_back(environment->temperature);
   if (environment->temperatures[-1].size() > 100) {
@@ -98,7 +102,17 @@ void ThermalSystem::fixedUpdate() {
         if (component->state == ComponentState::ACTIVE &&
             (component->data.get<float>("temp") > max_break_temp ||
              component->data.get<float>("temp") < min_break_temp)) {
+          auto prev = component->state;
+          auto curTemp = component->data.get<float>("temp");
           component->state = ComponentState::BROKEN;
+          component->error = fmt::format("temperature {:.1f}°C (limit {:.0f}–{:.0f})",
+                                         curTemp, min_break_temp, max_break_temp);
+          auto &emitter = entt::locator<event_emitter>::value();
+          emitter.publish(component_state_changed{
+            frame.data.id, component->data.id, component->data.name,
+            static_cast<int>(prev), static_cast<int>(component->state),
+            component->error
+          });
         }
       }
 

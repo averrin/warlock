@@ -27,8 +27,16 @@
 #include <rpc/handlers/connection_handler.hpp>
 #include <rpc/handlers/code_handler.hpp>
 #include <rpc/handlers/state_handler.hpp>
+#include <rpc/handlers/items_handler.hpp>
+#include <rpc/handlers/storage_handler.hpp>
 #include <rpc/event_bridge.hpp>
 #include <ixwebsocket/IXNetSystem.h>
+#include <game/meta_data.hpp>
+#include <game/prototypes.hpp>
+#include <game/state.hpp>
+#include <game/oracle.hpp>
+#include <game/well_known_entities.hpp>
+#include <utils/assets_loader.hpp>
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -48,9 +56,13 @@ struct TestHarness::Impl {
   rpc::Server* rpc_ptr = nullptr;
 
   void setup(int port_hint) {
-    ix::initNetSystem();
+    // ix::initNetSystem() moved to e2e_main.cpp
 
-    auto path = get_selfpath();
+#ifdef WARLOCK_PROJECT_ROOT
+    fs::path path = WARLOCK_PROJECT_ROOT;
+#else
+    fs::path path = get_selfpath();
+#endif
 
     entt::monostate<"id"_hs>{} = 0;
     entt::monostate<"path"_hs>{} = path;
@@ -64,13 +76,19 @@ struct TestHarness::Impl {
                        sol::lib::table, sol::lib::math, sol::lib::os);
     injectLogger(lua, luaLog);
 
+    // Provide a minimal 'app' table so scripts/gui.lua can access app.PATH
+    auto app_table = lua.create_named_table("app");
+    app_table["APP_NAME"] = std::string("warlock-test");
+    app_table["VERSION"]  = std::string("0.0.0-test");
+    app_table["PATH"]     = path.string();
+
+    initEnttLua();
+
     auto cp = path / "scripts" / "config.lua";
     if (!fs::exists(cp)) {
       throw std::runtime_error("config.lua not found at: " + cp.string());
     }
     lua.script_file(cp.string());
-
-    initEnttLua();
 
     entt::locator<Loader>::emplace();
     auto& loader = entt::locator<Loader>::value();
@@ -81,8 +99,21 @@ struct TestHarness::Impl {
     gm.headless = true;
 
     gm.init(log);
-    gm.loadData();
-    gm.start();
+    // Set a custom panic handler so we get a message before any abort
+    lua_atpanic(lua.lua_state(), [](lua_State* L) -> int {
+      const char* msg = lua_tostring(L, -1);
+      fprintf(stderr, "[LUA PANIC] %s\n", msg ? msg : "(no message)");
+      fflush(stderr);
+      return 0;
+    });
+    try {
+      gm.start();
+    } catch (const std::exception& e) {
+      fprintf(stderr, "[HARNESS] gm.start() threw: %s\n", e.what());
+      fflush(stderr);
+      throw;
+    }
+    gm.setPaused(true);
 
     auto& rpc = entt::locator<rpc::Server>::emplace(port_hint);
     rpc_ptr = &rpc;
@@ -93,6 +124,8 @@ struct TestHarness::Impl {
     rpc::registerComponentHandlers(rpc);
     rpc::registerConnectionHandlers(rpc);
     rpc::registerCodeHandlers(rpc);
+    rpc::registerItemsHandlers(rpc);
+    rpc::registerStorageHandlers(rpc);
     rpc::registerStateHandlers(rpc);
     rpc::initEventBridge(rpc);
 
@@ -118,18 +151,42 @@ struct TestHarness::Impl {
     if (rpc_ptr) {
       rpc_ptr->stop();
     }
-    ix::uninitNetSystem();
+
+    // Clear emitter handlers before destroying anything to avoid dangling refs
+    if (entt::locator<event_emitter>::has_value()) {
+      entt::locator<event_emitter>::value().clear();
+      entt::locator<event_emitter>::value().handlers.clear();
+    }
+
+    // Reset all locators so the next TestHarness can re-emplace them.
+    // Order matters: event_emitter holds sol::function captures, so it
+    // must be destroyed while the Lua state is still alive.
+    entt::locator<rpc::Server>::reset();
+    entt::locator<WellKnownEntities>::reset();
+    entt::locator<AssetLoader>::reset();
+    entt::locator<State>::reset();
+    entt::locator<Prototypes>::reset();
+    entt::locator<MetaData>::reset();
+    entt::locator<Oracle>::reset();
+    entt::locator<std::mutex *>::reset();
+    entt::locator<entt::registry>::reset();
+    entt::locator<GameManager>::reset();
+    entt::locator<Loader>::reset();
+    entt::locator<event_emitter>::reset();
+    entt::locator<sol::state>::reset();
   }
 
   void tick(int n) {
     if (!gm_ptr) return;
     uint64_t target = gm_ptr->tick_count() + static_cast<uint64_t>(n);
+    gm_ptr->setPaused(false);
     auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (gm_ptr->tick_count() < target) {
       if (std::chrono::steady_clock::now() > deadline)
         throw std::runtime_error("tick() timeout");
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    gm_ptr->setPaused(true);
   }
 };
 

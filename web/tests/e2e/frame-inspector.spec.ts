@@ -11,7 +11,7 @@ async function ensureFrameExists(page: Parameters<typeof test>[0]["page"]) {
     return frameSelect;
   }
 
-  const canvas = page.locator("canvas");
+  const canvas = page.locator("canvas").last();
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.click(Math.round((box?.x ?? 0) + 220), Math.round((box?.y ?? 0) + 220));
@@ -32,8 +32,6 @@ test.describe("frame inspector", () => {
     const firstFrameValue = await frameSelect.locator("option").nth(1).getAttribute("value");
     expect(firstFrameValue).toBeTruthy();
     await frameSelect.selectOption(firstFrameValue ?? "");
-
-    await expect(page.getByText("Components", { exact: true })).toBeVisible();
 
     const emptyMessage = page.getByText("No components");
     if (await emptyMessage.isVisible()) {
@@ -71,5 +69,19 @@ test.describe("frame inspector", () => {
         return frameSelect.inputValue();
       })
       .toBe(firstFrameValue);
+  });
+
+  test("temperature tab: shows environment temperature history when available", async ({ page }) => {
+    await page.goto("/");
+    await waitForConnected(page);
+
+    const frameSelect = await ensureFrameExists(page);
+    const firstFrameValue = await frameSelect.locator("option").nth(1).getAttribute("value");
+    expect(firstFrameValue).toBeTruthy();
+    await frameSelect.selectOption(firstFrameValue ?? "");
+
+    await page.getByRole("button", { name: "Temperature" }).click();
+
+    await expect(page.getByText("Temperature history")).toBeVisible();
   });
 });

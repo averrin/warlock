@@ -14,22 +14,31 @@ void PresentationSystem::resetDrawables() {
 
   std::map<int, entt::entity> frames;
 
+  // Collect children to destroy BEFORE iterating views, since destroying
+  // entities during view iteration is undefined behaviour in entt.
+  std::vector<entt::entity> to_destroy;
+  for (auto &f : current_state.registry.view<Frame>()) {
+    if (!current_state.registry.all_of<wl::relation>(f)) continue;
+    auto &rel = current_state.registry.get<wl::relation>(f);
+    for (auto &child : rel.children) {
+      if (current_state.registry.valid(child)) {
+        to_destroy.push_back(child);
+      }
+    }
+    rel.children.clear();
+  }
+  for (auto e : to_destroy) {
+    if (current_state.registry.valid(e)) {
+      current_state.registry.destroy(e);
+    }
+  }
+
   for (auto &f : current_state.registry.view<Frame>()) {
     auto &frame = current_state.registry.get<Frame>(f);
     auto frame_transform = current_state.registry.get<wl::transform>(f);
     frames[frame.data.id] = f;
     if (!current_state.registry.all_of<wl::relation>(f)) {
       current_state.registry.emplace_or_replace<wl::relation>(f);
-    }
-    auto rel = current_state.registry.get<wl::relation>(f);
-
-    if (rel.children.size() > 0) {
-      for (auto &child : rel.children) {
-        if (current_state.registry.valid(child)) {
-          current_state.registry.destroy(child);
-        }
-      }
-      rel.children.clear();
     }
     current_state.registry.emplace_or_replace<wl::visual_state>(f);
 
@@ -107,11 +116,43 @@ void PresentationSystem::resetDrawables() {
     auto y1 = source_transform.position.y + source_rect.height / 2;
     auto x2 = target_transform.position.x + target_rect.width / 2;
     auto y2 = target_transform.position.y + target_rect.height / 2;
+
+    // Offset different connection types slightly so multiple connections
+    // between the same frames do not overlap visually.
+    const float dx = static_cast<float>(x2 - x1);
+    const float dy = static_cast<float>(y2 - y1);
+    const float len = std::sqrt(dx * dx + dy * dy);
+    if (len > 0.0f) {
+      const float nx = -dy / len;
+      const float ny = dx / len;
+      float offset = 0.0f;
+      switch (connection.type) {
+      case ConnectionType::POWER:
+        offset = -6.0f;
+        break;
+      case ConnectionType::CONVEYOR:
+        offset = 6.0f;
+        break;
+      case ConnectionType::DATA:
+      default:
+        offset = 0.0f;
+        break;
+      }
+      x1 += static_cast<int>(nx * offset);
+      y1 += static_cast<int>(ny * offset);
+      x2 += static_cast<int>(nx * offset);
+      y2 += static_cast<int>(ny * offset);
+    }
     line.layer = "connections";
     line.position1 = {x1, y1};
     line.position2 = {x2, y2};
-    line.color = connection.type == ConnectionType::POWER ? wl::color{255, 255, 0, 255}
-                                                          : wl::color{0, 0, 255, 255};
+    if (connection.type == ConnectionType::POWER) {
+      line.color = wl::color{255, 255, 0, 255};
+    } else if (connection.type == ConnectionType::CONVEYOR) {
+      line.color = wl::color{0, 255, 0, 255};
+    } else {
+      line.color = wl::color{0, 0, 255, 255};
+    }
     line.thickness = 3;
     current_state.registry.emplace_or_replace<wl::line>(c, line);
   }

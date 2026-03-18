@@ -71,6 +71,15 @@ struct key_event {
   bool shift;
 };
 
+struct component_state_changed {
+  int frame_id;
+  int component_id;
+  std::string component_name;
+  int prev_state;
+  int new_state;
+  std::string reason;   // e.g. "activation_timer", "deactivation_timer", "lua_start", "lua_stop"
+};
+
 namespace wl {
 struct relation {
   std::vector<entt::entity> children;

@@ -67,6 +67,7 @@ file(GLOB E2E_TEST_SRC
 )
 
 add_executable(warlock_e2e
+  e2e_main.cpp
   harness.cpp
   rpc_client.cpp
   ${E2E_TEST_SRC}
@@ -75,6 +76,7 @@ add_executable(warlock_e2e
 )
 
 target_include_directories(warlock_e2e PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}           # so e2e/*.cpp can find harness.hpp / rpc_client.hpp
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/include/3rdparty
   ${entt_SOURCE_DIR}/single_include
@@ -90,7 +92,7 @@ if(_main_sys_incs)
 endif()
 
 target_link_libraries(warlock_e2e PRIVATE
-  Catch2::Catch2WithMain
+  Catch2::Catch2
   nlohmann_json::nlohmann_json
   ixwebsocket
   fmt
@@ -106,9 +108,13 @@ if(MSVC)
 endif()
 
 target_compile_features(warlock_e2e PUBLIC cxx_std_20)
-target_compile_definitions(warlock_e2e PRIVATE _USE_MATH_DEFINES)
+target_compile_definitions(warlock_e2e PRIVATE
+  _USE_MATH_DEFINES
+  WARLOCK_PROJECT_ROOT="${PROJECT_SOURCE_DIR}"
+  NDEBUG
+)
 if(MSVC)
-  target_compile_options(warlock_e2e PRIVATE /W3 /wd4244 /wd4267 /wd4996 /wd4305 /Zc:__cplusplus /bigobj)
+  target_compile_options(warlock_e2e PRIVATE /W3 /wd4244 /wd4267 /wd4996 /wd4305 /Zc:__cplusplus /bigobj /FS)
   target_compile_definitions(warlock_e2e PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 endif()
 

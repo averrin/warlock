@@ -10,7 +10,7 @@ class GameManager;
 
 class TestHarness {
 public:
-  explicit TestHarness(int port = 0)  // port=0: auto-assign;
+  explicit TestHarness(int port = 0);  // port=0: auto-assign
   ~TestHarness();
 
   int port() const { return port_; }

@@ -23,7 +23,17 @@ export const useConnectionStore = create<ConnectionStore>((set) => ({
     client.onLifecycle("connected", () => {
       set({ status: "connected" });
       void useConnectionStore.getState().refreshSessionInfo(client);
-      void useConnectionStore.getState().claim(client);
+      // Claim can race startup; retry briefly so web actions are not stuck read-only.
+      void (async () => {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          try {
+            await useConnectionStore.getState().claim(client);
+            return;
+          } catch {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+        }
+      })();
     });
     client.onLifecycle("disconnected", () => {
       set({ status: "disconnected", claimed: false });

@@ -27,7 +27,7 @@ void register_bindings(sol::state &lua) {
                ComponentState::BLOCKED, "BROKEN", ComponentState::BROKEN);
 
   lua.new_enum("FrameSize", "S", FrameSize::S, "M", FrameSize::M, "L",
-               FrameSize::L);
+               FrameSize::L, "G", FrameSize::G);
 
   lua.new_enum("ComponentSize", "S", ComponentSize::S, "M", ComponentSize::M,
                "L", ComponentSize::L);
@@ -38,7 +38,7 @@ void register_bindings(sol::state &lua) {
                ComponentMaterial::PLASTIC, "GLASS", ComponentMaterial::GLASS);
 
   lua.new_enum("ConnectionType", "POWER", ConnectionType::POWER, "DATA",
-               ConnectionType::DATA);
+               ConnectionType::DATA, "CONVEYOR", ConnectionType::CONVEYOR);
 
   lua.new_usertype<Environment>("Environment", "temperature",
                                 &Environment::temperature, "minutes",
@@ -193,9 +193,18 @@ create_component_from_lua(sol::state &lua, const std::string &lua_source) {
   component->state = spec["state"].get_or(ComponentState::DEACTIVATED);
   component->size = spec["size"].get_or(ComponentSize::S);
   component->material = spec["material"].get_or(ComponentMaterial::STEEL);
-  // component->spec = spec;
+
+  // Optional: component requirements (list of other component names on the same frame)
+  if (spec["require"].valid() && spec["require"].get_type() == sol::type::table) {
+    sol::table req = spec["require"];
+    for (const auto& pair : req) {
+      if (pair.second.is<std::string>()) {
+        component->require.push_back(pair.second.as<std::string>());
+      }
+    }
+  }
+
   component->api = spec["api"];
-  // fmt::print("Component created: {}\n", component->data.name);
 
   return component;
 }

@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import type { RpcClient } from "../../rpc/client";
 import type { ComponentDTO } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
 import { STATE_COLORS, EFFECT_LABELS } from "../ui";
+import { ComponentPicker } from "../picker";
 
 type Props = {
   frameId: number;
@@ -26,9 +26,7 @@ function getComponentBadgeColor(state: string | undefined): string {
 
 export function ComponentStrip({ frameId, components, rpcClient, availableComponents, netAvailable: _netAvailable, onComponentContextMenu }: Props) {
   const setComponentState = useGameStore((s) => s.setComponentState);
-  const addComponent = useGameStore((s) => s.addComponent);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const addBtnRef = useRef<HTMLButtonElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -88,9 +86,8 @@ export function ComponentStrip({ frameId, components, rpcClient, availableCompon
       {availableComponents && availableComponents.length > 0 && (
         <>
           <button
-            ref={addBtnRef}
             type="button"
-            onClick={() => setMenuOpen((open) => !open)}
+            onClick={() => setPickerOpen(true)}
             title="Add component"
             style={{
               border: "1px solid #334155",
@@ -109,55 +106,12 @@ export function ComponentStrip({ frameId, components, rpcClient, availableCompon
           >
             +
           </button>
-          {menuOpen && addBtnRef.current && createPortal(
-            (() => {
-              const rect = addBtnRef.current!.getBoundingClientRect();
-              return (
-                <div
-                  style={{
-                    position: "fixed",
-                    top: rect.bottom + 4,
-                    left: rect.left,
-                    zIndex: 9999,
-                    maxHeight: 220,
-                    overflowY: "auto",
-                    background: "#020617",
-                    border: "1px solid #1f2937",
-                    borderRadius: 6,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.7)",
-                  }}
-                  onMouseLeave={() => setMenuOpen(false)}
-                >
-                  {availableComponents.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => {
-                        void addComponent(rpcClient, frameId, name);
-                        setMenuOpen(false);
-                      }}
-                      style={{
-                        display: "block",
-                        textAlign: "left",
-                        padding: "3px 10px",
-                        border: "none",
-                        background: "transparent",
-                        color: "#e5e7eb",
-                        fontSize: 11,
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#1e293b")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              );
-            })(),
-            document.body
-          )}
+          <ComponentPicker
+            isOpen={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            frameId={frameId}
+            rpcClient={rpcClient}
+          />
         </>
       )}
     </div>

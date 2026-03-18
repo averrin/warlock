@@ -11,4 +11,18 @@ inline void requireClaim(const Server& server, const Context& ctx) {
   }
 }
 
+inline void logWebAction(Server& server,
+                         const std::string& source,
+                         const std::string& status,
+                         const nlohmann::json& args = nlohmann::json::object()) {
+  nlohmann::json params = {
+      {"source", source},
+      {"status", status},
+  };
+  if (!args.is_null() && !args.empty()) {
+    params["args"] = args;
+  }
+  server.broadcast("web.log", params);
+}
+
 } // namespace rpc

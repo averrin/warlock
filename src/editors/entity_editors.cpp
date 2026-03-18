@@ -664,7 +664,7 @@ void ComponentEditorWidget<Connection>(entt::registry &registry,
     registry.emplace_or_replace<Connection>(e, c);
   }
 
-  const char *connectionTypes[] = {"POWER", "DATA"};
+  const char *connectionTypes[] = {"POWER", "DATA", "CONVEYOR"};
   int currentType = static_cast<int>(c.type);
   if (ImGui::Combo("Connection Type", &currentType, connectionTypes,
                    IM_ARRAYSIZE(connectionTypes))) {

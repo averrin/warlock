@@ -1,6 +1,5 @@
 import type { RpcClient } from "../../rpc/client";
-import { GameCanvas } from "../canvas/GameCanvas";
-import { Sidebar } from "./Sidebar";
+import { WindowWorkspace } from "./WindowWorkspace";
 import { StatusBar } from "./StatusBar";
 
 type Props = {
@@ -12,16 +11,14 @@ export function AppShell({ rpcClient }: Props) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "320px 1fr",
         gridTemplateRows: "1fr 36px",
         width: "100%",
         height: "100%",
         background: "#0a0a0a",
       }}
     >
-      <Sidebar rpcClient={rpcClient} />
-      <GameCanvas rpcClient={rpcClient} />
-      <StatusBar />
+      <WindowWorkspace rpcClient={rpcClient} />
+      <StatusBar rpcClient={rpcClient} />
     </div>
   );
 }

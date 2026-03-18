@@ -12,10 +12,15 @@ type Props = {
 export function CodeEditorPanel({ rpcClient }: Props) {
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
   const updateCoreCode = useGameStore((s) => s.updateCoreCode);
+  const loadCoreCode = useGameStore((s) => s.loadCoreCode);
+  const executeCoreUpdate = useGameStore((s) => s.executeCoreUpdate);
   const [sourceNames, setSourceNames] = useState<string[]>([]);
   const [code, setCode] = useState("-- Select source");
   const [selectedSource, setSelectedSource] = useState<string>("");
+  const [status, setStatus] = useState("");
+  const [runConsole, setRunConsole] = useState<string[]>([]);
   const supported = isFeatureSupported(capabilityMethods.codeEditor);
+  const executeSupported = isFeatureSupported(capabilityMethods.codeExecute);
 
   useEffect(() => {
     if (!supported) {
@@ -37,7 +42,7 @@ export function CodeEditorPanel({ rpcClient }: Props) {
   }, [rpcClient, supported]);
 
   return (
-    <Panel title="Lua Code Editor" unsupported={supported ? "missing code.execute" : "code editor"}>
+    <Panel title="Lua Code Editor" unsupported={supported ? undefined : "code editor"}>
       <div style={{ display: "grid", gap: 8 }}>
         <select
           value={selectedSource}
@@ -57,7 +62,8 @@ export function CodeEditorPanel({ rpcClient }: Props) {
         </select>
         <Editor
           language="lua"
-          height="200px"
+          height="800px"
+          theme="vs-dark"
           value={code}
           onChange={(value) => setCode(value ?? "")}
           options={{
@@ -71,11 +77,68 @@ export function CodeEditorPanel({ rpcClient }: Props) {
             if (selectedFrameId === null) {
               return;
             }
-            void updateCoreCode(rpcClient, selectedFrameId, code);
+            void updateCoreCode(rpcClient, selectedFrameId, code)
+              .then(() => setStatus("Saved core script"))
+              .catch((error: unknown) => {
+                setStatus("Save failed");
+                const message = error instanceof Error ? error.message : String(error);
+                setRunConsole((current) => [...current.slice(-9), `save: ${message}`]);
+              });
           }}
         >
           Save to Selected Frame Core
         </button>
+        <button
+          disabled={selectedFrameId === null || !supported}
+          onClick={() => {
+            if (selectedFrameId === null) {
+              return;
+            }
+            void loadCoreCode(rpcClient, selectedFrameId)
+              .then((script) => {
+                setCode(script);
+                setStatus("Loaded core script");
+              })
+              .catch((error: unknown) => {
+                setStatus("Load failed");
+                const message = error instanceof Error ? error.message : String(error);
+                setRunConsole((current) => [...current.slice(-9), `load: ${message}`]);
+              });
+          }}
+        >
+          Load Selected Frame Script
+        </button>
+        <button
+          disabled={selectedFrameId === null || !supported || !executeSupported}
+          onClick={() => {
+            if (selectedFrameId === null) {
+              return;
+            }
+            void executeCoreUpdate(rpcClient, selectedFrameId)
+              .then((result) => {
+                if (result.status === "ok") {
+                  setStatus("Run: ok");
+                  return;
+                }
+                setStatus("Run: error");
+                setRunConsole((current) => [...current.slice(-9), result.error ?? "unknown runtime error"]);
+              })
+              .catch((error: unknown) => {
+                setStatus("Run: error");
+                const message = error instanceof Error ? error.message : String(error);
+                setRunConsole((current) => [...current.slice(-9), message]);
+              });
+          }}
+        >
+          Run update
+        </button>
+        {!executeSupported ? (
+          <div style={{ fontSize: 11, color: "#9ca3af" }}>Run action unavailable in this capability set.</div>
+        ) : null}
+        {status ? <div style={{ fontSize: 12 }}>{status}</div> : null}
+        <div style={{ fontSize: 11, color: "#e5e7eb", background: "#0b1020", borderRadius: 6, padding: 8 }}>
+          {runConsole.length === 0 ? "No runtime errors." : runConsole.join("\n")}
+        </div>
       </div>
     </Panel>
   );

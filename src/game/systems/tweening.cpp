@@ -25,9 +25,15 @@ void TweeningSystem::fixedUpdate() {
         c->time_switch -= delta.count();
         if (c->time_switch <= 0) {
           c->time_switch = -1;
+          auto prev_state = c->state;
           c->state = c->next_state;
           auto &emitter = entt::locator<event_emitter>::value();
           if (c->state == ComponentState::DEACTIVATED) {
+            emitter.publish(component_state_changed{
+              frame.data.id, c->data.id, c->data.name,
+              static_cast<int>(prev_state), static_cast<int>(c->state),
+              "deactivation_complete"
+            });
             if (c->data.get<std::string>("type") == "Core") {
               emitter.publish(exec_lua_function{c, "stop"});
             }
@@ -35,6 +41,11 @@ void TweeningSystem::fixedUpdate() {
               attribute->resetEasing();
             }
           } else if (c->state == ComponentState::ACTIVE) {
+            emitter.publish(component_state_changed{
+              frame.data.id, c->data.id, c->data.name,
+              static_cast<int>(prev_state), static_cast<int>(c->state),
+              "activation_complete"
+            });
             for (auto [key, attribute] : c->data.attributes) {
               attribute->resetEasing();
             }

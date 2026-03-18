@@ -1,21 +1,65 @@
 import { create } from "zustand";
 import type { RpcClient } from "../rpc/client";
 import type { ConnectionDTO, EnvironmentDTO, FrameDTO, PowerNetworkDTO } from "../rpc/types";
+import { usePatchStore, Patch } from "./patches";
+
+interface TimeControl {
+  paused: boolean;
+  multiplier: number;
+}
 
 interface GameStore {
   started: boolean;
+  hydrated: boolean;
   frames: FrameDTO[];
   connections: ConnectionDTO[];
   environment: EnvironmentDTO | null;
   powerNetworks: PowerNetworkDTO[];
   selectedFrameId: number | null;
+  timeControl: TimeControl;
+  environmentHistory: EnvironmentDTO["history"] | null;
   init: (client: RpcClient) => void;
+  applySnapshot: (snapshot: {
+    started?: boolean;
+    frames?: FrameDTO[];
+    connections?: ConnectionDTO[];
+    environment?: EnvironmentDTO | null;
+    power_networks?: PowerNetworkDTO[];
+    powerNetworks?: PowerNetworkDTO[];
+  }) => void;
   fetchInitialState: (client: RpcClient) => Promise<void>;
   selectFrame: (frameId: number | null) => void;
+  pauseGame: (client: RpcClient) => Promise<void>;
+  resumeGame: (client: RpcClient) => Promise<void>;
+  setSpeed: (client: RpcClient, multiplier: number) => Promise<void>;
+  refreshEnvStatus: (client: RpcClient) => Promise<void>;
+  refreshPowerNetworks: (client: RpcClient) => Promise<void>;
+  fetchSpeedState: (client: RpcClient) => Promise<void>;
   createFrameAt: (client: RpcClient, name: string, x: number, y: number) => Promise<void>;
   moveFrame: (client: RpcClient, frameId: number, x: number, y: number) => Promise<void>;
   activateFrame: (client: RpcClient, frameId: number) => Promise<void>;
-  createFromBlueprint: (client: RpcClient, blueprint: string) => Promise<void>;
+  deactivateFrame: (client: RpcClient, frameId: number) => Promise<void>;
+  setFrameSize: (client: RpcClient, frameId: number, size: string) => Promise<void>;
+  setFrameMaterial: (client: RpcClient, frameId: number, material: string) => Promise<void>;
+  updateFrameMetadata: (
+    client: RpcClient,
+    frameId: number,
+    updates: { name?: string; description?: string; icon?: string; attributes?: Record<string, string | number | boolean> },
+  ) => Promise<void>;
+  removeComponent: (client: RpcClient, frameId: number, componentId: number) => Promise<void>;
+  setComponentSize: (
+    client: RpcClient,
+    frameId: number,
+    componentId: number,
+    size: string,
+  ) => Promise<void>;
+  setComponentMaterial: (
+    client: RpcClient,
+    frameId: number,
+    componentId: number,
+    material: string,
+  ) => Promise<void>;
+  createFromBlueprint: (client: RpcClient, blueprint: string, position?: { x: number; y: number }) => Promise<void>;
   addComponent: (client: RpcClient, frameId: number, componentName: string) => Promise<void>;
   setComponentState: (
     client: RpcClient,
@@ -23,6 +67,7 @@ interface GameStore {
     componentId: number,
     state: "active" | "inactive",
   ) => Promise<void>;
+  repairComponent: (client: RpcClient, frameId: number, componentId: number) => Promise<void>;
   updateComponentAttribute: (
     client: RpcClient,
     frameId: number,
@@ -30,18 +75,86 @@ interface GameStore {
     key: string,
     value: string | number | boolean,
   ) => Promise<void>;
+  storageAddSlot: (client: RpcClient, frameId: number, componentId: number) => Promise<void>;
+  storageSetSlot: (
+    client: RpcClient,
+    frameId: number,
+    componentId: number,
+    slotId: number,
+    itemId: string,
+    amount: number,
+  ) => Promise<void>;
+  storageSetAmount: (
+    client: RpcClient,
+    frameId: number,
+    componentId: number,
+    slotId: number,
+    amount: number,
+  ) => Promise<void>;
+  storageClearSlot: (
+    client: RpcClient,
+    frameId: number,
+    componentId: number,
+    slotId: number,
+  ) => Promise<void>;
+  loadCoreCode: (client: RpcClient, frameId: number) => Promise<string>;
+  executeCoreUpdate: (
+    client: RpcClient,
+    frameId: number,
+  ) => Promise<{ status: "ok" | "error"; error?: string }>;
+  createConnection: (
+    client: RpcClient,
+    source: number,
+    target: number,
+    type: "POWER" | "DATA" | "CONVEYOR",
+  ) => Promise<void>;
+  removeConnection: (client: RpcClient, id: number) => Promise<void>;
   updateCoreCode: (client: RpcClient, frameId: number, code: string) => Promise<void>;
+  removeFrame: (client: RpcClient, frameId: number) => Promise<void>;
+  setEnvironmentField: (client: RpcClient, field: string, value: number) => Promise<void>;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
   started: false,
+  hydrated: false,
   frames: [],
   connections: [],
   environment: null,
   powerNetworks: [],
   selectedFrameId: null,
+  timeControl: { paused: false, multiplier: 1 },
+  environmentHistory: null,
 
   init: (client) => {
+    client.onLifecycle("disconnected", () => {
+      set({ hydrated: false });
+    });
+    client.on("event.state_update", (payload) => {
+      const next = payload as { frames?: FrameDTO[]; connections?: ConnectionDTO[] };
+      set((state) => ({
+        frames: next.frames ?? state.frames,
+        connections: next.connections ?? state.connections,
+        selectedFrameId:
+          state.selectedFrameId !== null &&
+          !(next.frames ?? state.frames).some((frame) => frame.id === state.selectedFrameId)
+            ? null
+            : state.selectedFrameId,
+      }));
+    });
+    client.on("event.env_update", (payload) => {
+      const next = payload as { env?: EnvironmentDTO };
+      if (!next.env) return;
+      set({
+        environment: next.env,
+        environmentHistory: next.env.history ?? null,
+      });
+    });
+    client.on("event.power_update", (payload) => {
+      const next = payload as { networks?: PowerNetworkDTO[] };
+      set({
+        powerNetworks: next.networks ?? [],
+      });
+    });
     client.on("notify.state.changed", async () => {
       await get().fetchInitialState(client);
     });
@@ -50,31 +163,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
-  fetchInitialState: async (client) => {
-    const [state, power] = await Promise.all([
-      client.call("game.state"),
-      client.call("power.networks"),
-    ]);
-    const casted = state as {
-      started: boolean;
-      frames: FrameDTO[];
-      connections: ConnectionDTO[];
-      environment: EnvironmentDTO | null;
-    };
-    const powerCasted = power as { networks: PowerNetworkDTO[] };
-    const nextFrames = casted.frames ?? [];
+  applySnapshot: (snapshot) => {
+    const nextFrames = snapshot.frames ?? [];
+    const nextEnv = snapshot.environment ?? null;
+    const nextPower = snapshot.power_networks ?? snapshot.powerNetworks ?? [];
     set((state) => ({
-      started: casted.started,
+      started: snapshot.started ?? state.started,
+      hydrated: true,
       frames: nextFrames,
-      connections: casted.connections ?? [],
-      environment: casted.environment ?? null,
-      powerNetworks: powerCasted.networks ?? [],
+      connections: snapshot.connections ?? [],
+      environment: nextEnv,
+      environmentHistory: nextEnv?.history ?? null,
+      powerNetworks: nextPower,
       selectedFrameId:
-        state.selectedFrameId !== null &&
-        !nextFrames.some((frame) => frame.id === state.selectedFrameId)
+        state.selectedFrameId !== null && !nextFrames.some((frame) => frame.id === state.selectedFrameId)
           ? null
           : state.selectedFrameId,
     }));
+  },
+
+  fetchInitialState: async (client) => {
+    const snapshot = (await client.call("state.snapshot")) as {
+      started?: boolean;
+      frames?: FrameDTO[];
+      connections?: ConnectionDTO[];
+      environment?: EnvironmentDTO | null;
+      power_networks?: PowerNetworkDTO[];
+      patches?: Patch[];
+    };
+    get().applySnapshot(snapshot);
+    if (snapshot.patches) {
+      usePatchStore.getState().setPatches(snapshot.patches);
+    }
   },
 
   selectFrame: (frameId) => set({ selectedFrameId: frameId }),
@@ -85,20 +205,119 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   moveFrame: async (client, frameId, x, y) => {
-    await client.call("frame.move", { id: frameId, position: { x, y } });
+    const frame = get().frames.find((f) => f.id === frameId);
+    const entityId = frame?.entity_id ?? frameId;
+    await client.call("frame.move", { id: entityId, position: { x, y } });
     set({
-      frames: get().frames.map((frame) =>
-        frame.id === frameId ? { ...frame, position: { x, y } } : frame,
+      frames: get().frames.map((f) =>
+        f.id === frameId ? { ...f, position: { x, y } } : f,
       ),
     });
   },
 
   activateFrame: async (client, frameId) => {
-    await client.call("frame.activate", { id: frameId });
+    const frame = get().frames.find((f) => f.id === frameId);
+    const entityId = frame?.entity_id ?? frameId;
+    await client.call("frame.activate", { id: entityId });
   },
 
-  createFromBlueprint: async (client, blueprint) => {
-    await client.call("frame.create_from_blueprint", { blueprint });
+  deactivateFrame: async (client, frameId) => {
+    const frame = get().frames.find((f) => f.id === frameId);
+    const entityId = frame?.entity_id ?? frameId;
+    await client.call("frame.deactivate", { id: entityId });
+  },
+
+  setFrameSize: async (client, frameId, size) => {
+    const frame = get().frames.find((f) => f.id === frameId);
+    const entityId = frame?.entity_id ?? frameId;
+    await client.call("frame.set_size", { id: entityId, size });
+    set((current) => ({
+      frames: current.frames.map((f) =>
+        f.id === frameId ? { ...f, size } : f,
+      ),
+    }));
+  },
+
+  setFrameMaterial: async (client, frameId, material) => {
+    const frame = get().frames.find((f) => f.id === frameId);
+    const entityId = frame?.entity_id ?? frameId;
+    await client.call("frame.set_material", { id: entityId, material });
+    set((current) => ({
+      frames: current.frames.map((f) =>
+        f.id === frameId ? { ...f, material } : f,
+      ),
+    }));
+  },
+
+  updateFrameMetadata: async (client, frameId, updates) => {
+    const frame = get().frames.find((f) => f.id === frameId);
+    const entityId = frame?.entity_id ?? frameId;
+    const result = await client.call<{ ok: boolean; frame: import("../rpc/types").FrameDTO }>(
+      "frame.update",
+      { id: entityId, ...updates },
+    );
+    if (result.frame) {
+      set((current) => ({
+        frames: current.frames.map((f) =>
+          f.id === frameId ? { ...f, ...result.frame } : f,
+        ),
+      }));
+    } else {
+      await get().fetchInitialState(client);
+    }
+  },
+
+  removeComponent: async (client, frameId, componentId) => {
+    await client.call("component.remove", { frame_id: frameId, component_id: componentId });
+    set((current) => ({
+      frames: current.frames.map((frame) =>
+        frame.id !== frameId
+          ? frame
+          : {
+              ...frame,
+              components: (frame.components ?? []).filter((c) => c.id !== componentId),
+              component_count: (frame.component_count ?? 1) - 1,
+            },
+      ),
+    }));
+  },
+
+  setComponentSize: async (client, frameId, componentId, size) => {
+    await client.call("component.set_size", { frame_id: frameId, component_id: componentId, size });
+    set((current) => ({
+      frames: current.frames.map((frame) =>
+        frame.id !== frameId
+          ? frame
+          : {
+              ...frame,
+              components: (frame.components ?? []).map((c) =>
+                c.id === componentId ? { ...c, size } : c,
+              ),
+            },
+      ),
+    }));
+  },
+
+  setComponentMaterial: async (client, frameId, componentId, material) => {
+    await client.call("component.set_material", { frame_id: frameId, component_id: componentId, material });
+    set((current) => ({
+      frames: current.frames.map((frame) =>
+        frame.id !== frameId
+          ? frame
+          : {
+              ...frame,
+              components: (frame.components ?? []).map((c) =>
+                c.id === componentId ? { ...c, material } : c,
+              ),
+            },
+      ),
+    }));
+  },
+
+  createFromBlueprint: async (client, blueprint, position) => {
+    const params: Record<string, unknown> = { blueprint };
+    if (position) params.position = position;
+    await client.call("frame.create_from_blueprint", params);
     await get().fetchInitialState(client);
   },
 
@@ -122,6 +341,28 @@ export const useGameStore = create<GameStore>((set, get) => ({
               ...frame,
               components: (frame.components ?? []).map((component) =>
                 component.id === componentId ? { ...component, state } : component,
+              ),
+            },
+      ),
+    }));
+  },
+
+  repairComponent: async (client, frameId, componentId) => {
+    try {
+      await client.call("component.repair", { frame_id: frameId, component_id: componentId });
+    } catch {
+      return;
+    }
+    set((current) => ({
+      frames: current.frames.map((frame) =>
+        frame.id !== frameId
+          ? frame
+          : {
+              ...frame,
+              components: (frame.components ?? []).map((component) =>
+                component.id === componentId
+                  ? { ...component, state: "DEACTIVATED", error: "" }
+                  : component,
               ),
             },
       ),
@@ -161,7 +402,126 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }));
   },
 
+  storageAddSlot: async (client, frameId, componentId) => {
+    await client.call("storage.add_slot", { frame_id: frameId, component_id: componentId });
+    await get().fetchInitialState(client);
+  },
+
+  storageSetSlot: async (client, frameId, componentId, slotId, itemId, amount) => {
+    await client.call("storage.set_slot", {
+      frame_id: frameId,
+      component_id: componentId,
+      slot_id: slotId,
+      item_id: itemId,
+      amount,
+    });
+    await get().fetchInitialState(client);
+  },
+
+  storageSetAmount: async (client, frameId, componentId, slotId, amount) => {
+    await client.call("storage.set_amount", {
+      frame_id: frameId,
+      component_id: componentId,
+      slot_id: slotId,
+      amount,
+    });
+    await get().fetchInitialState(client);
+  },
+
+  storageClearSlot: async (client, frameId, componentId, slotId) => {
+    await client.call("storage.clear_slot", {
+      frame_id: frameId,
+      component_id: componentId,
+      slot_id: slotId,
+    });
+    await get().fetchInitialState(client);
+  },
+
+  loadCoreCode: async (client, frameId) => {
+    const result = await client.call<{ script: string }>("code.get_script", { frame_id: frameId });
+    return result.script ?? "";
+  },
+
+  executeCoreUpdate: async (client, frameId) => {
+    const result = await client.call<{ status: "ok" | "error"; error?: string }>("code.execute", {
+      frame_id: frameId,
+      function: "update",
+    });
+    return result;
+  },
+
+  createConnection: async (client, source, target, type) => {
+    await client.call("connection.create", { source, target, type });
+    await get().fetchInitialState(client);
+  },
+
+  removeConnection: async (client, id) => {
+    await client.call("connection.remove", { id });
+    await get().fetchInitialState(client);
+  },
+
   updateCoreCode: async (client, frameId, code) => {
     await client.call("code.update", { frame_id: frameId, code });
+  },
+
+  pauseGame: async (client) => {
+    await client.call("game.pause");
+    set({ timeControl: { ...get().timeControl, paused: true } });
+  },
+
+  resumeGame: async (client) => {
+    await client.call("game.resume");
+    set({ timeControl: { ...get().timeControl, paused: false } });
+  },
+
+  setSpeed: async (client, multiplier) => {
+    const result = await client.call<{ multiplier: number }>("game.speed.set", { multiplier });
+    set({ timeControl: { ...get().timeControl, multiplier: result.multiplier } });
+  },
+
+  refreshEnvStatus: async (client) => {
+    try {
+      const result = await client.call<{ env: EnvironmentDTO }>("env.status");
+      set({
+        environment: result.env,
+        environmentHistory: result.env.history ?? null,
+      });
+    } catch {
+      // env.status may not be available yet
+    }
+  },
+
+  refreshPowerNetworks: async (client) => {
+    try {
+      const result = await client.call<{ networks: PowerNetworkDTO[] }>("power.networks");
+      set({
+        powerNetworks: result.networks ?? [],
+      });
+    } catch {
+      // power.networks may not be available yet
+    }
+  },
+
+  fetchSpeedState: async (client) => {
+    try {
+      const result = await client.call<{ paused: boolean; multiplier: number }>("game.speed.get");
+      set({ timeControl: { paused: result.paused, multiplier: result.multiplier } });
+    } catch {
+      // game.speed.get may not be available yet
+    }
+  },
+
+  removeFrame: async (client, frameId) => {
+    const frame = get().frames.find((f) => f.id === frameId);
+    const entityId = frame?.entity_id ?? frameId;
+    await client.call("frame.remove", { id: entityId });
+    set((current) => ({
+      frames: current.frames.filter((f) => f.id !== frameId),
+      selectedFrameId: current.selectedFrameId === frameId ? null : current.selectedFrameId,
+    }));
+  },
+
+  setEnvironmentField: async (client, field, value) => {
+    await client.call("env.set_field", { field, value });
   },
 }));

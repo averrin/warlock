@@ -120,8 +120,8 @@ void registerPatchHandlers(Server& server) {
     state.registry.emplace<hf::meta>(e, meta);
     
     wl::transform transform;
-    transform.position.x = static_cast<float>(x * 75);
-    transform.position.y = static_cast<float>(y * 75);
+    transform.position.x = static_cast<float>(x * 25);
+    transform.position.y = static_cast<float>(y * 25);
     state.registry.emplace<wl::transform>(e, transform);
     
     ResourcePatch patch;

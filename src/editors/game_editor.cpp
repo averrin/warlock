@@ -4,6 +4,8 @@
 #include <editors/game_editor.hpp>
 #include <effolkronium/random.hpp>
 #include <fmt/format.h>
+#include <magic_enum.hpp>
+#include <game/components/frame.hpp>
 #include <game/game_manager.hpp>
 #include <game/state.hpp>
 #include <game/systems/thermal.hpp>
@@ -293,6 +295,34 @@ void GameEditor::render() {
           fmt::format("{} [{}]", frame.data.name, frame.data.id).c_str());
       MM::ComponentEditorWidget<Frame>(current_state.registry,
                                        (entt::entity)viewed_frame);
+
+      // List and allow removal of connections involving this frame
+      entt::entity connection_to_remove = entt::null;
+      ImGui::Separator();
+      ImGui::Text("Connections:");
+      ImGui::Indent();
+      for (auto entity : current_state.registry.view<Connection>()) {
+        auto &conn = current_state.registry.get<Connection>(entity);
+        if (conn.source != frame.data.id && conn.target != frame.data.id) {
+          continue;
+        }
+        auto label = fmt::format("[{}] {} -> {}",
+                                 magic_enum::enum_name(conn.type), conn.source,
+                                 conn.target);
+        ImGui::TextUnformatted(label.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton(
+                fmt::format("{}##del-conn-{}", ICON_FA_TRASH, (int)entity)
+                    .c_str())) {
+          connection_to_remove = entity;
+        }
+      }
+      ImGui::Unindent();
+      if (connection_to_remove != entt::null &&
+          current_state.registry.valid(connection_to_remove)) {
+        current_state.registry.destroy(connection_to_remove);
+      }
+
       ImGui::EndPopup();
     }
   } else if (gm.input->show_context_menu) {

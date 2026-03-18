@@ -8,6 +8,12 @@ return {
 			type = AttributeType.STRING,
 			value = "Data Connector",
 		},
+		max_connections = {
+			title = "Max Connections",
+			description = "Maximum number of connections",
+			type = AttributeType.INT,
+			value = 1,
+		},
 		stable = {
 			title = "Stable",
 			description = "Does continue work after power loss",
@@ -23,6 +29,7 @@ return {
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
+	require = { "Core" },
 	api = {
 		getConnectedFrames = function()
 			frames = oracle:getWiredFrames(frame.data.id)

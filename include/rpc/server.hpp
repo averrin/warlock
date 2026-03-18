@@ -22,7 +22,7 @@ public:
   Server(int port = 9800);
   ~Server();
 
-  void start();
+  bool start();
   void stop();
 
   Router& router() { return router_; }
@@ -46,7 +46,7 @@ public:
   int clientCount();
   std::string ownerConnectionId() const;
   int64_t uptimeMs() const;
-  int port() const { return server_.getPort(); }
+  int port() { return server_.getPort(); }
 
 private:
   LibLog::Logger log_ = LibLog::Logger(fmt::color::cyan, "RPC");

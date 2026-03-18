@@ -1,4 +1,5 @@
 #include <rpc/server.hpp>
+#include <thread>
 
 namespace rpc {
 
@@ -11,7 +12,7 @@ Server::~Server() {
   stop();
 }
 
-void Server::start() {
+bool Server::start() {
   server_.setOnClientMessageCallback(
       [this](std::shared_ptr<ix::ConnectionState> connectionState,
              ix::WebSocket& ws,
@@ -27,7 +28,6 @@ void Server::start() {
           // Remove from subscriptions
           unsubscribe(connectionState->getId(), {});
         } else if (msg->type == ix::WebSocketMessageType::Message) {
-          log_.debug("Received: {}", msg->str);
           rpc::Context ctx{connectionState->getId()};
           auto response = router_.dispatch(msg->str, ctx);
           ws.send(response);
@@ -36,14 +36,25 @@ void Server::start() {
         }
       });
 
-  auto res = server_.listen();
+  // On Windows we can see transient startup socket errors; retry briefly.
+  std::pair<bool, std::string> res{false, "not started"};
+  for (int attempt = 1; attempt <= 3; ++attempt) {
+    res = server_.listen();
+    if (res.first) {
+      break;
+    }
+    if (attempt < 3) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    }
+  }
   if (!res.first) {
-    log_.error("Failed to start WebSocket server: {}", res.second);
-    return;
+    log_.error("Failed to start WebSocket server on port {}: {}", server_.getPort(), res.second);
+    return false;
   }
 
   server_.start();
   log_.info("WebSocket RPC server started on port {}", server_.getPort());
+  return true;
 }
 
 void Server::stop() {

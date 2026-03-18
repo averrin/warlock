@@ -2,24 +2,42 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <game/components/frame.hpp>
 #include <game/system.hpp>
 #include <map>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 #include <vector>
 namespace fs = std::filesystem;
 
+// Callback signature for broadcasting log messages from the execution system.
+// (source, status, args)
+using ExecLogCallback = std::function<void(const std::string&, const std::string&, const nlohmann::json&)>;
+
 class CodeExecutionSystem : public System {
   std::map<int, sol::state> states = {};
   std::map<int, sol::table> compiled_scripts_ = {};
+  ExecLogCallback log_callback_;
+
+  void emitLog(const std::string& source, const std::string& status,
+               const nlohmann::json& args = nlohmann::json::object()) const;
+
+  // Install a Lua print() override that routes output through log_callback_.
+  void installPrintOverride(sol::state& lua, int frame_id);
 
 public:
   std::map<std::string, std::string> sources = {};
   std::map<std::string, std::string> blueprints = {};
   void fixedUpdate() override;
+
+  // Set a callback that receives all execution log messages (print, errors, state changes).
+  void setLogCallback(ExecLogCallback cb) { log_callback_ = std::move(cb); }
+
   CodeExecutionSystem() : System(50, "CodeExecution") {
     // read scripts/components folder, load all scripts
     fs::path PATH = entt::monostate<"path"_hs>();
@@ -32,8 +50,6 @@ public:
       std::ifstream t(file);
       std::string str((std::istreambuf_iterator<char>(t)),
                       std::istreambuf_iterator<char>());
-      // sources[name] = str;
-      // fmt::print("Script read: {}\n", name);
       sol::table spec = lua.load(str).call();
       auto title = spec["name"].get_or<std::string>("");
       sources[title] = str;
@@ -47,7 +63,6 @@ public:
                       std::istreambuf_iterator<char>());
       sol::table spec = lua.load(str).call();
       auto title = spec["name"].get_or<std::string>("");
-      // fmt::print("Blueprint read: {} -> {}\n", name, title);
       blueprints[title] = str;
     }
     fmt::print("Blueprints: {}\n", blueprints.size());

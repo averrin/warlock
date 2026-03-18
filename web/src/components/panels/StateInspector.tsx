@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
+import { usePatchStore, Patch } from "../../stores/patches";
 import type { ConnectionDTO, FrameDTO, PowerNetworkDTO } from "../../rpc/types";
 import { CollapsibleSection, NumberField, inputStyle, smallBtnStyle } from "../ui";
 import { FramePanel } from "../frame";
@@ -252,6 +253,80 @@ function PowerNetworksSection() {
   );
 }
 
+// ─── Patches section ──────────────────────────────────────────────────────────
+
+function PatchRow({
+  rpcClient,
+  patch,
+}: {
+  rpcClient: RpcClient;
+  patch: Patch;
+}) {
+  const removePatch = usePatchStore((s) => s.removePatch);
+
+  const handleDelete = async () => {
+    try {
+      await rpcClient.call("patches.delete", { id: patch.id });
+      removePatch(patch.id);
+    } catch (e) {
+      console.error("Failed to delete patch:", e);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
+      <span
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: 2,
+          background: `rgba(${patch.color.r}, ${patch.color.g}, ${patch.color.b}, ${patch.color.a / 255})`,
+          border: "1px solid #374151",
+          flexShrink: 0,
+        }}
+      />
+      <span style={{ color: "#e5e7eb" }}>
+        #{patch.id} {patch.name}
+      </span>
+      <span style={{ color: "#9ca3af", fontSize: 10 }}>
+        [{patch.cells.length} cells]
+      </span>
+      <button
+        type="button"
+        style={{ ...smallBtnStyle, color: "#ef4444", marginLeft: "auto" }}
+        onClick={handleDelete}
+      >
+        Delete
+      </button>
+    </div>
+  );
+}
+
+function PatchesSection({ rpcClient, filter }: { rpcClient: RpcClient; filter: string }) {
+  const patches = usePatchStore((s) => s.patches);
+
+  const filtered = useMemo(() => {
+    if (!filter) return patches;
+    const lower = filter.toLowerCase();
+    return patches.filter(
+      (p) =>
+        p.name.toLowerCase().includes(lower) ||
+        String(p.id).includes(lower) ||
+        p.type.toLowerCase().includes(lower) ||
+        p.item.toLowerCase().includes(lower),
+    );
+  }, [patches, filter]);
+
+  return (
+    <CollapsibleSection title={`⛏ Patches (${patches.length})`}>
+      {filtered.length === 0 && <div style={{ color: "#6b7280" }}>No patches</div>}
+      {filtered.map((patch) => (
+        <PatchRow key={patch.id} rpcClient={rpcClient} patch={patch} />
+      ))}
+    </CollapsibleSection>
+  );
+}
+
 // ─── Main StateInspector ─────────────────────────────────────────────────────
 
 export function StateInspector({ rpcClient }: Props) {
@@ -280,6 +355,7 @@ export function StateInspector({ rpcClient }: Props) {
       <FramesSection rpcClient={rpcClient} filter={filter} />
       <ConnectionsSection rpcClient={rpcClient} filter={filter} />
       <PowerNetworksSection />
+      <PatchesSection rpcClient={rpcClient} filter={filter} />
     </div>
   );
 }

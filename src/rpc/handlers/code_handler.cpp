@@ -7,7 +7,40 @@
 
 namespace rpc {
 
+static entt::entity findFrameEntityByDataId(entt::registry& registry, int frameDataId) {
+  auto view = registry.view<Frame>();
+  for (auto entity : view) {
+    if (view.get<Frame>(entity).data.id == frameDataId) {
+      return entity;
+    }
+  }
+  return entt::null;
+}
+
+static std::shared_ptr<Component> findCoreComponent(Frame& frame) {
+  for (auto& comp : frame.components) {
+    if (!comp) {
+      continue;
+    }
+    std::string compType = comp->data.get_or<std::string>("type", "");
+    if (compType == "Core" || comp->data.name == "Core") {
+      return comp;
+    }
+  }
+  return nullptr;
+}
+
 void registerCodeHandlers(Server& server) {
+  // Wire execution log callback → web.log broadcast
+  auto& gm_init = entt::locator<GameManager>::value();
+  if (gm_init.exec) {
+    gm_init.exec->setLogCallback([&server](const std::string& source,
+                                           const std::string& status,
+                                           const nlohmann::json& args) {
+      logWebAction(server, source, status, args);
+    });
+  }
+
   // code.sources — returns {sources: {name: code_string}}
   server.router().on("code.sources", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
     auto& gm = entt::locator<GameManager>::value();
@@ -50,36 +83,91 @@ void registerCodeHandlers(Server& server) {
     std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
     auto& state = entt::locator<State>::value();
     auto& registry = state.registry;
-
-    entt::entity frame_entity = entt::null;
-    {
-      auto view = registry.view<Frame>();
-      for (auto e : view) {
-        if (view.get<Frame>(e).data.id == frame_data_id) { frame_entity = e; break; }
-      }
-    }
+    entt::entity frame_entity = findFrameEntityByDataId(registry, frame_data_id);
     if (frame_entity == entt::null) {
       throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Frame not found"};
     }
 
     auto& frame = registry.get<Frame>(frame_entity);
-    for (auto& comp : frame.components) {
-      if (!comp) continue;
-      // Find Core component(s) by type attribute
-      std::string comp_type = "";
-      auto it = comp->data.attributes.find("type");
-      if (it != comp->data.attributes.end() && it->second) {
-        auto fv = it->second->GetFinalValue();
-        if (std::holds_alternative<std::string>(fv)) {
-          comp_type = std::get<std::string>(fv);
-        }
-      }
-      if (comp_type == "Core" || comp->data.name == "Core") {
-        comp->data.set("code", code);
-        gm.exec->invalidateScript(comp->data.id);
-      }
+    auto core = findCoreComponent(frame);
+    if (!core) {
+      throw rpc::RpcError{rpc::error::INVALID_COMPONENT, "Core component not found"};
     }
-    return {{"ok", true}};
+    core->data.set("code", code);
+    gm.exec->invalidateScript(core->data.id);
+    nlohmann::json result = {{"ok", true}};
+    logWebAction(server, "code.update", "ok", {{"frame_id", frame_data_id}});
+    return result;
+  });
+
+  // code.get_script — {frame_id: int} -> {frame_id, script}
+  server.router().on("code.get_script", [](const Context& /*ctx*/, const nlohmann::json& params) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    if (!params.contains("frame_id")) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Missing required parameter: frame_id"};
+    }
+    int frameDataId = params["frame_id"].get<int>();
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto frameEntity = findFrameEntityByDataId(state.registry, frameDataId);
+    if (frameEntity == entt::null) {
+      throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Frame not found"};
+    }
+    auto& frame = state.registry.get<Frame>(frameEntity);
+    auto core = findCoreComponent(frame);
+    if (!core) {
+      throw rpc::RpcError{rpc::error::INVALID_COMPONENT, "Core component not found"};
+    }
+
+    return {
+      {"frame_id", frameDataId},
+      {"script", core->data.get_or<std::string>("code", "")}
+    };
+  });
+
+  // code.execute — {frame_id: int, function?: string} -> {status, error?}
+  server.router().on("code.execute", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      return {{"status", "error"}, {"error", "Game not started"}};
+    }
+    if (!params.contains("frame_id")) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Missing required parameter: frame_id"};
+    }
+    int frameDataId = params["frame_id"].get<int>();
+    std::string functionName = params.value("function", std::string("update"));
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto frameEntity = findFrameEntityByDataId(state.registry, frameDataId);
+    if (frameEntity == entt::null) {
+      nlohmann::json result = {{"status", "error"}, {"error", "Frame not found"}};
+      logWebAction(server, "code.execute", "error", {{"frame_id", frameDataId}, {"error", "Frame not found"}});
+      return result;
+    }
+    auto& frame = state.registry.get<Frame>(frameEntity);
+    auto core = findCoreComponent(frame);
+    if (!core) {
+      nlohmann::json result = {{"status", "error"}, {"error", "Core component not found"}};
+      logWebAction(server, "code.execute", "error", {{"frame_id", frameDataId}, {"error", "Core component not found"}});
+      return result;
+    }
+
+    core->error.clear();
+    gm.exec->executeCoreFunction(core, functionName);
+    if (core->state == ComponentState::COMP_ERROR) {
+      nlohmann::json result = {{"status", "error"}, {"error", core->error}};
+      logWebAction(server, "code.execute", "error", {{"frame_id", frameDataId}, {"error", core->error}});
+      return result;
+    }
+    nlohmann::json result = {{"status", "ok"}};
+    logWebAction(server, "code.execute", "ok", {{"frame_id", frameDataId}, {"function", functionName}});
+    return result;
   });
 }
 

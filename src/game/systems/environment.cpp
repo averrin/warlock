@@ -45,6 +45,10 @@ void EnvironmentSystem::fixedUpdate() {
 
   auto &current_state = entt::locator<State>::value();
   auto &wk = entt::locator<WellKnownEntities>::value();
+  if (wk.environment == entt::null || !current_state.registry.valid(wk.environment) ||
+      !current_state.registry.all_of<Environment>(wk.environment)) {
+    return;
+  }
   auto &environment = current_state.registry.get<Environment>(wk.environment);
 
   if (!ready) {
@@ -74,13 +78,17 @@ void EnvironmentSystem::fixedUpdate() {
   temp_tween.step(1);
   environment.temperature = temp_tween.peek();
 
+  environment.named_history["temperature"].push_back(environment.temperature);
+  if (environment.named_history["temperature"].size() > 600) {
+    environment.named_history["temperature"].pop_front();
+  }
   environment.named_history["sun"].push_back(environment.sun);
-  if (environment.named_history["sun"].size() > 100) {
+  if (environment.named_history["sun"].size() > 600) {
     environment.named_history["sun"].pop_front();
   }
-  environment.named_history["airFlow"].push_back(environment.airFlow);
-  if (environment.named_history["airFlow"].size() > 100) {
-    environment.named_history["airFlow"].pop_front();
+  environment.named_history["air_flow"].push_back(environment.airFlow);
+  if (environment.named_history["air_flow"].size() > 600) {
+    environment.named_history["air_flow"].pop_front();
   }
 
   for (auto &f : current_state.registry.view<Frame>()) {

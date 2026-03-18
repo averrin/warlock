@@ -1,0 +1,51 @@
+/* Override react-cmdk styles to match app theme */
+[cmdk-root] {
+  --cmdk-bg: #1e293b;
+  --cmdk-border: #334155;
+  --cmdk-text: #e5e7eb;
+  --cmdk-text-muted: #9ca3af;
+  --cmdk-accent: #3b82f6;
+}
+
+.cmdk-root {
+  background: var(--cmdk-bg) !important;
+  border-color: var(--cmdk-border) !important;
+}
+
+.cmdk-wrapper {
+  background: var(--cmdk-bg) !important;
+}
+
+.cmdk-input {
+  background: #0f172a !important;
+  border-color: var(--cmdk-border) !important;
+  color: var(--cmdk-text) !important;
+}
+
+.cmdk-input::placeholder {
+  color: var(--cmdk-text-muted) !important;
+}
+
+.cmdk-list {
+  background: var(--cmdk-bg) !important;
+}
+
+.cmdk-list-item {
+  color: var(--cmdk-text) !important;
+}
+
+.cmdk-list-item[aria-selected="true"],
+.cmdk-list-item:hover {
+  background: #334155 !important;
+}
+
+.cmdk-list-heading {
+  color: var(--cmdk-text-muted) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+.cmdk-footer {
+  background: var(--cmdk-bg) !important;
+  border-color: var(--cmdk-border) !important;
+}
