@@ -4,7 +4,7 @@ import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from 
 import type { FederatedPointerEvent } from "pixi.js";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
-import { usePatchStore } from "../../stores/patches";
+import { usePatchStore, Patch } from "../../stores/patches";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
 import type { ComponentDTO } from "../../rpc/types";
 import { ComponentContextMenu } from "./ComponentContextMenu";
@@ -311,6 +311,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const patchLayerRef = useRef<Container | null>(null);
   const frameNodeByIdRef = useRef<Map<number, Container>>(new Map());
   const patches = usePatchStore((s) => s.patches);
+  const patchTypes = usePatchStore((s) => s.patchTypes);
   const frames = useGameStore((s) => s.frames);
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
   const selectFrame = useGameStore((s) => s.selectFrame);
@@ -520,6 +521,24 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     const ghost = ghostRef.current;
     if (ghost) ghost.visible = false;
   }, []);
+
+  const createPatch = async (type: string, wx: number, wy: number) => {
+    const gridX = Math.floor(wx / CELL);
+    const gridY = Math.floor(wy / CELL);
+
+    try {
+      await rpcClient.call("patches.create", {
+        type,
+        x: gridX,
+        y: gridY,
+      });
+      const data = await rpcClient.call<{ patches: Patch[] }>("patches.list");
+      usePatchStore.getState().setPatches(data.patches ?? []);
+    } catch (e) {
+      console.error("Failed to create patch:", e);
+    }
+    setContextMenu(null);
+  };
 
   const placedFrames = useMemo(() => {
     return frames.map((frame, index) => {
@@ -1514,6 +1533,32 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           >
             Create Frame...
           </div>
+          {patchTypes.length > 0 && (
+            <>
+              <div style={{ borderTop: "1px solid #374151", margin: "4px 0" }} />
+              <div style={{ padding: "4px 8px", color: "#9ca3af", fontSize: "11px" }}>Resource Patches</div>
+              {patchTypes.map((pt) => (
+                <button
+                  key={pt.key}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: "6px 12px",
+                    background: "none",
+                    border: "none",
+                    color: "#d1d5db",
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  onClick={() => createPatch(pt.key, contextMenu.wx, contextMenu.wy)}
+                >
+                  Create {pt.name}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
       {frameContextMenu && (() => {
