@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { RpcClient } from "../../rpc/client";
 import type { FrameDTO } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
@@ -21,6 +21,73 @@ type Props = {
   showExpandButton?: boolean;
   onNavigateToTree?: () => void;
 };
+
+// Two fixed slots: [LEFT=collapse][RIGHT=expand or collapse-at-max]
+// Level 0: [ ][▸]   click ▸ → 1
+// Level 1: [◂][▸]   click ▸ → 2 (same spot), click ◂ → 0
+// Level 2: [ ][◂]   click ◂ → 1 (under cursor from previous ▸ click)
+function LevelControls({
+  level,
+  onSetLevel,
+}: {
+  level: 0 | 1 | 2;
+  onSetLevel: (l: 0 | 1 | 2) => void;
+}) {
+  const btn: CSSProperties = {
+    border: "1px solid #334155",
+    borderRadius: 4,
+    width: 20,
+    height: 20,
+    background: "#020617",
+    color: "#9ca3af",
+    cursor: "pointer",
+    fontSize: 11,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    flexShrink: 0,
+  };
+  const placeholder: CSSProperties = { width: 20, height: 20, flexShrink: 0 };
+
+  return (
+    <div style={{ display: "flex", gap: 2, alignItems: "center", flexShrink: 0 }}>
+      {/* LEFT slot: collapse (only at level 1) */}
+      {level === 1 ? (
+        <button
+          type="button"
+          style={btn}
+          title="Collapse"
+          onClick={(e) => { e.stopPropagation(); onSetLevel(0); }}
+        >
+          ◂
+        </button>
+      ) : (
+        <div style={placeholder} />
+      )}
+      {/* RIGHT slot: expand (levels 0–1) or collapse (level 2) */}
+      {level < 2 ? (
+        <button
+          type="button"
+          style={btn}
+          title={level === 0 ? "Expand" : "Expand more"}
+          onClick={(e) => { e.stopPropagation(); onSetLevel((level + 1) as 1 | 2); }}
+        >
+          ▸
+        </button>
+      ) : (
+        <button
+          type="button"
+          style={btn}
+          title="Collapse"
+          onClick={(e) => { e.stopPropagation(); onSetLevel(1); }}
+        >
+          ◂
+        </button>
+      )}
+    </div>
+  );
+}
 
 export function FramePanel({
   frame,
@@ -83,7 +150,7 @@ export function FramePanel({
         <FrameHeader frame={frame} powerNetwork={powerNetwork} compact />
         <div style={{ flex: 1 }} />
         <ComponentStrip frameId={frame.id} components={components} rpcClient={rpcClient} />
-        {showExpandButton && <span style={{ color: "#6b7280", fontSize: 12 }}>▸</span>}
+        {showExpandButton && <LevelControls level={0} onSetLevel={setLevel} />}
       </div>
     );
   }
@@ -98,12 +165,10 @@ export function FramePanel({
             powerNetwork={powerNetwork}
             onRename={(name) => void updateFrameMetadata(rpcClient, frame.id, { name })}
           />
-          <FrameControls
-            frameId={frame.id}
-            rpcClient={rpcClient}
-            showExpand={showExpandButton}
-            onExpand={() => setLevel(2)}
-          />
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+            <FrameControls frameId={frame.id} rpcClient={rpcClient} />
+            {showExpandButton && <LevelControls level={1} onSetLevel={setLevel} />}
+          </div>
         </div>
 
         <StorageBar frameId={frame.id} components={components} rpcClient={rpcClient} />
@@ -113,23 +178,24 @@ export function FramePanel({
             frameId={frame.id}
             components={components}
             rpcClient={rpcClient}
-            availableComponents={level >= 1 ? availableComponents : undefined}
+            availableComponents={availableComponents}
             onComponentContextMenu={handleComponentContextMenu}
           />
         </div>
 
         <ErrorList frame={frame} />
 
-        <div style={{ marginTop: 8, display: "flex", gap: 4 }}>
-          <button type="button" onClick={() => setLevel(0)} style={{ fontSize: 10, padding: "2px 6px" }}>
-            Collapse
-          </button>
-          {onNavigateToTree && (
-            <button type="button" onClick={onNavigateToTree} style={{ fontSize: 10, padding: "2px 6px" }}>
+        {onNavigateToTree && (
+          <div style={{ marginTop: 6 }}>
+            <button
+              type="button"
+              onClick={onNavigateToTree}
+              style={{ fontSize: 10, padding: "2px 6px", background: "transparent", border: "1px solid #334155", borderRadius: 3, color: "#9ca3af", cursor: "pointer" }}
+            >
               Open in Tree
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {compContextMenu && (() => {
           const comp = components.find((c) => c.id === compContextMenu.componentId);
@@ -159,7 +225,10 @@ export function FramePanel({
           powerNetwork={powerNetwork}
           onRename={(name) => void updateFrameMetadata(rpcClient, frame.id, { name })}
         />
-        <FrameControls frameId={frame.id} rpcClient={rpcClient} showRefresh />
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+          <FrameControls frameId={frame.id} rpcClient={rpcClient} showRefresh />
+          {showExpandButton && <LevelControls level={2} onSetLevel={setLevel} />}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -233,12 +302,6 @@ export function FramePanel({
           )}
         </div>
       )}
-
-      <div style={{ marginTop: 8 }}>
-        <button type="button" onClick={() => setLevel(1)} style={{ fontSize: 10, padding: "2px 6px" }}>
-          Collapse
-        </button>
-      </div>
 
       {compContextMenu && (() => {
         const comp = components.find((c) => c.id === compContextMenu.componentId);
