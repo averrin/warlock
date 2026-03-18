@@ -8,6 +8,7 @@ import { usePatchStore, Patch } from "../../stores/patches";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
 import type { ComponentDTO } from "../../rpc/types";
 import { ComponentContextMenu } from "./ComponentContextMenu";
+import { PatchMiniInspector } from "./PatchMiniInspector";
 import { ComponentPicker, BlueprintPicker } from "../picker";
 
 type Props = {
@@ -362,7 +363,20 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   } | null>(null);
   const [componentPickerOpen, setComponentPickerOpen] = useState<{ frameId: number } | null>(null);
   const [blueprintPickerOpen, setBlueprintPickerOpen] = useState<{ wx: number; wy: number } | null>(null);
+  const [patchInspector, setPatchInspector] = useState<{ patch: Patch; x: number; y: number } | null>(null);
   const drawConnectionsRef = useRef<() => void>(() => {});
+
+  const getPatchAtWorldPos = (wx: number, wy: number): Patch | null => {
+    const gridX = Math.floor(wx / CELL);
+    const gridY = Math.floor(wy / CELL);
+    
+    for (const patch of patches) {
+      if (patch.cells.some(([cx, cy]) => cx === gridX && cy === gridY)) {
+        return patch;
+      }
+    }
+    return null;
+  };
 
   // Click-outside handler for all context menus
   useEffect(() => {
@@ -373,6 +387,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         setFrameContextMenu(null);
         setCompContextMenu(null);
         setFrameRenaming(null);
+        setPatchInspector(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -634,6 +649,17 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       exitCreationMode();
       void createFromBlueprint(rpcClient, bp, { x, y });
       return;
+    }
+    // Check for patch click
+    const world = worldRef.current;
+    if (world) {
+      const pos = event.getLocalPosition(world);
+      const clickedPatch = getPatchAtWorldPos(pos.x, pos.y);
+      if (clickedPatch) {
+        const { x: clientX, y: clientY } = getEventClientXY(event);
+        setPatchInspector({ patch: clickedPatch, x: clientX, y: clientY });
+        return;
+      }
     }
     selectFrame(null);
   };
@@ -1842,6 +1868,15 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             enterCreationMode(blueprint);
             setBlueprintPickerOpen(null);
           }}
+        />
+      )}
+      {patchInspector && (
+        <PatchMiniInspector
+          patch={patchInspector.patch}
+          x={patchInspector.x}
+          y={patchInspector.y}
+          rpcClient={rpcClient}
+          onClose={() => setPatchInspector(null)}
         />
       )}
     </div>
