@@ -1,6 +1,6 @@
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
-import { smallBtnStyle } from "../ui";
+import { IconButton } from "../ui";
 
 type Props = {
   frameId: number;
@@ -17,25 +17,34 @@ export function ComponentControls({ frameId, componentId, componentState, rpcCli
   const showRepair = componentState === "COMP_ERROR" || componentState === "BROKEN";
 
   return (
-    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-      <button type="button" style={smallBtnStyle} onClick={() => void setComponentState(rpcClient, frameId, componentId, "active")}>
-        Activate
-      </button>
-      <button type="button" style={smallBtnStyle} onClick={() => void setComponentState(rpcClient, frameId, componentId, "inactive")}>
-        Deactivate
-      </button>
+    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+      <IconButton
+        icon="▶"
+        size="sm"
+        title="Activate"
+        onClick={() => void setComponentState(rpcClient, frameId, componentId, "active")}
+      />
+      <IconButton
+        icon="⏹"
+        size="sm"
+        title="Deactivate"
+        onClick={() => void setComponentState(rpcClient, frameId, componentId, "inactive")}
+      />
       {showRepair && (
-        <button type="button" style={smallBtnStyle} onClick={() => void repairComponent(rpcClient, frameId, componentId)}>
-          Repair
-        </button>
+        <IconButton
+          icon="⚙"
+          size="sm"
+          title="Repair"
+          onClick={() => void repairComponent(rpcClient, frameId, componentId)}
+        />
       )}
-      <button
-        type="button"
-        style={{ ...smallBtnStyle, color: "#ef4444" }}
+      <IconButton
+        icon="✕"
+        size="sm"
+        variant="danger"
+        title="Delete"
         onClick={() => void removeComponent(rpcClient, frameId, componentId)}
-      >
-        Delete
-      </button>
+      />
     </div>
   );
 }
