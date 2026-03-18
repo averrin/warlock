@@ -1,11 +1,45 @@
 #include <algorithm>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
+#include <game/components/resource_patch.hpp>
 #include <game/state.hpp>
 #include <game/systems/items.hpp>
 #include <liblog/liblog.hpp>
 #include <ranges> // For ranges
 #include <utils/entt.hpp>
+
+namespace {
+std::vector<std::pair<int, int>> getFrameOccupiedCells(const wl::transform& t, FrameSize size) {
+  const int CELL = 75;
+  int gridX = static_cast<int>(t.position.x) / CELL;
+  int gridY = static_cast<int>(t.position.y) / CELL;
+  int cells = 1;
+  switch (size) {
+    case FrameSize::S: cells = 1; break;
+    case FrameSize::M: cells = 2; break;
+    case FrameSize::L: cells = 3; break;
+    case FrameSize::G: cells = 4; break;
+  }
+  
+  std::vector<std::pair<int, int>> result;
+  for (int dy = 0; dy < cells; ++dy) {
+    for (int dx = 0; dx < cells; ++dx) {
+      result.emplace_back(gridX + dx, gridY + dy);
+    }
+  }
+  return result;
+}
+
+bool cellsOverlap(const std::vector<std::pair<int, int>>& a, 
+                  const std::vector<std::pair<int, int>>& b) {
+  for (const auto& ca : a) {
+    for (const auto& cb : b) {
+      if (ca.first == cb.first && ca.second == cb.second) return true;
+    }
+  }
+  return false;
+}
+} // namespace
 
 void ItemsSystem::fixedUpdate() {
   auto &current_state = entt::locator<State>::value();
@@ -23,6 +57,22 @@ void ItemsSystem::fixedUpdate() {
       }
     }
     for (auto &c : frame.components) {
+      // Miner-patch overlap detection
+      if (c->data.get<std::string>("type") == "Miner" && c->state == ComponentState::ACTIVE) {
+        if (current_state.registry.valid(f) && current_state.registry.all_of<wl::transform>(f)) {
+          auto& frame_transform = current_state.registry.get<wl::transform>(f);
+          auto frame_cells = getFrameOccupiedCells(frame_transform, frame.size);
+          
+          for (auto patch_e : current_state.registry.view<ResourcePatch>()) {
+            auto& patch = current_state.registry.get<ResourcePatch>(patch_e);
+            if (cellsOverlap(frame_cells, patch.cells)) {
+              // Miner overlaps this patch - can extract patch.item_name
+              break;
+            }
+          }
+        }
+      }
+
       if (c->data.get_or<std::string>("recipe", "") != "" &&
           c->state == ComponentState::ACTIVE) {
         auto recipe_name = c->data.get_or<std::string>("recipe", "");
@@ -95,8 +145,14 @@ void ItemsSystem::fixedUpdate() {
               satisfied = true;
             }
             if (!satisfied) {
+              auto prev = c->state;
               c->state = ComponentState::COMP_ERROR;
               c->error = "Not enough input components";
+              auto &emitter = entt::locator<event_emitter>::value();
+              emitter.publish(component_state_changed{
+                c->frame_id, c->data.id, c->data.name,
+                static_cast<int>(prev), static_cast<int>(c->state), c->error
+              });
               lastExecutionTime[entity] = 0.0;
               continue;
             }
@@ -129,8 +185,14 @@ void ItemsSystem::fixedUpdate() {
               satisfied = true;
             }
             if (!satisfied) {
+              auto prev = c->state;
               c->state = ComponentState::COMP_ERROR;
               c->error = "Not enough space for output components";
+              auto &emitter = entt::locator<event_emitter>::value();
+              emitter.publish(component_state_changed{
+                c->frame_id, c->data.id, c->data.name,
+                static_cast<int>(prev), static_cast<int>(c->state), c->error
+              });
               lastExecutionTime[entity] = 0.0;
               continue;
             }
