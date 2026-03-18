@@ -1,0 +1,63 @@
+.patch-mini-inspector {
+  position: fixed;
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 200px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.patch-mini-inspector .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #374151;
+}
+
+.patch-mini-inspector .name {
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.patch-mini-inspector .close {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.patch-mini-inspector .row {
+  display: flex;
+  justify-content: space-between;
+  margin: 4px 0;
+  color: #d1d5db;
+}
+
+.patch-mini-inspector .label {
+  color: #9ca3af;
+}
+
+.patch-mini-inspector .actions {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #374151;
+}
+
+.patch-mini-inspector .delete {
+  width: 100%;
+  padding: 6px;
+  background: #dc2626;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+}
+
+.patch-mini-inspector .delete:hover {
+  background: #b91c1c;
+}
