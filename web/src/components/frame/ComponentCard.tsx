@@ -74,7 +74,10 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
   return (
     <div style={{ border: "1px solid #334155", borderRadius: 6, padding: "6px 8px", display: "grid", gap: 6 }}>
       {/* Header: icon | name id effects badge | flex-1 | action buttons | expand control */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+        onClick={() => setExpanded((v) => !v)}
+      >
         {/* Component icon badge — same style as ComponentStrip */}
         <div
           style={{
