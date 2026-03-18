@@ -6,3 +6,4 @@ export * from "./ComponentAttributes";
 export * from "./ComponentCard";
 export * from "./StorageBar";
 export * from "./ErrorList";
+export * from "./FramePanel";
