@@ -350,16 +350,19 @@ void GameManager::serve() {
     }
   }
 
-  updateMutex.lock();
-  for (auto &system : systems) {
-    const std::chrono::duration<double, std::milli> delta =
-        hr_clock::now() - lastUpdate;
-    if (system->enabled) {
-      system->update(delta);
+  tick_count_++;
+  if (!paused_) {
+    updateMutex.lock();
+    for (auto &system : systems) {
+      const std::chrono::duration<double, std::milli> delta =
+          hr_clock::now() - lastUpdate;
+      if (system->enabled) {
+        system->update(delta);
+      }
     }
+    lastUpdate = hr_clock::now();
+    updateMutex.unlock();
   }
-  lastUpdate = hr_clock::now();
-  updateMutex.unlock();
 }
 
 void GameManager::initScript(entt::registry &registry, entt::entity entity) {

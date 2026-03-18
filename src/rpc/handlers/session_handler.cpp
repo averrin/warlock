@@ -1,24 +1,24 @@
 #include <rpc/handlers/session_handler.hpp>
-#include <stdexcept>
+#include <rpc/message.hpp>
 
 namespace rpc {
 
 void registerSessionHandlers(Server& server) {
   server.router().on("session.claim", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
     if (server.isClaimed()) {
-      throw std::runtime_error("Session already claimed");
+      throw rpc::RpcError{rpc::error::NOT_CLAIMED, "Session already claimed"};
     }
 
     if (!server.claim(ctx.connectionId)) {
-      throw std::runtime_error("Failed to claim session");
+      throw rpc::RpcError{rpc::error::NOT_CLAIMED, "Failed to claim session"};
     }
 
-    return {{"status", "claimed"}, {"connectionId", ctx.connectionId}};
+    return {{"ok", true}};
   });
 
   server.router().on("session.release", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
     if (!server.isOwner(ctx.connectionId)) {
-      throw std::runtime_error("Not the session owner");
+      throw rpc::RpcError{rpc::error::NOT_CLAIMED, "Session not claimed by this connection"};
     }
 
     server.release(ctx.connectionId);
@@ -26,10 +26,12 @@ void registerSessionHandlers(Server& server) {
   });
 
   server.router().on("session.info", [&server](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    std::string owner = server.ownerConnectionId();
+    nlohmann::json claimed_by = owner.empty() ? nlohmann::json(nullptr) : nlohmann::json(owner);
     return {
-      {"claimed", server.isClaimed()},
-      {"owner", server.ownerConnectionId()},
-      {"clientCount", server.clientCount()}
+      {"claimed_by", claimed_by},
+      {"clients", server.clientCount()},
+      {"uptime_ms", server.uptimeMs()}
     };
   });
 }

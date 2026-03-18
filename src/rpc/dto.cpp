@@ -8,13 +8,16 @@ nlohmann::json serializeAttributeValue(const AttributeValue& val) {
 }
 
 nlohmann::json serializeAttribute(const std::string& key, const Attribute& attr) {
+  nlohmann::json mods = nlohmann::json::array();
+  for (const auto& m : attr.modifiers) {
+    if (m) mods.push_back(m->name);
+  }
   return {
-    {"key", key},
     {"title", attr.GetTitle()},
-    {"description", attr.GetDescription()},
-    {"type", magic_enum::enum_name(attr.GetType())},
-    {"baseValue", serializeAttributeValue(attr.GetBaseValue())},
-    {"finalValue", serializeAttributeValue(attr.GetFinalValue())}
+    {"type", std::string(magic_enum::enum_name(attr.GetType()))},
+    {"base_value", serializeAttributeValue(attr.GetBaseValue())},
+    {"final_value", serializeAttributeValue(attr.GetFinalValue())},
+    {"modifiers", mods}
   };
 }
 
@@ -35,28 +38,46 @@ nlohmann::json serializeMetadata(const Metadata& data) {
 }
 
 nlohmann::json serializeComponent(const Component& comp) {
-  nlohmann::json j;
-  j["data"] = serializeMetadata(comp.data);
-  j["state"] = std::string(magic_enum::enum_name(comp.state));
-  j["size"] = std::string(magic_enum::enum_name(comp.size));
-  j["material"] = std::string(magic_enum::enum_name(comp.material));
-  j["error"] = comp.error;
-  j["frameId"] = comp.frame_id;
+  // type = the string value of the "type" attribute, or name as fallback
+  std::string type_str = comp.data.name;
+  auto it = comp.data.attributes.find("type");
+  if (it != comp.data.attributes.end() && it->second) {
+    auto& attr = *it->second;
+    if (attr.GetType() == AttributeType::STRING) {
+      type_str = std::get<std::string>(attr.GetFinalValue());
+    }
+  }
 
-  nlohmann::json reqs = nlohmann::json::array();
-  for (const auto& r : comp.require) reqs.push_back(r);
-  j["require"] = reqs;
+  nlohmann::json attrs = nlohmann::json::object();
+  for (const auto& [k, v] : comp.data.attributes) {
+    if (v) {
+      attrs[k] = serializeAttribute(k, *v);
+    }
+  }
 
-  nlohmann::json conflicts = nlohmann::json::array();
-  for (const auto& c : comp.conflict) conflicts.push_back(c);
-  j["conflict"] = conflicts;
-
-  return j;
+  return {
+    {"id", comp.data.id},
+    {"name", comp.data.name},
+    {"type", type_str},
+    {"state", std::string(magic_enum::enum_name(comp.state))},
+    {"size", std::string(magic_enum::enum_name(comp.size))},
+    {"attributes", attrs}
+  };
 }
 
+nlohmann::json serializeConnection(entt::entity entity, const Connection& conn) {
+  return {
+    {"id", conn.data.id},
+    {"source", conn.source},
+    {"target", conn.target},
+    {"type", std::string(magic_enum::enum_name(conn.type))}
+  };
+}
+
+// Legacy overload kept for backward compat — uses data.id for id
 nlohmann::json serializeConnection(const Connection& conn) {
   return {
-    {"data", serializeMetadata(conn.data)},
+    {"id", conn.data.id},
     {"source", conn.source},
     {"target", conn.target},
     {"type", std::string(magic_enum::enum_name(conn.type))}
@@ -64,29 +85,58 @@ nlohmann::json serializeConnection(const Connection& conn) {
 }
 
 nlohmann::json serializeFrame(const Frame& frame) {
-  nlohmann::json j;
-  j["data"] = serializeMetadata(frame.data);
-  j["size"] = std::string(magic_enum::enum_name(frame.size));
-  j["material"] = std::string(magic_enum::enum_name(frame.material));
-
   nlohmann::json comps = nlohmann::json::array();
   for (const auto& c : frame.components) {
     if (c) {
       comps.push_back(serializeComponent(*c));
     }
   }
-  j["components"] = comps;
+
+  // temperature from "temp" attribute final_value, or 0
+  float temperature = 0.0f;
+  auto it = frame.data.attributes.find("temp");
+  if (it != frame.data.attributes.end() && it->second) {
+    auto fv = it->second->GetFinalValue();
+    if (std::holds_alternative<float>(fv)) {
+      temperature = std::get<float>(fv);
+    } else if (std::holds_alternative<int>(fv)) {
+      temperature = static_cast<float>(std::get<int>(fv));
+    }
+  }
+
+  return {
+    {"id", frame.data.id},
+    {"name", frame.data.name},
+    {"size", std::string(magic_enum::enum_name(frame.size))},
+    {"material", std::string(magic_enum::enum_name(frame.material))},
+    {"temperature", temperature},
+    {"components", comps},
+    {"effects", nlohmann::json::array()}
+  };
+}
+
+nlohmann::json serializeFrame(entt::registry& registry, entt::entity entity, const Frame& frame) {
+  auto j = serializeFrame(frame);
+  j["entity_id"] = static_cast<int>(entity);
+
+  // read wl::transform for position
+  if (registry.all_of<wl::transform>(entity)) {
+    auto& t = registry.get<wl::transform>(entity);
+    j["position"] = {{"x", t.position.x}, {"y", t.position.y}};
+  } else {
+    j["position"] = {{"x", 0.0f}, {"y", 0.0f}};
+  }
 
   return j;
 }
 
 nlohmann::json serializeFrameSummary(entt::entity entity, const Frame& frame) {
   return {
-    {"entityId", static_cast<int>(entity)},
+    {"entity_id", static_cast<int>(entity)},
     {"id", frame.data.id},
     {"name", frame.data.name},
     {"size", std::string(magic_enum::enum_name(frame.size))},
-    {"componentCount", static_cast<int>(frame.components.size())}
+    {"component_count", static_cast<int>(frame.components.size())}
   };
 }
 
@@ -94,10 +144,10 @@ nlohmann::json serializeEnvironment(const Environment& env) {
   return {
     {"radioactivity", env.radioactivity},
     {"temperature", env.temperature},
-    {"airFlow", env.airFlow},
+    {"air_flow", env.airFlow},
     {"sun", env.sun},
     {"minutes", env.minutes},
-    {"isDay", env.isDay},
+    {"is_day", env.isDay},
     {"days", env.days}
   };
 }

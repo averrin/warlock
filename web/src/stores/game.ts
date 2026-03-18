@@ -17,6 +17,19 @@ interface GameStore {
   activateFrame: (client: RpcClient, frameId: number) => Promise<void>;
   createFromBlueprint: (client: RpcClient, blueprint: string) => Promise<void>;
   addComponent: (client: RpcClient, frameId: number, componentName: string) => Promise<void>;
+  setComponentState: (
+    client: RpcClient,
+    frameId: number,
+    componentId: number,
+    state: "active" | "inactive",
+  ) => Promise<void>;
+  updateComponentAttribute: (
+    client: RpcClient,
+    frameId: number,
+    componentId: number,
+    key: string,
+    value: string | number | boolean,
+  ) => Promise<void>;
   updateCoreCode: (client: RpcClient, frameId: number, code: string) => Promise<void>;
 }
 
@@ -49,13 +62,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
       environment: EnvironmentDTO | null;
     };
     const powerCasted = power as { networks: PowerNetworkDTO[] };
-    set({
+    const nextFrames = casted.frames ?? [];
+    set((state) => ({
       started: casted.started,
-      frames: casted.frames ?? [],
+      frames: nextFrames,
       connections: casted.connections ?? [],
       environment: casted.environment ?? null,
       powerNetworks: powerCasted.networks ?? [],
-    });
+      selectedFrameId:
+        state.selectedFrameId !== null &&
+        !nextFrames.some((frame) => frame.id === state.selectedFrameId)
+          ? null
+          : state.selectedFrameId,
+    }));
   },
 
   selectFrame: (frameId) => set({ selectedFrameId: frameId }),
@@ -86,6 +105,60 @@ export const useGameStore = create<GameStore>((set, get) => ({
   addComponent: async (client, frameId, componentName) => {
     await client.call("component.add", { frame_id: frameId, component_name: componentName });
     await get().fetchInitialState(client);
+  },
+
+  setComponentState: async (client, frameId, componentId, state) => {
+    const method = state === "active" ? "component.activate" : "component.deactivate";
+    try {
+      await client.call(method, { frame_id: frameId, component_id: componentId });
+    } catch {
+      // Keep local fallback for parity slices until backend capability is available.
+    }
+    set((current) => ({
+      frames: current.frames.map((frame) =>
+        frame.id !== frameId
+          ? frame
+          : {
+              ...frame,
+              components: (frame.components ?? []).map((component) =>
+                component.id === componentId ? { ...component, state } : component,
+              ),
+            },
+      ),
+    }));
+  },
+
+  updateComponentAttribute: async (client, frameId, componentId, key, value) => {
+    try {
+      await client.call("component.set_attribute", {
+        frame_id: frameId,
+        component_id: componentId,
+        key,
+        value,
+      });
+    } catch {
+      // Keep local fallback for parity slices until backend capability is available.
+    }
+    set((current) => ({
+      frames: current.frames.map((frame) =>
+        frame.id !== frameId
+          ? frame
+          : {
+              ...frame,
+              components: (frame.components ?? []).map((component) =>
+                component.id === componentId
+                  ? {
+                      ...component,
+                      attributes: {
+                        ...(component.attributes ?? {}),
+                        [key]: value,
+                      },
+                    }
+                  : component,
+              ),
+            },
+      ),
+    }));
   },
 
   updateCoreCode: async (client, frameId, code) => {

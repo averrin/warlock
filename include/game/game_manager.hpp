@@ -31,6 +31,10 @@ public:
   void init(LibLog::Logger parentLog);
   void start();
   bool started = false;
+  bool paused_ = false;
+  uint64_t tick_count_ = 0;
+  void setPaused(bool p) { paused_ = p; }
+  uint64_t tick_count() const { return tick_count_; }
   void serve();
 
   void loadData();

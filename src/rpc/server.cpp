@@ -3,7 +3,8 @@
 namespace rpc {
 
 Server::Server(int port)
-    : server_(port, "0.0.0.0") {
+    : server_(port, "0.0.0.0")
+    , start_time_(std::chrono::steady_clock::now()) {
 }
 
 Server::~Server() {
@@ -18,10 +19,13 @@ void Server::start() {
 
         if (msg->type == ix::WebSocketMessageType::Open) {
           log_.info("Client connected: {}", connectionState->getId());
+          // We don't have a shared_ptr to ws here, client_map_ is populated on Message
         } else if (msg->type == ix::WebSocketMessageType::Close) {
           log_.info("Client disconnected: {}", connectionState->getId());
           // Release session if the owner disconnects
           release(connectionState->getId());
+          // Remove from subscriptions
+          unsubscribe(connectionState->getId(), {});
         } else if (msg->type == ix::WebSocketMessageType::Message) {
           log_.debug("Received: {}", msg->str);
           rpc::Context ctx{connectionState->getId()};
@@ -93,6 +97,61 @@ int Server::clientCount() {
 std::string Server::ownerConnectionId() const {
   std::lock_guard<std::mutex> lock(session_mutex_);
   return owner_connection_id_;
+}
+
+int64_t Server::uptimeMs() const {
+  auto now = std::chrono::steady_clock::now();
+  return std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time_).count();
+}
+
+void Server::subscribe(const std::string& connId, const std::vector<std::string>& topics) {
+  std::lock_guard<std::mutex> lock(subscriptions_mutex_);
+  if (topics.empty()) {
+    // Subscribe to all topics — use empty string as wildcard key
+    subscriptions_[""].insert(connId);
+  } else {
+    for (const auto& t : topics) {
+      subscriptions_[t].insert(connId);
+    }
+  }
+}
+
+void Server::unsubscribe(const std::string& connId, const std::vector<std::string>& topics) {
+  std::lock_guard<std::mutex> lock(subscriptions_mutex_);
+  if (topics.empty()) {
+    // Remove from all
+    for (auto& [topic, conns] : subscriptions_) {
+      conns.erase(connId);
+    }
+  } else {
+    for (const auto& t : topics) {
+      auto it = subscriptions_.find(t);
+      if (it != subscriptions_.end()) {
+        it->second.erase(connId);
+      }
+    }
+  }
+}
+
+void Server::broadcastToSubscribers(const std::string& topic, const nlohmann::json& params) {
+  bool has_subscribers = false;
+  {
+    std::lock_guard<std::mutex> lock(subscriptions_mutex_);
+    // Check wildcard ("") or topic-specific
+    auto it_all = subscriptions_.find("");
+    if (it_all != subscriptions_.end() && !it_all->second.empty()) {
+      has_subscribers = true;
+    }
+    auto it = subscriptions_.find(topic);
+    if (it != subscriptions_.end() && !it->second.empty()) {
+      has_subscribers = true;
+    }
+  }
+  if (has_subscribers) {
+    // Broadcast to all clients — subscribers will filter on their end
+    // (In a full impl we'd track ws ptr by connId, for now broadcast to all)
+    broadcast(topic, params);
+  }
 }
 
 } // namespace rpc

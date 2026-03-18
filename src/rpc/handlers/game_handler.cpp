@@ -4,6 +4,8 @@
 #include <game/game_manager.hpp>
 #include <game/state.hpp>
 #include <game/well_known_entities.hpp>
+#include <game/systems/environment.hpp>
+#include <utils/entt.hpp>
 
 namespace rpc {
 
@@ -24,9 +26,7 @@ void registerGameHandlers(Server& server) {
     auto view = registry.view<Frame>();
     for (auto entity : view) {
       auto& frame = view.get<Frame>(entity);
-      auto j = serializeFrame(frame);
-      j["entityId"] = static_cast<int>(entity);
-      frames.push_back(j);
+      frames.push_back(serializeFrame(registry, entity, frame));
     }
 
     // Serialize all connections
@@ -34,7 +34,7 @@ void registerGameHandlers(Server& server) {
     auto connView = registry.view<Connection>();
     for (auto entity : connView) {
       auto& conn = connView.get<Connection>(entity);
-      connections.push_back(serializeConnection(conn));
+      connections.push_back(serializeConnection(entity, conn));
     }
 
     // Serialize environment
@@ -53,17 +53,52 @@ void registerGameHandlers(Server& server) {
     };
   });
 
+  // game.status — returns started/tick/seed
+  server.router().on("game.status", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    auto& lua = entt::locator<sol::state>::value();
+    uint64_t seed = lua["settings"]["seed"].get_or<uint64_t>(0);
+    return {
+      {"started", gm.started},
+      {"tick", gm.tick_count()},
+      {"seed", seed}
+    };
+  });
+
   // game.start — start the game
-  server.router().on("game.start", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
+  server.router().on("game.start", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
     requireClaim(server, ctx);
     auto& gm = entt::locator<GameManager>::value();
     if (gm.started) {
       return {{"status", "already_started"}};
     }
-    gm.enqueueCommand([&gm]() {
+    bool do_new = false;
+    if (params.contains("new") && params["new"].is_boolean()) {
+      do_new = params["new"].get<bool>();
+    }
+    gm.enqueueCommand([&gm, do_new]() {
+      if (do_new) {
+        gm.loadData();
+      }
       gm.start();
     });
     return {{"status", "starting"}};
+  });
+
+  // game.pause — pause the game loop
+  server.router().on("game.pause", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    gm.setPaused(true);
+    return nlohmann::json::object();
+  });
+
+  // game.resume — resume the game loop
+  server.router().on("game.resume", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    gm.setPaused(false);
+    return nlohmann::json::object();
   });
 
   // game.tick — current timing info
@@ -83,9 +118,20 @@ void registerGameHandlers(Server& server) {
       auto& env = registry.get<Environment>(wk.environment);
       result["minutes"] = env.minutes;
       result["days"] = env.days;
-      result["isDay"] = env.isDay;
+      result["is_day"] = env.isDay;
     }
     return result;
+  });
+
+  // env.status — returns environment state
+  server.router().on("env.status", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    auto& wk = entt::locator<WellKnownEntities>::value();
+    auto& reg = entt::locator<State>::value().registry;
+    if (wk.environment == entt::null || !reg.valid(wk.environment) || !reg.all_of<Environment>(wk.environment)) {
+      throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "No environment entity"};
+    }
+    auto& env = reg.get<Environment>(wk.environment);
+    return nlohmann::json{{"env", rpc::serializeEnvironment(env)}};
   });
 }
 

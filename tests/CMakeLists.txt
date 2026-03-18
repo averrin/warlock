@@ -56,7 +56,65 @@ if(MSVC)
   target_compile_definitions(warlock_serial PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 endif()
 
+# ─── E2E tests (full headless game engine + WebSocket) ────────────────────────
+file(GLOB_RECURSE E2E_GAME_SRC
+  ${PROJECT_SOURCE_DIR}/src/game/*.cpp
+  ${PROJECT_SOURCE_DIR}/src/rpc/*.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/*.cpp
+)
+file(GLOB E2E_TEST_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/e2e/*.cpp
+)
+
+add_executable(warlock_e2e
+  harness.cpp
+  rpc_client.cpp
+  ${E2E_TEST_SRC}
+  ${E2E_GAME_SRC}
+  ${DEPS_SOURCES}           # Lua, implot, imgui, etc. from parent CMake
+)
+
+target_include_directories(warlock_e2e PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_SOURCE_DIR}/include/3rdparty
+  ${entt_SOURCE_DIR}/single_include
+)
+# Propagate all system includes from parent deps
+get_target_property(_main_incs ${PROJECT_NAME} INCLUDE_DIRECTORIES)
+if(_main_incs)
+  target_include_directories(warlock_e2e SYSTEM PRIVATE ${_main_incs})
+endif()
+get_target_property(_main_sys_incs ${PROJECT_NAME} INTERFACE_INCLUDE_DIRECTORIES)
+if(_main_sys_incs)
+  target_include_directories(warlock_e2e SYSTEM PRIVATE ${_main_sys_incs})
+endif()
+
+target_link_libraries(warlock_e2e PRIVATE
+  Catch2::Catch2WithMain
+  nlohmann_json::nlohmann_json
+  ixwebsocket
+  fmt
+  sfml-graphics
+  sfml-window
+  sfml-system
+  ImGui-SFML::ImGui-SFML
+  Backward::Interface
+  argparse
+)
+if(MSVC)
+  target_link_libraries(warlock_e2e PRIVATE ws2_32 winmm opengl32)
+endif()
+
+target_compile_features(warlock_e2e PUBLIC cxx_std_20)
+target_compile_definitions(warlock_e2e PRIVATE _USE_MATH_DEFINES)
+if(MSVC)
+  target_compile_options(warlock_e2e PRIVATE /W3 /wd4244 /wd4267 /wd4996 /wd4305 /Zc:__cplusplus /bigobj)
+  target_compile_definitions(warlock_e2e PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+endif()
+
+# CTest
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 catch_discover_tests(warlock_unit)
 catch_discover_tests(warlock_serial)
+# catch_discover_tests(warlock_e2e)  # uncomment after first successful build

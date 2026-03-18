@@ -12,14 +12,10 @@ std::optional<Request> Request::parse(const std::string& raw) {
     if (!j.contains("method") || !j["method"].is_string()) {
       return std::nullopt;
     }
-    if (!j.contains("id")) {
-      return std::nullopt;
-    }
-
     Request req;
     req.jsonrpc = j["jsonrpc"].get<std::string>();
     req.method = j["method"].get<std::string>();
-    req.id = j["id"];
+    if (j.contains("id")) req.id = j["id"];
 
     if (j.contains("params")) {
       req.params = j["params"];

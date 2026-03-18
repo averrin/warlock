@@ -3,6 +3,9 @@
 #include <rpc/handlers/game_handler.hpp>
 #include <rpc/handlers/frame_handler.hpp>
 #include <rpc/handlers/state_handler.hpp>
+#include <rpc/handlers/component_handler.hpp>
+#include <rpc/handlers/connection_handler.hpp>
+#include <rpc/handlers/code_handler.hpp>
 #include <rpc/event_bridge.hpp>
 #include <app/application.hpp>
 #include <backward.hpp>
@@ -137,6 +140,9 @@ int main(int argc, char *argv[]) {
   rpc::registerGameHandlers(rpcServer);
   rpc::registerFrameHandlers(rpcServer);
   rpc::registerStateHandlers(rpcServer);
+  rpc::registerComponentHandlers(rpcServer);
+  rpc::registerConnectionHandlers(rpcServer);
+  rpc::registerCodeHandlers(rpcServer);
   rpc::initEventBridge(rpcServer);
   rpcServer.start();
 
