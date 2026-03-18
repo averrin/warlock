@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useRpcClient } from "./hooks/useRpc";
 import { useConnectionStore } from "./stores/connection";
 import { useGameStore } from "./stores/game";
+import { usePatchStore, Patch, PatchType } from "./stores/patches";
 import { useSceneStore } from "./stores/scene";
 import { AppShell } from "./components/layout/AppShell";
 
@@ -18,8 +19,29 @@ export default function App() {
     initGame(client);
     initScene(client);
     const offConnected = client.onLifecycle("connected", () => {
-      void fetchInitialState(client).catch(() => {});
-      void refreshScene(client).catch(() => {});
+      void (async () => {
+        try {
+          await client.call("state.subscribe", { topics: [] });
+        } catch {
+          // Keep startup resilient if subscribe is temporarily unavailable.
+        }
+        await fetchInitialState(client).catch(() => {});
+        await refreshScene(client).catch(() => {});
+
+        // Fetch patches and patch types
+        try {
+          const patchData = await client.call<{ patches: Patch[] }>("patches.list");
+          usePatchStore.getState().setPatches(patchData.patches ?? []);
+        } catch (e) {
+          console.error("Failed to fetch patches:", e);
+        }
+        try {
+          const typeData = await client.call<{ types: PatchType[] }>("patches.types");
+          usePatchStore.getState().setPatchTypes(typeData.types ?? []);
+        } catch (e) {
+          console.error("Failed to fetch patch types:", e);
+        }
+      })();
     });
     client.connect();
     return () => {
