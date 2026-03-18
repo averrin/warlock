@@ -159,13 +159,18 @@ export function FramePanel({
   if (level === 1) {
     return (
       <div style={{ border: "1px solid #1f2937", borderRadius: 8, background: "#111827", padding: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-          <FrameHeader
-            frame={frame}
-            powerNetwork={powerNetwork}
-            onRename={(name) => void updateFrameMetadata(rpcClient, frame.id, { name })}
-          />
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+        <div
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8, cursor: "pointer" }}
+          onClick={() => setLevel(0)}
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <FrameHeader
+              frame={frame}
+              powerNetwork={powerNetwork}
+              onRename={(name) => void updateFrameMetadata(rpcClient, frame.id, { name })}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
             <FrameControls frameId={frame.id} rpcClient={rpcClient} />
             {showExpandButton && <LevelControls level={1} onSetLevel={setLevel} />}
           </div>
@@ -219,13 +224,18 @@ export function FramePanel({
   // Level 2: Full editor
   return (
     <div style={{ border: "1px solid #1f2937", borderRadius: 8, background: "#111827", padding: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-        <FrameHeader
-          frame={frame}
-          powerNetwork={powerNetwork}
-          onRename={(name) => void updateFrameMetadata(rpcClient, frame.id, { name })}
-        />
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+      <div
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8, cursor: "pointer" }}
+        onClick={() => setLevel(1)}
+      >
+        <div onClick={(e) => e.stopPropagation()}>
+          <FrameHeader
+            frame={frame}
+            powerNetwork={powerNetwork}
+            onRename={(name) => void updateFrameMetadata(rpcClient, frame.id, { name })}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
           <FrameControls frameId={frame.id} rpcClient={rpcClient} showRefresh />
           {showExpandButton && <LevelControls level={2} onSetLevel={setLevel} />}
         </div>
