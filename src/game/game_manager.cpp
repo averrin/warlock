@@ -12,12 +12,15 @@ using namespace std::this_thread;     // sleep_for, sleep_until
 using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <game/meta_data.hpp>
+#include <game/patch_loader.hpp>
 #include <game/state.hpp>
 #include <utils/assets_loader.hpp>
 #include <utils/data/loader.hpp>
 
 #include <algorithm> // For std::ranges::transform
 #include <fmt/ranges.h>
+#include <sstream>
+#include <iomanip>
 #include <game/components/frame.hpp>
 #include <game/systems/environment.hpp>
 #include <game/systems/input.hpp>
@@ -26,6 +29,8 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <game/systems/presentation.hpp>
 #include <game/systems/thermal.hpp>
 #include <game/systems/tweening.hpp>
+#include <rpc/dto.hpp>
+#include <rpc/server.hpp>
 #include <ranges> // For ranges
 #include <utils/entt_tools.hpp>
 
@@ -33,6 +38,82 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+namespace {
+
+nlohmann::json serializeEnvironmentWithHistory(const Environment& env) {
+  auto result = rpc::serializeEnvironment(env);
+  auto toJsonArray = [](const std::deque<float>& values) {
+    nlohmann::json out = nlohmann::json::array();
+    for (float value : values) {
+      out.push_back(value);
+    }
+    return out;
+  };
+  const auto findHistory = [&env](const std::string& key) -> const std::deque<float>* {
+    auto it = env.named_history.find(key);
+    if (it == env.named_history.end()) {
+      return nullptr;
+    }
+    return &it->second;
+  };
+
+  nlohmann::json history = nlohmann::json::object();
+  if (const auto* values = findHistory("temperature")) {
+    history["temperature"] = toJsonArray(*values);
+  } else {
+    history["temperature"] = nlohmann::json::array();
+  }
+  if (const auto* values = findHistory("air_flow")) {
+    history["air_flow"] = toJsonArray(*values);
+  } else if (const auto* values = findHistory("airFlow")) {
+    history["air_flow"] = toJsonArray(*values);
+  } else {
+    history["air_flow"] = nlohmann::json::array();
+  }
+  if (const auto* values = findHistory("sun")) {
+    history["sun"] = toJsonArray(*values);
+  } else {
+    history["sun"] = nlohmann::json::array();
+  }
+  result["history"] = history;
+  return result;
+}
+
+nlohmann::json serializePowerNetworks() {
+  nlohmann::json networks = nlohmann::json::array();
+  if (!entt::locator<PowerInfo>::has_value()) {
+    return networks;
+  }
+  auto& info = entt::locator<PowerInfo>::value();
+  for (auto& net : info.networks) {
+    nlohmann::json frames_arr = nlohmann::json::array();
+    for (auto frameId : net.frames) {
+      frames_arr.push_back(frameId);
+    }
+    nlohmann::json history_obj = nlohmann::json::object();
+    for (auto& [k, dq] : net.history) {
+      nlohmann::json h = nlohmann::json::array();
+      for (auto v : dq) {
+        h.push_back(v);
+      }
+      history_obj[k] = h;
+    }
+    networks.push_back({
+      {"name", net.data.name},
+      {"frames", frames_arr},
+      {"production", net.production},
+      {"consumption", net.consumption},
+      {"accumulated", net.accumulated},
+      {"accumulated_available", net.accumulated_available},
+      {"battery_count", net.battery_count},
+      {"history", history_obj}
+    });
+  }
+  return networks;
+}
+
+} // namespace
 
 GameManager::GameManager() {
   log.is_debug = entt::monostate<"debug"_hs>{};
@@ -48,6 +129,10 @@ void GameManager::loadData() {
   auto p = log.parent;
   log.setParent(nullptr);
   log.setAsync(true);
+
+  // Hold the update mutex to prevent systems from ticking with stale entities
+  std::lock_guard<std::recursive_mutex> lock(updateMutex);
+
   log.start("Loading MetaData");
   started = false;
 
@@ -98,6 +183,26 @@ void GameManager::loadData() {
   log.stop("Loading State");
   startJob->progress += 5;
 
+  log.start("Loading Patch Types");
+  auto& patch_loader = entt::locator<PatchLoader>::emplace();
+  fs::path patches_path = PATH / "scripts" / "patches";
+  patch_loader.load_patches(patches_path.string(), lua);
+  log.var("Patch Types", patch_loader.get_patch_types().size());
+  log.stop("Loading Patch Types");
+
+  // Repopulate WellKnownEntities from the newly-loaded registry
+  WellKnownEntities wk;
+  for (auto e : current_state.registry.view<Environment>()) {
+    wk.environment = e;
+    break;
+  }
+  for (auto e : current_state.registry.view<hf::meta>()) {
+    auto &meta = current_state.registry.get<hf::meta>(e);
+    if (meta.name == "Frames") wk.frames_folder = e;
+    if (meta.name == "Connections") wk.connections_folder = e;
+  }
+  entt::locator<WellKnownEntities>::emplace(wk);
+
   started = true;
 
   log.setAsync(false);
@@ -118,8 +223,20 @@ void GameManager::saveData() {
   loader.save(prototypes);
 
   auto &state = entt::locator<State>::value();
-  loader.save(state);
+  if (!state.stores.empty()) {
+    // Use saveStateToFile to write the live registry (not stale store data)
+    loader.saveStateToFile(state, state.stores.front()->path.string());
+  }
   log.stop(label);
+
+  {
+    auto now = std::chrono::system_clock::now();
+    auto t = std::chrono::system_clock::to_time_t(now);
+    std::ostringstream oss;
+    oss << std::put_time(std::gmtime(&t), "%Y-%m-%dT%H:%M:%SZ");
+    last_saved_at_ = oss.str();
+    last_save_ = hr_clock::now();
+  }
 
   log.setAsync(false);
   log.setParent(p);
@@ -271,9 +388,11 @@ void GameManager::start() {
   systems.push_back(exec);
   items = std::make_shared<ItemsSystem>();
   systems.push_back(items);
-  systems.push_back(std::make_shared<PresentationSystem>());
-  input = std::make_shared<InputSystem>();
-  systems.push_back(input);
+  if (!headless) {
+    systems.push_back(std::make_shared<PresentationSystem>());
+    input = std::make_shared<InputSystem>();
+    systems.push_back(input);
+  }
 
   for (auto &c : exec->sources) {
     components.push_back(c.first);
@@ -337,9 +456,12 @@ void GameManager::enqueueCommand(std::function<void()> cmd) {
 void GameManager::serve() {
   if (!started)
     return;
-  auto &current_state = entt::locator<State>::value();
-  if (current_state.registry.template storage<entt::entity>().size() == 0) {
-    return;
+
+  {
+    auto &st = entt::locator<State>::value();
+    if (st.registry.template storage<entt::entity>().size() == 0) {
+      return;
+    }
   }
 
   {
@@ -350,18 +472,154 @@ void GameManager::serve() {
     }
   }
 
+  // Re-check after commands (loadData may have replaced State)
+  if (!started) return;
+  auto &current_state = entt::locator<State>::value();
+  if (current_state.registry.template storage<entt::entity>().size() == 0) {
+    return;
+  }
+
   tick_count_++;
   if (!paused_) {
     updateMutex.lock();
-    for (auto &system : systems) {
+
+    // Enforce simple component requirements defined in Lua specs.
+    {
+      auto &state = entt::locator<State>::value();
+      auto &registry = state.registry;
+      auto &emitter = entt::locator<event_emitter>::value();
+
+      auto view = registry.view<Frame>();
+      for (auto entity : view) {
+        auto &frame = view.get<Frame>(entity);
+        for (auto &comp : frame.components) {
+          if (!comp) continue;
+          if (comp->require.empty()) continue;
+          // Only enforce for active / activating components.
+          if (comp->state != ComponentState::ACTIVE &&
+              comp->state != ComponentState::ACTIVATING) {
+            continue;
+          }
+
+          std::vector<std::string> missing;
+          for (const auto &needed : comp->require) {
+            bool found = false;
+            for (const auto &other : frame.components) {
+              if (!other) continue;
+              if (other.get() == comp.get()) continue;
+              if (other->data.get<std::string>("type") == needed) {
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              missing.push_back(needed);
+            }
+          }
+
+          if (!missing.empty()) {
+            auto message =
+                fmt::format("Missing required components: {}", fmt::join(missing, ", "));
+            if (comp->state != ComponentState::COMP_ERROR ||
+                comp->error != message) {
+              auto prev = comp->state;
+              comp->state = ComponentState::COMP_ERROR;
+              comp->error = message;
+              emitter.publish(component_state_changed{
+                  comp->frame_id,
+                  comp->data.id,
+                  comp->data.name,
+                  static_cast<int>(prev),
+                  static_cast<int>(comp->state),
+                  comp->error});
+            }
+          }
+        }
+      }
+    }
+
+    for (size_t i = 0; i < systems.size(); ++i) {
       const std::chrono::duration<double, std::milli> delta =
           hr_clock::now() - lastUpdate;
-      if (system->enabled) {
-        system->update(delta);
+      const std::chrono::duration<double, std::milli> scaled =
+          delta * static_cast<double>(speed_multiplier_);
+      if (systems[i]->enabled) {
+        systems[i]->update(scaled);
       }
     }
     lastUpdate = hr_clock::now();
     updateMutex.unlock();
+  }
+
+  // Broadcast state (including storage) to all connected clients
+  if (entt::locator<rpc::Server>::has_value()) {
+    auto& rpcServer = entt::locator<rpc::Server>::value();
+    if (rpcServer.clientCount() > 0) {
+      auto now = hr_clock::now();
+      if (last_state_push_.time_since_epoch().count() == 0 ||
+          now - last_state_push_ >= std::chrono::milliseconds(200)) {
+        std::lock_guard<std::recursive_mutex> lock(updateMutex);
+        auto& registry = current_state.registry;
+        nlohmann::json frames = nlohmann::json::array();
+        auto frameView = registry.view<Frame>();
+        for (auto entity : frameView) {
+          auto& frame = frameView.get<Frame>(entity);
+          frames.push_back(rpc::serializeFrame(registry, entity, frame));
+        }
+
+        nlohmann::json connections = nlohmann::json::array();
+        auto connView = registry.view<Connection>();
+        for (auto entity : connView) {
+          auto& conn = connView.get<Connection>(entity);
+          connections.push_back(rpc::serializeConnection(entity, conn));
+        }
+
+        rpcServer.broadcast("event.state_update", {
+          {"tick", tick_count_},
+          {"frames", frames},
+          {"connections", connections}
+        });
+        last_state_push_ = now;
+      }
+
+      if (last_env_push_.time_since_epoch().count() == 0 ||
+          now - last_env_push_ >= std::chrono::milliseconds(500)) {
+        std::lock_guard<std::recursive_mutex> lock(updateMutex);
+        auto& registry = current_state.registry;
+        auto& wk = entt::locator<WellKnownEntities>::value();
+        if (wk.environment != entt::null && registry.valid(wk.environment) && registry.all_of<Environment>(wk.environment)) {
+          rpcServer.broadcast("event.env_update", {
+            {"env", serializeEnvironmentWithHistory(registry.get<Environment>(wk.environment))}
+          });
+        }
+        last_env_push_ = now;
+      }
+
+      if (last_power_push_.time_since_epoch().count() == 0 ||
+          now - last_power_push_ >= std::chrono::milliseconds(500)) {
+        std::lock_guard<std::recursive_mutex> lock(updateMutex);
+        rpcServer.broadcast("event.power_update", {
+          {"networks", serializePowerNetworks()}
+        });
+        last_power_push_ = now;
+      }
+    }
+  }
+
+  // Autosave
+  if (autosave_enabled_ && started) {
+    auto now = hr_clock::now();
+    if (last_save_.time_since_epoch().count() == 0 ||
+        now - last_save_ >= autosave_interval_) {
+      saveData();
+      if (entt::locator<rpc::Server>::has_value()) {
+        auto& rpcServer = entt::locator<rpc::Server>::value();
+        rpcServer.broadcast("notify.state.saved", {
+          {"saved_at", last_saved_at_},
+          {"auto", true}
+        });
+      }
+    }
   }
 }
 
