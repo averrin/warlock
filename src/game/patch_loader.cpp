@@ -31,12 +31,12 @@ void PatchLoader::load_patches(const std::string& path, sol::state& lua) {
     }
     
     if (sol::table gen = t["generation"]; gen.valid()) {
-      def.generation.min_width = gen.get_or<int>("min_width", 3);
-      def.generation.max_width = gen.get_or<int>("max_width", 8);
-      def.generation.min_height = gen.get_or<int>("min_height", 3);
-      def.generation.max_height = gen.get_or<int>("max_height", 8);
-      def.generation.fill_probability = gen.get_or<float>("fill_probability", 0.35f);
-      def.generation.smoothing_rounds = gen.get_or<int>("smoothing_rounds", 5);
+      def.generation.min_width = gen.get_or(std::string("min_width"), 3);
+      def.generation.max_width = gen.get_or(std::string("max_width"), 8);
+      def.generation.min_height = gen.get_or(std::string("min_height"), 3);
+      def.generation.max_height = gen.get_or(std::string("max_height"), 8);
+      def.generation.fill_probability = gen.get_or(std::string("fill_probability"), 0.35f);
+      def.generation.smoothing_rounds = gen.get_or(std::string("smoothing_rounds"), 5);
     }
     
     patch_types_[key] = def;
