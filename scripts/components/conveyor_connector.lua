@@ -26,9 +26,46 @@ return {
 			type = AttributeType.BOOL,
 			value = true,
 		},
+		mode = {
+			title = "Mode",
+			description = "SEND or RECEIVE",
+			type = AttributeType.STRING,
+			value = "SEND",
+		},
+		throughput = {
+			title = "Throughput",
+			description = "Items per second",
+			type = AttributeType.FLOAT,
+			value = 1.0,
+		},
+		target = {
+			title = "Target component",
+			description = "Component to operate on",
+			type = AttributeType.INT,
+			value = -1,
+		},
+		filter = {
+			title = "Filter",
+			description = "Item name to filter (optional)",
+			type = AttributeType.STRING,
+			value = "",
+		},
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
 	require = { "Storage" },
-	api = {},
+	api = {
+		setTarget = function(self, storage)
+			sid = storage.data.id
+			self.data.attributes["target"]:SetBaseValue(sid)
+		end,
+		setMode = function(self, mode)
+			if mode == "SEND" or mode == "RECEIVE" then
+				self.data.attributes["mode"]:SetBaseValue(mode)
+			end
+		end,
+		setFilter = function(self, filter)
+			self.data.attributes["filter"]:SetBaseValue(filter)
+		end,
+	},
 }

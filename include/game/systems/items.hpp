@@ -12,6 +12,7 @@
 class ItemsSystem : public System {
   bool ready = false;
   std::unordered_map<int, double> lastExecutionTime;
+  std::unordered_map<int, double> conveyorExecutionTime;
   std::unordered_map<int, std::string> lastRecipe;
   std::unordered_map<std::string, std::shared_ptr<Modifier>> modifiers;
 

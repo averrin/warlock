@@ -91,12 +91,11 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
 
   // get Environment
   auto &wk = entt::locator<WellKnownEntities>::value();
-  if (wk.environment == entt::null || !current_state.registry.valid(wk.environment) ||
-      !current_state.registry.all_of<Environment>(wk.environment)) {
-    return;
+  if (wk.environment != entt::null && current_state.registry.valid(wk.environment) &&
+      current_state.registry.all_of<Environment>(wk.environment)) {
+    auto &environment = current_state.registry.get<Environment>(wk.environment);
+    getState(fid).set("environment", environment);
   }
-  auto &environment = current_state.registry.get<Environment>(wk.environment);
-  getState(fid).set("environment", environment);
 
   auto *frame_ptr = findFrameById(fid);
   if (!frame_ptr) return;
