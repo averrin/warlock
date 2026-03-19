@@ -11,14 +11,14 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "C:/Users/o/Downloads/just/just.exe run --ui-mode web --rpc-port 9810",
+      command: "just run --ui-mode web --rpc-port 9810",
       port: 9810,
       cwd: "..",
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command: "cmd /c \"set VITE_RPC_URL=ws://127.0.0.1:9810&& npm run dev -- --host 127.0.0.1 --port 4173\"",
+      command: "VITE_RPC_URL=ws://127.0.0.1:9810 npm run dev -- --host 127.0.0.1 --port 4173",
       url: "http://127.0.0.1:4173",
       reuseExistingServer: true,
       timeout: 60_000,

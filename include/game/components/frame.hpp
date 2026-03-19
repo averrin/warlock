@@ -94,6 +94,8 @@ struct Environment {
   float temperature = 0.0f;
   float airFlow = 0.0f;
   float sun = 0.0f;
+  float mouseX = 0.0f;
+  float mouseY = 0.0f;
   int minutes = 0;
   bool isDay = false;
   int days = 0;

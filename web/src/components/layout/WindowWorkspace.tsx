@@ -21,6 +21,7 @@ import { FrameInspector } from "../panels/FrameInspector";
 import { FrameMiniInspector } from "../panels/FrameMiniInspector";
 import { PowerPanel } from "../panels/PowerPanel";
 import { StateInspector } from "../panels/StateInspector";
+import { GlobalIndicatorsPanel } from "../panels/GlobalIndicatorsPanel";
 import { ComponentCodeEditorPanel, type ComponentCodeEditorParams } from "../panels/ComponentCodeEditorPanel";
 
 type Props = {
@@ -163,6 +164,7 @@ function seedDefaultPanels(api: DockviewApi) {
   registerTab("blueprint-palette", "blueprintPalette", "Blueprints");
   registerTab("component-palette", "componentPalette", "Components");
   registerTab("code-editor", "codeEditor", "Code Editor");
+  registerTab("global-indicators", "globalIndicatorsPanel", "Global Indicators");
 
   api.addFloatingGroup(environment, {
     x: 140,
@@ -182,6 +184,7 @@ const TOP_BAR_BUTTONS: { id: string; component: string; title: string; label: st
   { id: "component-palette", component: "componentPalette", title: "Components", label: "Components" },
   { id: "code-editor", component: "codeEditor", title: "Code Editor", label: "Code" },
   { id: "state-inspector", component: "stateInspector", title: "State Inspector", label: "State" },
+  { id: "global-indicators", component: "globalIndicatorsPanel", title: "Global Indicators", label: "Indicators" },
 ];
 
 export function WindowWorkspace({ rpcClient }: Props) {
@@ -284,6 +287,7 @@ export function WindowWorkspace({ rpcClient }: Props) {
       componentPalette: (() => <ComponentPalette rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       codeEditor: (() => codeEditorNode) as FunctionComponent<IDockviewPanelProps>,
       stateInspector: (() => <StateInspector rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
+      globalIndicatorsPanel: (() => <GlobalIndicatorsPanel />) as FunctionComponent<IDockviewPanelProps>,
       componentCodeEditor: ((props: IDockviewPanelProps) => (
         <ComponentCodeEditorPanel rpcClient={rpcClient} {...(props.params as ComponentCodeEditorParams)} />
       )) as FunctionComponent<IDockviewPanelProps>,
