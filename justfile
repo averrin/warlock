@@ -12,12 +12,12 @@ bin_ext  := if os_family() == "windows" { ".exe" } else { "" }
 init:
   {{ if os_family() == "windows" { \
     "if (Test-Path ./" + build_dir + ") { Remove-Item -Recurse -Force ./" + build_dir + " }; " + \
-    "cmake -S . -B ./" + build_dir + " -G 'Visual Studio 17 2022' -A x64 '-DCMAKE_POLICY_VERSION_MINIMUM=3.5' '-DSKIP_PERFORMANCE_COMPARISON=ON'; " + \
+    "cmake -S . -B ./" + build_dir + " -G 'Visual Studio 17 2022' -A x64 '-DCMAKE_POLICY_VERSION_MINIMUM=3.28' '-DSKIP_PERFORMANCE_COMPARISON=ON'; " + \
     "New-Item -ItemType Directory -Force -Path ./" + build_dir + "/bin/Debug | Out-Null; " + \
     "foreach ($d in @('data','scripts','tilesets','fonts', 'assets')) { $t = './" + build_dir + "/bin/Debug/' + $d; if (Test-Path $t) { Remove-Item $t -Force }; New-Item -ItemType Junction -Path $t -Target (Resolve-Path $d).Path | Out-Null }" \
   } else { \
     "rm -rf ./" + build_dir + " && " + \
-    "cmake -S . -B ./" + build_dir + " -DCMAKE_BUILD_TYPE=Debug -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSKIP_PERFORMANCE_COMPARISON=ON && " + \
+    "cmake -S . -B ./" + build_dir + " -DCMAKE_BUILD_TYPE=Debug -DCMAKE_POLICY_VERSION_MINIMUM=3.28 -DSKIP_PERFORMANCE_COMPARISON=ON && " + \
     "ln -sf ./" + build_dir + "/compile_commands.json compile_commands.json && " + \
     "mkdir -p ./" + build_dir + "/bin && " + \
     "for d in data scripts tilesets fonts assets; do ln -sfn ../../$d ./" + build_dir + "/bin/$d; done" \

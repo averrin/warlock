@@ -5,6 +5,7 @@
 #include <game/state.hpp>
 #include <game/well_known_entities.hpp>
 #include <game/systems/environment.hpp>
+#include <game/nexus_api.hpp>
 #include <utils/entt.hpp>
 
 namespace rpc {
@@ -203,6 +204,52 @@ void registerGameHandlers(Server& server) {
     result["history"] = history;
 
     return nlohmann::json{{"env", result}};
+  });
+
+  // input.marker_set
+  server.router().on("input.marker_set", [&server](const Context& /*ctx*/, const nlohmann::json& params) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    if (gm.started) {
+      float x = params.value("x", 0.0f);
+      float y = params.value("y", 0.0f);
+      std::string label = params.value("label", "");
+      std::string color = params.value("color", "");
+      if (!label.empty()) {
+        NexusApi nexus;
+        nexus.setMapMarker(x, y, label, color);
+      }
+    }
+    return {{"ok", true}};
+  });
+
+  // input.mouse_coords
+  server.router().on("input.mouse_coords", [&server](const Context& /*ctx*/, const nlohmann::json& params) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    if (gm.started) {
+      float x = params.value("x", 0.0f);
+      float y = params.value("y", 0.0f);
+      auto& state = entt::locator<State>::value();
+      auto& wk = entt::locator<WellKnownEntities>::value();
+      if (wk.environment != entt::null && state.registry.valid(wk.environment) && state.registry.all_of<Environment>(wk.environment)) {
+        auto& env = state.registry.get<Environment>(wk.environment);
+        env.mouseX = x;
+        env.mouseY = y;
+      }
+    }
+    return {{"ok", true}};
+  });
+
+  // input.marker_remove
+  server.router().on("input.marker_remove", [&server](const Context& /*ctx*/, const nlohmann::json& params) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    if (gm.started) {
+      std::string label = params.value("label", "");
+      if (!label.empty()) {
+        NexusApi nexus;
+        nexus.removeMapMarker(label);
+      }
+    }
+    return {{"ok", true}};
   });
 
   // env.set_field — mutate a single environment field

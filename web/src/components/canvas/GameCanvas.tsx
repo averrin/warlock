@@ -220,6 +220,10 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const patchTypes = usePatchStore((s) => s.patchTypes);
   const frames = useGameStore((s) => s.frames);
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
+  const markers = useGameStore((s) => s.markers);
+  const markerLayerRef = useRef<Graphics | null>(null);
+  const markersRef = useRef(markers);
+  markersRef.current = markers;
   const selectFrame = useGameStore((s) => s.selectFrame);
   const moveFrame = useGameStore((s) => s.moveFrame);
   const createFromBlueprint = useGameStore((s) => s.createFromBlueprint);
@@ -364,6 +368,23 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     }
   };
   drawConnectionsRef.current = drawConnections;
+
+  const updateMarkers = useCallback(() => {
+    const layer = markerLayerRef.current;
+    if (!layer) return;
+    layer.clear();
+    const currentMarkers = markersRef.current;
+    for (const marker of currentMarkers) {
+      const colorNum = marker.color ? parseInt(marker.color.replace("#", "0x")) : 0xff0000;
+      layer.circle(marker.x, marker.y, 8);
+      layer.fill({ color: colorNum });
+      layer.stroke({ color: 0xffffff, width: 2 });
+    }
+  }, []);
+
+  useEffect(() => {
+    updateMarkers();
+  }, [markers, updateMarkers]);
 
   const renderPatches = useCallback(() => {
     const layer = patchLayerRef.current;
@@ -686,6 +707,10 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         const patchLayer = new Container();
         patchLayer.label = "patches";
         worldContainer.addChild(patchLayer);
+
+        const mLayer = new Graphics();
+        markerLayerRef.current = mLayer;
+        worldContainer.addChild(mLayer);
         patchLayerRef.current = patchLayer;
 
         const connectionLayer = new Graphics();
@@ -792,6 +817,23 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         };
         canvasEl.addEventListener("contextmenu", onContextMenu);
 
+        // --- Dispatch Mouse Coordinates ---
+        let lastMouseSend = 0;
+        const onPointerMove = (e: PointerEvent) => {
+          const now = Date.now();
+          if (now - lastMouseSend > 100) { // Throttle to 10Hz
+            lastMouseSend = now;
+            const rect = canvasEl!.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            const scale = worldContainer.scale.x;
+            const rawWx = (sx - worldContainer.x) / scale;
+            const rawWy = (sy - worldContainer.y) / scale;
+            void rpcClientRef.current.call("input.mouse_coords", { x: rawWx, y: rawWy }).catch(() => {});
+          }
+        };
+        canvasEl.addEventListener("pointermove", onPointerMove);
+
         // --- Ghost preview for creation mode ---
         const ghost = new Graphics();
         ghost.visible = false;
@@ -880,6 +922,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           canvasEl!.removeEventListener("auxclick", onAuxClick);
           canvasEl!.removeEventListener("contextmenu", onContextMenu);
           canvasEl!.removeEventListener("pointermove", onCreationMove);
+          canvasEl!.removeEventListener("pointermove", onPointerMove);
           window.removeEventListener("keydown", onCreationKeydown);
         };
       });
@@ -890,6 +933,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       worldRef.current = null;
       gridRef.current = null;
       patchLayerRef.current = null;
+      markerLayerRef.current = null;
       connectionLayerRef.current = null;
       wiringLineRef.current = null;
       panningRef.current = false;

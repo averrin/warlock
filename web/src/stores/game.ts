@@ -8,6 +8,13 @@ interface TimeControl {
   multiplier: number;
 }
 
+export interface GameMarker {
+  x: number;
+  y: number;
+  label: string;
+  color: string;
+}
+
 interface GameStore {
   started: boolean;
   hydrated: boolean;
@@ -17,6 +24,8 @@ interface GameStore {
   powerNetworks: PowerNetworkDTO[];
   selectedFrameId: number | null;
   timeControl: TimeControl;
+  markers: GameMarker[];
+  indicators: Record<string, { label: string; value: string; color: string }>;
   environmentHistory: EnvironmentDTO["history"] | null;
   init: (client: RpcClient) => void;
   applySnapshot: (snapshot: {
@@ -123,6 +132,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   powerNetworks: [],
   selectedFrameId: null,
   timeControl: { paused: false, multiplier: 1 },
+  markers: [],
+  indicators: {},
   environmentHistory: null,
 
   init: (client) => {
@@ -160,6 +171,34 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
     client.on("notify.game.started", async () => {
       await get().fetchInitialState(client);
+    });
+
+    client.on("nexus.markers", (payload: any) => {
+      if (payload.action === "clear") {
+        set({ markers: [] });
+      } else if (payload.action === "set" && payload.marker) {
+        set((state) => ({
+          markers: [
+            ...state.markers.filter((m) => m.label !== payload.marker.label),
+            payload.marker
+          ]
+        }));
+      } else if (payload.action === "remove" && payload.label) {
+        set((state) => ({ markers: state.markers.filter((m) => m.label !== payload.label) }));
+      }
+    });
+
+    client.on("nexus.indicators", (payload: any) => {
+      set((state) => ({
+        indicators: {
+          ...state.indicators,
+          [payload.key]: {
+            label: payload.label,
+            value: payload.value,
+            color: payload.color,
+          },
+        },
+      }));
     });
   },
 
