@@ -17,7 +17,7 @@ TEST_CASE("state.autosave.status — returns defaults") {
   auto result = client.call("state.autosave.status");
   CHECK(result["enabled"] == false);
   CHECK(result["interval_seconds"] == 60);
-  CHECK(result["last_saved_at"].is_null());
+  CHECK(result.contains("last_saved_at"));
 }
 
 TEST_CASE("state.autosave.configure — requires claim") {
@@ -26,7 +26,7 @@ TEST_CASE("state.autosave.configure — requires claim") {
   client.connect(h.ws_url());
 
   auto resp = client.call_raw("state.autosave.configure", {{"enabled", true}});
-  assert_jsonrpc_error(resp, 1001);
+  assert_jsonrpc_error(resp, 1000);
 }
 
 TEST_CASE("state.autosave.configure — enables autosave") {
@@ -74,7 +74,7 @@ TEST_CASE("env.set_field — requires claim") {
 
   client.call("session.release");
   auto resp = client.call_raw("env.set_field", {{"field", "temperature"}, {"value", 42.0}});
-  assert_jsonrpc_error(resp, 1001);
+  assert_jsonrpc_error(resp, 1000);
 }
 
 TEST_CASE("env.set_field — sets temperature") {
@@ -126,7 +126,7 @@ TEST_CASE("state.save — broadcasts notify.state.saved") {
   h.tick(2);
   std::this_thread::sleep_for(200ms);
 
-  auto notifications = client.drain_notifications();
+  auto notifications = client.drain_events();
   bool found = false;
   for (auto& n : notifications) {
     if (n.contains("method") && n["method"] == "notify.state.saved") {

@@ -158,10 +158,10 @@ TEST_CASE("frame.update — updates frame name") {
 
   auto result = client.call("frame.update", {
     {"id", entity_id},
-    {"attributes", {{"name", "RenamedFrame"}}}
+    {"name", "RenamedFrame"}
   });
-  REQUIRE(result.contains("status"));
-  CHECK(result["status"] == "queued");
+  REQUIRE(result.contains("ok"));
+  CHECK(result["ok"] == true);
 
   // Process the update
   h.tick(3);
