@@ -44,7 +44,148 @@ bool cellsOverlap(const std::vector<std::pair<int, int>>& a,
 void ItemsSystem::fixedUpdate() {
   auto &current_state = entt::locator<State>::value();
 
-  for (auto &f : current_state.registry.view<Frame>()) {
+  auto frames_view = current_state.registry.view<Frame>();
+  auto conns = std::vector<Connection>{};
+  for (auto &c : current_state.registry.view<Connection>()) {
+    auto conn = current_state.registry.get<Connection>(c);
+    if (conn.type == ConnectionType::CONVEYOR) {
+      conns.push_back(conn);
+    }
+  }
+
+  for (auto &conn : conns) {
+    Frame* sourceFrame = nullptr;
+    Frame* targetFrame = nullptr;
+    for (auto &f : frames_view) {
+      auto &frame = current_state.registry.get<Frame>(f);
+      if (frame.data.id == conn.source) sourceFrame = &frame;
+      if (frame.data.id == conn.target) targetFrame = &frame;
+    }
+    if (!sourceFrame || !targetFrame) continue;
+
+    std::shared_ptr<Component> sourceConnector = nullptr;
+    std::shared_ptr<Component> targetConnector = nullptr;
+
+    for (auto &c : sourceFrame->components) {
+      if (c->data.get<std::string>("type") == "Conveyor Connector" && c->state == ComponentState::ACTIVE) {
+        sourceConnector = c;
+        break;
+      }
+    }
+    for (auto &c : targetFrame->components) {
+      if (c->data.get<std::string>("type") == "Conveyor Connector" && c->state == ComponentState::ACTIVE) {
+        targetConnector = c;
+        break;
+      }
+    }
+
+    if (!sourceConnector || !targetConnector) continue;
+
+    auto mode1 = sourceConnector->data.get<std::string>("mode");
+    auto mode2 = targetConnector->data.get<std::string>("mode");
+
+    std::shared_ptr<Component> sender = nullptr;
+    std::shared_ptr<Component> receiver = nullptr;
+
+    if (mode1 == "SEND" && mode2 == "RECEIVE") {
+      sender = sourceConnector;
+      receiver = targetConnector;
+    } else if (mode2 == "SEND" && mode1 == "RECEIVE") {
+      sender = targetConnector;
+      receiver = sourceConnector;
+    }
+
+    if (!sender || !receiver) continue;
+
+    auto throughput1 = sender->data.get<float>("throughput");
+    auto throughput2 = receiver->data.get<float>("throughput");
+    auto throughput = std::min(throughput1, throughput2);
+
+    if (throughput <= 0) continue;
+
+    auto entity = sender->data.id;
+    double timecost = (1.0 / throughput) * 1000.0;
+    conveyorExecutionTime[entity] += targetInterval;
+
+    if (conveyorExecutionTime[entity] >= timecost) {
+      auto senderTargetId = sender->data.get_or<int>("target", -1);
+      auto receiverTargetId = receiver->data.get_or<int>("target", -1);
+
+      std::shared_ptr<Component> senderStorage = nullptr;
+      std::shared_ptr<Component> receiverStorage = nullptr;
+
+      Frame* sf = (sender == sourceConnector) ? sourceFrame : targetFrame;
+      Frame* rf = (receiver == targetConnector) ? targetFrame : sourceFrame;
+
+      for (auto &c : sf->components) {
+        if (c->data.id == senderTargetId && c->storage) {
+          senderStorage = c;
+          break;
+        }
+      }
+      for (auto &c : rf->components) {
+        if (c->data.id == receiverTargetId && c->storage) {
+          receiverStorage = c;
+          break;
+        }
+      }
+
+      if (!senderStorage) {
+        auto prev = sender->state;
+        sender->state = ComponentState::COMP_ERROR;
+        sender->error = "Sender target storage not found";
+        auto &emitter = entt::locator<event_emitter>::value();
+        emitter.publish(component_state_changed{
+          sender->frame_id, sender->data.id, sender->data.name,
+          static_cast<int>(prev), static_cast<int>(sender->state), sender->error
+        });
+        continue;
+      }
+
+      if (!receiverStorage) {
+        auto prev = receiver->state;
+        receiver->state = ComponentState::COMP_ERROR;
+        receiver->error = "Receiver target storage not found";
+        auto &emitter = entt::locator<event_emitter>::value();
+        emitter.publish(component_state_changed{
+          receiver->frame_id, receiver->data.id, receiver->data.name,
+          static_cast<int>(prev), static_cast<int>(receiver->state), receiver->error
+        });
+        continue;
+      }
+
+      auto filter = sender->data.get_or<std::string>("filter", "");
+      std::shared_ptr<ItemStack> itemToMove = nullptr;
+
+      if (filter == "") {
+        for (auto &slot : senderStorage->storage->slots) {
+          if (slot.stack != nullptr && slot.stack->amount > 0) {
+            itemToMove = slot.stack;
+            break;
+          }
+        }
+      } else {
+        itemToMove = senderStorage->storage->getStackByItem(filter);
+      }
+
+      if (itemToMove && itemToMove->amount > 0) {
+        ItemStack singleItem(itemToMove->item, 1);
+        if (receiverStorage->storage->canAdd(singleItem)) {
+          senderStorage->storage->remove(singleItem);
+          receiverStorage->storage->add(singleItem);
+          conveyorExecutionTime[entity] -= timecost;
+        } else {
+           // Output is full, reset or cap timer
+           conveyorExecutionTime[entity] = timecost;
+        }
+      } else {
+         // Input is empty, reset or cap timer
+         conveyorExecutionTime[entity] = timecost;
+      }
+    }
+  }
+
+  for (auto &f : frames_view) {
     auto &frame = current_state.registry.get<Frame>(f);
     std::vector<std::shared_ptr<Component>> storages = {};
     for (auto &c : frame.components) {
@@ -53,7 +194,10 @@ void ItemsSystem::fixedUpdate() {
           c->storage = std::make_shared<ItemStorage>(c->data.get<int>("slots"));
         }
         storages.push_back(c);
-        break;
+      } else if (c->data.get_or<std::string>("type", "") == "Storage") {
+        if (c->storage == nullptr) {
+          c->storage = std::make_shared<ItemStorage>(4);
+        }
       }
     }
     for (auto &c : frame.components) {

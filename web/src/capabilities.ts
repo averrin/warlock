@@ -3,6 +3,7 @@ export const capabilityMethods = {
   frameInspector: ["frame.list", "frame.get", "frame.move", "frame.activate", "frame.deactivate"],
   powerPanel: ["power.networks"],
   codeEditor: ["code.sources", "code.update", "code.get_script"],
+  codeDefEditor: ["code.update_source"],
   codeExecute: ["code.execute"],
   environment: ["env.status"],
   speedControl: ["game.speed.set", "game.speed.get"],

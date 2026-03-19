@@ -235,14 +235,20 @@
   transition: background 0.3s ease;
 }
 
-.frame-card__comp-dot--active { background: #22c55e; }
-.frame-card__comp-dot--activating { background: #a3e635; }
-.frame-card__comp-dot--deactivating { background: #f97316; }
-.frame-card__comp-dot--deactivated { background: #475569; }
-.frame-card__comp-dot--error { background: #ef4444; }
-.frame-card__comp-dot--destroyed { background: #7f1d1d; }
-.frame-card__comp-dot--blocked { background: #a855f7; }
-.frame-card__comp-dot--broken { background: #ef4444; }
+/* State dot color is set inline via STATE_COLORS from shared UI */
+
+.frame-card__comp-icon {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.frame-card__comp-effects {
+  font-size: 9px;
+  flex-shrink: 0;
+  line-height: 1;
+}
 
 .frame-card__comp-name {
   font-size: 9px;

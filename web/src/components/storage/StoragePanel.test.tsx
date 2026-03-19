@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { createElement } from "react";
 import { StoragePanel } from "./StoragePanel";
+import { RpcClient } from "../../rpc/client";
 
 const mockStorage = {
   slots_count: 3,
@@ -20,7 +21,9 @@ const mockStorage = {
 };
 
 function mockRpc() {
-  return { call: vi.fn(async () => ({})) };
+  const client = new RpcClient("ws://test");
+  vi.spyOn(client, "call").mockResolvedValue({});
+  return client;
 }
 
 function render(jsx: ReturnType<typeof createElement>) {

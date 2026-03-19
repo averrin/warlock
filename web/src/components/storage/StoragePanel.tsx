@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { StorageDTO } from "../../rpc/types";
+import type { RpcClient } from "../../rpc/client";
 import { useItemsCatalogStore } from "../../stores/itemsCatalog";
 import { useGameStore } from "../../stores/game";
 
@@ -8,7 +9,7 @@ type Props = {
   frameId: number;
   componentId: number;
   mode: "compact" | "full";
-  rpcClient: { call: (method: string, params?: Record<string, unknown>) => Promise<unknown> };
+  rpcClient: RpcClient;
   onRefresh: () => Promise<void>;
 };
 

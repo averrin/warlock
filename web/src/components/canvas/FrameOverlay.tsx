@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useCallback } from "react";
+import { forwardRef, useImperativeHandle, useRef, useCallback, useLayoutEffect } from "react";
 import { FrameCard, type PlacedFrame, type WiringState } from "./FrameCard";
 import type { ConnectionDTO } from "../../rpc/types";
 
@@ -117,11 +117,13 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
     const transformRef = useRef({ scale: 1, tx: 0, ty: 0 });
 
     /**
-     * Position each card in screen space directly.
-     * This avoids CSS transform scaling which causes blurry text.
-     * screenX = worldX * scale + tx
-     * screenY = worldY * scale + ty
-     * cardWidth = worldWidth * scale
+     * Position each card using CSS zoom for crisp text rendering.
+     *
+     * CSS zoom scales the element AND its left/top offsets, so we must
+     * divide the screen-space position by scale to compensate:
+     *   visual left = (screenX / scale) * zoom = screenX  ✓
+     *
+     * Width/height stay in world units — zoom handles visual scaling.
      */
     const applyScreenPositions = useCallback(() => {
       const container = containerRef.current;
@@ -135,12 +137,9 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
         const worldSize = parseFloat(card.dataset.worldSize ?? "75");
         const screenX = worldX * scale + tx;
         const screenY = worldY * scale + ty;
-        const screenSize = worldSize * scale;
-        card.style.left = `${screenX}px`;
-        card.style.top = `${screenY}px`;
-        // Use CSS zoom for crisp text scaling — sizes stay in world units, zoom handles scaling
-        card.style.left = `${screenX}px`;
-        card.style.top = `${screenY}px`;
+        // Divide by scale to compensate for CSS zoom multiplying left/top
+        card.style.left = `${screenX / scale}px`;
+        card.style.top = `${screenY / scale}px`;
         card.style.width = `${worldSize}px`;
         card.style.height = `${worldSize}px`;
         (card.style as any).zoom = scale;
@@ -180,13 +179,17 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
       [wiringMode, connections, frames],
     );
 
-    // After React renders new cards, apply screen positions
-    // (useImperativeHandle runs on mount, but we also need initial positioning)
+    // After React renders new/updated cards, reapply screen positions.
+    // useLayoutEffect runs synchronously after DOM mutations, preventing flash.
+    useLayoutEffect(() => {
+      applyScreenPositions();
+    });
+
+    // Initial mount — set container ref and kick off first positioning
     const containerRefCallback = useCallback(
       (el: HTMLDivElement | null) => {
         (containerRef as any).current = el;
         if (el) {
-          // Use rAF to ensure DOM is ready
           requestAnimationFrame(() => applyScreenPositions());
         }
       },

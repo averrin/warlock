@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import type { FrameDTO, ComponentDTO } from "../../rpc/types";
+import { STATE_COLORS, EFFECT_LABELS } from "../ui";
 import "./FrameCard.css";
 
 /** Frame with computed world position */
@@ -60,11 +61,6 @@ function getMaxComps(sizeTier: string): number {
   }
 }
 
-function getCompDotClass(state: string): string {
-  const s = state.toLowerCase();
-  if (s === "error") return "frame-card__comp-dot--error";
-  return `frame-card__comp-dot--${s}`;
-}
 
 function getEffectPillClass(effect: string): string {
   const e = effect.toLowerCase();
@@ -230,7 +226,7 @@ export const FrameCard = memo(function FrameCard({
       {/* STATUS ROW */}
       {badges && (
         <div className="frame-card__status">
-          {badges.temperature != null && (
+          {badges.temperature != null && badges.temperature > -999 && (
             <>
               <div className="frame-card__temp-bar">
                 <div
@@ -257,19 +253,38 @@ export const FrameCard = memo(function FrameCard({
       {/* DIVIDER before components */}
       {visibleComps.length > 0 && <div className="frame-card__divider" />}
 
-      {/* COMPONENT LIST */}
+      {/* COMPONENT LIST — uses STATE_COLORS from shared UI (same as ComponentCard) */}
       {visibleComps.length > 0 && (
         <div className="frame-card__components">
           {visibleComps.map((comp) => {
             const eff = getEfficiency(comp);
+            const stateColor = STATE_COLORS[comp.state] ?? "#1f2937";
+            const compIcon = (comp.metadata?.icon || comp.icon || "").trim();
+            const compEffects = (comp.effects ?? []).map((e) => EFFECT_LABELS[e] ?? e);
             return (
               <div
                 key={comp.id}
                 className="frame-card__comp-row"
                 data-component-id={comp.id}
               >
-                <span className={`frame-card__comp-dot ${getCompDotClass(comp.state)}`} />
+                <span
+                  className="frame-card__comp-dot"
+                  style={{ background: stateColor }}
+                />
+                {compIcon ? (
+                  <img
+                    className="frame-card__comp-icon"
+                    src={`/icons/${compIcon}`}
+                    alt=""
+                    draggable={false}
+                  />
+                ) : null}
                 <span className="frame-card__comp-name">{comp.name}</span>
+                {compEffects.length > 0 && (
+                  <span className="frame-card__comp-effects">
+                    {compEffects.join("")}
+                  </span>
+                )}
                 <span className="frame-card__comp-state">
                   {comp.state === "ACTIVE" ? "" : comp.state.slice(0, 4)}
                 </span>
@@ -306,7 +321,7 @@ export const FrameCard = memo(function FrameCard({
         </>
       )}
 
-      {/* EFFECTS */}
+      {/* EFFECTS — uses EFFECT_LABELS from shared UI */}
       {effects.length > 0 && (
         <>
           <div className="frame-card__divider" />
@@ -316,7 +331,7 @@ export const FrameCard = memo(function FrameCard({
                 key={eff}
                 className={`frame-card__effect-pill ${getEffectPillClass(eff)}`}
               >
-                {eff}
+                {EFFECT_LABELS[eff] ?? eff}
               </span>
             ))}
           </div>

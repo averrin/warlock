@@ -134,16 +134,19 @@ export function useFrameDrag({
         dragMovedRef.current = true;
         framePositionsRef.current.set(id, { x, y });
 
-        // Update card position in screen space directly
+        // Update card position — must match FrameOverlay's zoom approach:
+        // CSS zoom multiplies left/top, so divide screen coords by scale.
         const overlay = overlayRef.current;
         if (overlay) {
           const { scale, tx, ty } = overlay.getTransform();
           const cells = FRAME_CELL_SIZES[size] ?? 1;
-          const screenSize = cells * CELL * scale;
-          cardEl.style.left = `${x * scale + tx}px`;
-          cardEl.style.top = `${y * scale + ty}px`;
-          cardEl.style.width = `${screenSize}px`;
-          cardEl.style.height = `${screenSize}px`;
+          const worldSize = cells * CELL;
+          const screenX = x * scale + tx;
+          const screenY = y * scale + ty;
+          cardEl.style.left = `${screenX / scale}px`;
+          cardEl.style.top = `${screenY / scale}px`;
+          cardEl.style.width = `${worldSize}px`;
+          cardEl.style.height = `${worldSize}px`;
           // Also update data attrs so syncTransform stays correct
           cardEl.dataset.worldX = String(x);
           cardEl.dataset.worldY = String(y);

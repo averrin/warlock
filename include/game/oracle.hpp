@@ -5,6 +5,6 @@
 
 class Oracle {
 public:
-  std::vector<Frame> getNFCFrames(int id, float distance);
+  std::vector<Frame> getWirelessDataFrames(int id, float maxDistance);
   std::vector<Frame> getWiredFrames(int id);
 };

@@ -328,23 +328,36 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setComponentState: async (client, frameId, componentId, state) => {
     const method = state === "active" ? "component.activate" : "component.deactivate";
+    const optimisticState = state === "active" ? "ACTIVATING" : "DEACTIVATING";
     try {
       await client.call(method, { frame_id: frameId, component_id: componentId });
-    } catch {
-      // Keep local fallback for parity slices until backend capability is available.
+      set((current) => ({
+        frames: current.frames.map((frame) =>
+          frame.id !== frameId
+            ? frame
+            : {
+                ...frame,
+                components: (frame.components ?? []).map((component) =>
+                  component.id === componentId ? { ...component, state: optimisticState, error: "" } : component,
+                ),
+              },
+        ),
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      set((current) => ({
+        frames: current.frames.map((frame) =>
+          frame.id !== frameId
+            ? frame
+            : {
+                ...frame,
+                components: (frame.components ?? []).map((component) =>
+                  component.id === componentId ? { ...component, error: message } : component,
+                ),
+              },
+        ),
+      }));
     }
-    set((current) => ({
-      frames: current.frames.map((frame) =>
-        frame.id !== frameId
-          ? frame
-          : {
-              ...frame,
-              components: (frame.components ?? []).map((component) =>
-                component.id === componentId ? { ...component, state } : component,
-              ),
-            },
-      ),
-    }));
   },
 
   repairComponent: async (client, frameId, componentId) => {
