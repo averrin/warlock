@@ -3,6 +3,7 @@
 #include <game/components/items.hpp>
 #include <game/oracle.hpp>
 #include <game/systems/power.hpp>
+#include <game/nexus_api.hpp>
 #include <sol/sol.hpp>
 #include <sstream>
 
@@ -124,9 +125,24 @@ void register_bindings(sol::state &lua) {
       "inputs", &RecipeDefinition::inputs, "timeCost",
       &RecipeDefinition::timeCost, "powerCost", &RecipeDefinition::powerCost);
 
-  lua.new_usertype<Oracle>("Oracle", "getNFCFrames", &Oracle::getNFCFrames,
+  lua.new_usertype<Oracle>("Oracle", "getWirelessDataFrames", &Oracle::getWirelessDataFrames,
                            "getWiredFrames", &Oracle::getWiredFrames);
   lua.set("oracle", oracle);
+
+  lua.new_usertype<NexusApi>(
+      "NexusApi",
+      "showToast", &NexusApi::showToast,
+      "setMapMarker", &NexusApi::setMapMarker,
+      "clearMapMarkers", &NexusApi::clearMapMarkers,
+      "removeMapMarker", &NexusApi::removeMapMarker,
+      "getMapMarkers", &NexusApi::getMapMarkers,
+      "setGlobalIndicator", &NexusApi::setGlobalIndicator,
+      "getMouseX", &NexusApi::getMouseX,
+      "getMouseY", &NexusApi::getMouseY
+  );
+
+  static NexusApi nexus_api;
+  lua.set("nexus", &nexus_api);
 }
 
 // Function to create a Component from a Lua file

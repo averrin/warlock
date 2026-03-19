@@ -5,6 +5,7 @@ import { useGameStore } from "./stores/game";
 import { usePatchStore, Patch, PatchType } from "./stores/patches";
 import { useSceneStore } from "./stores/scene";
 import { AppShell } from "./components/layout/AppShell";
+import { Toaster, toast } from "react-hot-toast";
 
 export default function App() {
   const client = useRpcClient();
@@ -50,5 +51,25 @@ export default function App() {
     };
   }, [client, fetchInitialState, initConnection, initGame, initScene, refreshScene]);
 
-  return <AppShell rpcClient={client} />;
+  useEffect(() => {
+    const unsubscribe = client.on("nexus.toast", (payload: any) => {
+      const type = payload?.type || "info";
+      const message = payload?.message || "";
+      if (type === "success") {
+        toast.success(message);
+      } else if (type === "error") {
+        toast.error(message);
+      } else {
+        toast(message);
+      }
+    });
+    return () => unsubscribe();
+  }, [client]);
+
+  return (
+    <>
+      <Toaster position="bottom-right" />
+      <AppShell rpcClient={client} />
+    </>
+  );
 }
