@@ -3,7 +3,7 @@ import type { RpcClient } from "../../rpc/client";
 import type { FrameDTO } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
-import { CollapsibleSection, SelectField, NumberField, FRAME_SIZES, MATERIALS } from "../ui";
+import { CollapsibleSection, SelectField, TransformEditor, FRAME_SIZES, MATERIALS } from "../ui";
 import { FrameHeader } from "./FrameHeader";
 import { FrameControls } from "./FrameControls";
 import { ComponentStrip } from "./ComponentStrip";
@@ -295,20 +295,11 @@ export function FramePanel({
             />
           </div>
           {frame.position && (
-            <div style={{ display: "flex", gap: 8 }}>
-              <NumberField
-                label="X"
-                value={frame.position.x}
-                onChange={(v) => void moveFrame(rpcClient, frame.id, v, frame.position?.y ?? 0)}
-                labelWidth={20}
-              />
-              <NumberField
-                label="Y"
-                value={frame.position.y}
-                onChange={(v) => void moveFrame(rpcClient, frame.id, frame.position?.x ?? 0, v)}
-                labelWidth={20}
-              />
-            </div>
+            <TransformEditor
+              x={frame.position.x}
+              y={frame.position.y}
+              onChange={(x, y) => void moveFrame(rpcClient, frame.id, x, y)}
+            />
           )}
         </div>
       )}

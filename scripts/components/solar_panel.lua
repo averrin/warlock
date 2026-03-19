@@ -1,5 +1,6 @@
 return {
 	name = "Solar Panel",
+	category = "Power",
 	description = "Medium Solar Panel",
 	attributes = {
 		type = {

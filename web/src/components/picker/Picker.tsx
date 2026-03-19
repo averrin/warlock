@@ -9,10 +9,17 @@ export type PickerItem<T = unknown> = {
   data: T;
 };
 
+export type PickerSection<T> = {
+  id: string;
+  heading: string;
+  items: PickerItem<T>[];
+};
+
 type Props<T> = {
   isOpen: boolean;
   onClose: () => void;
-  items: PickerItem<T>[];
+  items?: PickerItem<T>[];
+  sections?: PickerSection<T>[];
   isLoading?: boolean;
   onSelect: (data: T) => void;
   placeholder?: string;
@@ -22,7 +29,8 @@ type Props<T> = {
 export function Picker<T>({
   isOpen,
   onClose,
-  items,
+  items = [],
+  sections,
   isLoading = false,
   onSelect,
   placeholder = "Search...",
@@ -30,23 +38,32 @@ export function Picker<T>({
 }: Props<T>) {
   const [search, setSearch] = useState("");
 
-  const structuredItems = useMemo(
-    () => [
+  const structuredItems = useMemo(() => {
+    const makeListItem = (item: PickerItem<T>) => ({
+      id: item.id,
+      children: item.label,
+      onClick: () => {
+        onSelect(item.data);
+        onClose();
+      },
+    });
+
+    if (sections) {
+      return sections.map((section) => ({
+        id: section.id,
+        heading: section.heading,
+        items: section.items.map(makeListItem),
+      }));
+    }
+
+    return [
       {
         id: "items",
         heading,
-        items: items.map((item) => ({
-          id: item.id,
-          children: item.label,
-          onClick: () => {
-            onSelect(item.data);
-            onClose();
-          },
-        })),
+        items: items.map(makeListItem),
       },
-    ],
-    [items, heading, onSelect, onClose]
-  );
+    ];
+  }, [items, sections, heading, onSelect, onClose]);
 
   const filteredItems = search ? filterItems(structuredItems, search) : structuredItems;
 
@@ -66,7 +83,7 @@ export function Picker<T>({
           <div style={{ padding: "16px", textAlign: "center", color: "#9ca3af" }}>
             Loading...
           </div>
-        ) : items.length === 0 ? (
+        ) : (sections ? sections.every((s) => s.items.length === 0) : items.length === 0) ? (
           <div style={{ padding: "16px", textAlign: "center", color: "#9ca3af" }}>
             No items available
           </div>

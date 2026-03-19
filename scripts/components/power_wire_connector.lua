@@ -1,5 +1,6 @@
 return {
 	name = "Power Wire Connector",
+	category = "Connectors",
 	description = "Power Wire Connector",
 	attributes = {
 		type = {

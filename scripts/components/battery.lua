@@ -1,5 +1,6 @@
 return {
 	name = "Battery",
+	category = "Power",
 	description = "Generic battery",
 	icon = "battery-100.png",
 	attributes = {

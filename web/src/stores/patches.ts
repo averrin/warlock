@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { RpcClient } from "../rpc/client";
 
 export interface PatchCell {
   x: number;
@@ -26,12 +27,13 @@ interface PatchStore {
   patches: Patch[];
   patchTypes: PatchType[];
   selectedPatchId: number | null;
-  
+
   setPatches: (patches: Patch[]) => void;
   setPatchTypes: (types: PatchType[]) => void;
   addPatch: (patch: Patch) => void;
   removePatch: (id: number) => void;
   selectPatch: (id: number | null) => void;
+  movePatch: (client: RpcClient, id: number, x: number, y: number) => Promise<void>;
 }
 
 export const usePatchStore = create<PatchStore>((set) => ({
@@ -47,4 +49,14 @@ export const usePatchStore = create<PatchStore>((set) => ({
     selectedPatchId: state.selectedPatchId === id ? null : state.selectedPatchId
   })),
   selectPatch: (id) => set({ selectedPatchId: id }),
+  movePatch: async (client, id, x, y) => {
+    await client.call("patches.move", { id, x, y });
+    set((state) => ({
+      patches: state.patches.map((p) =>
+        p.id === id
+          ? { ...p, bounds: { ...p.bounds, x, y }, cells: p.cells.map(([cx, cy]) => [cx + x - p.bounds.x, cy + y - p.bounds.y] as [number, number]) }
+          : p,
+      ),
+    }));
+  },
 }));

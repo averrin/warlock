@@ -1,5 +1,6 @@
 return {
 	name = "Data Wire Connector",
+	category = "Connectors",
 	description = "Provide data link (and power) for adjusting frames.",
 	attributes = {
 		type = {

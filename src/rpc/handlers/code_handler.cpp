@@ -48,10 +48,12 @@ void registerCodeHandlers(Server& server) {
       throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
     }
     nlohmann::json sources = nlohmann::json::object();
+    nlohmann::json categories = nlohmann::json::object();
     for (auto& [name, code] : gm.exec->sources) {
       sources[name] = code;
+      categories[name] = gm.exec->categories.count(name) ? gm.exec->categories.at(name) : "Other";
     }
-    return {{"sources", sources}};
+    return {{"sources", sources}, {"categories", categories}};
   });
 
   // code.blueprints — returns {blueprints: {name: bp_string}}

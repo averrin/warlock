@@ -1,5 +1,6 @@
 return {
 	name = "Capacitor",
+	category = "Power",
 	description = "Generic capacitor",
 	icon = "battery-100.png",
 	attributes = {

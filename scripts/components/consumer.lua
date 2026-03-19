@@ -1,5 +1,6 @@
 return {
 	name = "Consumer",
+	category = "Power",
 	description = "Generic consumer",
 	attributes = {
 		type = {

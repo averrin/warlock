@@ -1,5 +1,6 @@
 return {
 	name = "Generator",
+	category = "Power",
 	description = "Spark Stone generator",
 	attributes = {
 		type = {

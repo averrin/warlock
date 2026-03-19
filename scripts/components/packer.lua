@@ -1,5 +1,6 @@
 return {
 	name = "Packer",
+	category = "Production",
 	description = "Standard packer",
 	attributes = {
 		type = {

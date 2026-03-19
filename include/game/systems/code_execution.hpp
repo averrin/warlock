@@ -32,6 +32,7 @@ class CodeExecutionSystem : public System {
 
 public:
   std::map<std::string, std::string> sources = {};
+  std::map<std::string, std::string> categories = {};
   std::map<std::string, std::string> blueprints = {};
   void fixedUpdate() override;
 
@@ -52,7 +53,9 @@ public:
                       std::istreambuf_iterator<char>());
       sol::table spec = lua.load(str).call();
       auto title = spec["name"].get_or<std::string>("");
+      auto category = spec["category"].get_or<std::string>("Other");
       sources[title] = str;
+      categories[title] = category;
     }
     path = PATH / fs::path("scripts/blueprints");
     for (auto &entry : fs::directory_iterator(path)) {

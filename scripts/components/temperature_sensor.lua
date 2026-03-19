@@ -1,5 +1,6 @@
 return {
 	name = "Temperature Sensor",
+	category = "Thermal",
 	description = "Temperature Sensor",
 	attributes = {
 		type = {

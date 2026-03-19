@@ -1,5 +1,6 @@
 return {
     name = "Power Meter",
+    category = "Power",
     description = "Power Meter",
     attributes = {
         type = {

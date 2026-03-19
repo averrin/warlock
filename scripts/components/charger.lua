@@ -1,5 +1,6 @@
 return {
 	name = "Charger",
+	category = "Power",
 	description = "Battery charger",
 	icon = "battery-pack.png",
 	attributes = {

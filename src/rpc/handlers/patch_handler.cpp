@@ -161,6 +161,48 @@ void registerPatchHandlers(Server& server) {
     return result;
   });
 
+  server.router().on("patches.move", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    if (!params.contains("id") || !params.contains("x") || !params.contains("y")) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Missing required parameters: id, x, y"};
+    }
+    int id = params["id"].get<int>();
+    int new_x = params["x"].get<int>();
+    int new_y = params["y"].get<int>();
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto e = static_cast<entt::entity>(id);
+
+    if (!state.registry.valid(e) || !state.registry.all_of<ResourcePatch>(e)) {
+      throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Patch not found"};
+    }
+
+    auto& patch = state.registry.get<ResourcePatch>(e);
+    int dx = new_x - patch.min_x;
+    int dy = new_y - patch.min_y;
+    for (auto& [cx, cy] : patch.cells) {
+      cx += dx;
+      cy += dy;
+    }
+    patch.recalculateBounds();
+    state.registry.replace<ResourcePatch>(e, patch);
+
+    if (state.registry.all_of<wl::transform>(e)) {
+      auto& t = state.registry.get<wl::transform>(e);
+      t.position.x = static_cast<float>(patch.min_x * 25);
+      t.position.y = static_cast<float>(patch.min_y * 25);
+      state.registry.replace<wl::transform>(e, t);
+    }
+
+    logWebAction(server, "patches.move", "ok", {{"id", id}, {"x", new_x}, {"y", new_y}});
+    return {{"ok", true}};
+  });
+
   server.router().on("patches.get", [](const Context& /*ctx*/, const nlohmann::json& params) -> nlohmann::json {
     auto& gm = entt::locator<GameManager>::value();
     if (!gm.started) {

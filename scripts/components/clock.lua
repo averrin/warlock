@@ -1,5 +1,6 @@
 return {
 	name = "Clock",
+	category = "Network",
 	description = "Clock",
 	icon = "alarm-clock.png",
 	attributes = {

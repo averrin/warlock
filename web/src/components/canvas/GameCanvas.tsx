@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { Application, Container, Graphics } from "pixi.js";
 import type { FederatedPointerEvent } from "pixi.js";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
@@ -10,6 +10,9 @@ import type { ComponentDTO } from "../../rpc/types";
 import { ComponentContextMenu } from "./ComponentContextMenu";
 import { PatchMiniInspector } from "./PatchMiniInspector";
 import { ComponentPicker, BlueprintPicker } from "../picker";
+import { FrameOverlay, type FrameOverlayHandle } from "./FrameOverlay";
+import { useFrameDrag } from "./useFrameDrag";
+import type { PlacedFrame } from "./FrameCard";
 
 type Props = {
   rpcClient: RpcClient;
@@ -30,7 +33,6 @@ const GRID_DOT_ALPHA = 0.5;
 const GRID_DOT_RADIUS = 1.5;
 const MINOR_HIDE_THRESHOLD = 6;
 const MAJOR_HIDE_THRESHOLD = 4;
-const TEXT_RESOLUTION = 2 * (typeof window !== "undefined" ? window.devicePixelRatio : 1);
 
 const FRAME_CELL_SIZES: Record<string, number> = {
   S: 1,
@@ -140,77 +142,6 @@ function hasConnectionBetween(
   );
 }
 
-// Component badge strip (matches FrameMiniInspector STATE_COLORS)
-const COMP_BADGE_SIZE = 14;
-const COMP_BADGE_GAP = 3;
-const COMP_BADGE_RADIUS = 3;
-const COMP_BADGE_FONT_SIZE = 8;
-const COMP_STATE_COLORS: Record<string, number> = {
-  ACTIVE: 0x14532d,
-  ACTIVATING: 0x3f6212,
-  DEACTIVATING: 0x78350f,
-  DEACTIVATED: 0x1f2937,
-  COMP_ERROR: 0x7f1d1d,
-  DESTROYED: 0x450a0a,
-  BLOCKED: 0x4a1d96,
-  BROKEN: 0x7f1d1d,
-};
-const COMP_DEFAULT_COLOR = 0x1f2937;
-const COMP_ICON_PAD = 2; // padding inside badge for the icon sprite
-
-// Cache loaded icon textures so we don't reload per frame per render
-const iconTextureCache = new Map<string, Texture | null>();
-const iconTextureLoading = new Set<string>();
-const iconTextureListeners = new Set<() => void>();
-
-function notifyIconTextureListeners() {
-  for (const cb of iconTextureListeners) {
-    try {
-      cb();
-    } catch {
-      // ignore listener errors
-    }
-  }
-}
-
-function subscribeIconTextureUpdates(cb: () => void): () => void {
-  iconTextureListeners.add(cb);
-  return () => {
-    iconTextureListeners.delete(cb);
-  };
-}
-
-function getIconTexture(iconFilename: string): Texture | null {
-  if (iconTextureCache.has(iconFilename)) return iconTextureCache.get(iconFilename)!;
-  if (iconTextureLoading.has(iconFilename)) return null; // still loading
-  iconTextureLoading.add(iconFilename);
-  const url = `/icons/${iconFilename}`;
-  void Assets.load<Texture>(url)
-    .then((tex) => {
-      iconTextureCache.set(iconFilename, tex);
-      iconTextureLoading.delete(iconFilename);
-      notifyIconTextureListeners();
-    })
-    .catch(() => {
-      iconTextureCache.set(iconFilename, null);
-      iconTextureLoading.delete(iconFilename);
-      notifyIconTextureListeners();
-    });
-  return null; // will be available next render cycle
-}
-
-type FrameNode = Container & {
-  __box?: Graphics;
-  __label?: Text;
-  __idLabel?: Text;
-  __highlight?: Graphics;
-  __errorMarker?: Graphics;
-  __compBadgeContainer?: Container;
-  __compBadgeBg?: Graphics;
-  __compBadgeTexts?: Text[];
-  __compBadgeSprites?: Sprite[];
-};
-
 function redrawGrid(
   grid: Graphics,
   world: Container,
@@ -218,8 +149,8 @@ function redrawGrid(
   screenH: number,
 ) {
   grid.clear();
-  const scale = world.scale.x;
 
+  const scale = world.scale.x;
   const wx0 = -world.x / scale;
   const wy0 = -world.y / scale;
   const wx1 = wx0 + screenW / scale;
@@ -250,57 +181,30 @@ function redrawGrid(
   // --- Major grid lines (CELL spacing) ---
   const majorPx = CELL * scale;
   if (majorPx >= MAJOR_HIDE_THRESHOLD) {
-    const mxMin = Math.floor(wx0 / CELL) * CELL;
-    const mxMax = Math.ceil(wx1 / CELL) * CELL;
-    const myMin = Math.floor(wy0 / CELL) * CELL;
-    const myMax = Math.ceil(wy1 / CELL) * CELL;
+    const cxMin = Math.floor(wx0 / CELL) * CELL;
+    const cxMax = Math.ceil(wx1 / CELL) * CELL;
+    const cyMin = Math.floor(wy0 / CELL) * CELL;
+    const cyMax = Math.ceil(wy1 / CELL) * CELL;
 
     grid.setStrokeStyle({ width: 1, color: MAJOR_LINE_COLOR, alpha: MAJOR_LINE_ALPHA });
-    for (let x = mxMin; x <= mxMax; x += CELL) {
-      grid.moveTo(x, myMin);
-      grid.lineTo(x, myMax);
+    for (let x = cxMin; x <= cxMax; x += CELL) {
+      grid.moveTo(x, cyMin);
+      grid.lineTo(x, cyMax);
     }
-    for (let y = myMin; y <= myMax; y += CELL) {
-      grid.moveTo(mxMin, y);
-      grid.lineTo(mxMax, y);
+    for (let y = cyMin; y <= cyMax; y += CELL) {
+      grid.moveTo(cxMin, y);
+      grid.lineTo(cxMax, y);
     }
     grid.stroke();
 
-    // --- Dots at major intersections ---
-    for (let x = mxMin; x <= mxMax; x += CELL) {
-      for (let y = myMin; y <= myMax; y += CELL) {
-        grid.circle(x, y, GRID_DOT_RADIUS / scale);
+    // --- Dots at CELL intersections ---
+    for (let x = cxMin; x <= cxMax; x += CELL) {
+      for (let y = cyMin; y <= cyMax; y += CELL) {
+        grid.circle(x, y, GRID_DOT_RADIUS);
       }
     }
     grid.fill({ color: GRID_DOT_COLOR, alpha: GRID_DOT_ALPHA });
   }
-}
-
-function updateTextResolution(node: FrameNode, scale: number) {
-  const res = Math.max(TEXT_RESOLUTION, Math.ceil(scale * 2));
-  if (node.__label && node.__label.resolution !== res) {
-    node.__label.resolution = res;
-  }
-  if (node.__idLabel && node.__idLabel.resolution !== res) {
-    node.__idLabel.resolution = res;
-  }
-  if (node.__compBadgeTexts) {
-    for (const bt of node.__compBadgeTexts) {
-      if (bt.resolution !== res) bt.resolution = res;
-    }
-  }
-}
-
-function getEventClientXY(e: FederatedPointerEvent): { x: number; y: number } {
-  // Pixi v7 FederatedPointerEvent exposes `client` in viewport coordinates.
-  const client = (e as any).client as { x?: number; y?: number } | undefined;
-  if (typeof client?.x === "number" && typeof client?.y === "number") {
-    return { x: client.x, y: client.y };
-  }
-  const oe = ((e as any).originalEvent ?? (e as any).nativeEvent ?? (e as any).data?.originalEvent) as
-    | { clientX?: number; clientY?: number }
-    | undefined;
-  return { x: oe?.clientX ?? 0, y: oe?.clientY ?? 0 };
 }
 
 export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
@@ -308,10 +212,11 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
   const gridRef = useRef<Graphics | null>(null);
-  const frameLayerRef = useRef<Container | null>(null);
   const patchLayerRef = useRef<Container | null>(null);
-  const frameNodeByIdRef = useRef<Map<number, Container>>(new Map());
+  const overlayRef = useRef<FrameOverlayHandle | null>(null);
   const patches = usePatchStore((s) => s.patches);
+  const patchesRef = useRef(patches);
+  patchesRef.current = patches;
   const patchTypes = usePatchStore((s) => s.patchTypes);
   const frames = useGameStore((s) => s.frames);
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
@@ -319,23 +224,13 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const moveFrame = useGameStore((s) => s.moveFrame);
   const createFromBlueprint = useGameStore((s) => s.createFromBlueprint);
   const updateFrameMetadata = useGameStore((s) => s.updateFrameMetadata);
-  const draggingFrameIdRef = useRef<number | null>(null);
-  const dragMovedRef = useRef(false);
-  const pendingDropRef = useRef<{ id: number; x: number; y: number } | null>(null);
-  const pendingMoveIds = useRef<Set<number>>(new Set());
   const panningRef = useRef(false);
   const panStartRef = useRef({ sx: 0, sy: 0, wx: 0, wy: 0 });
   const framesRef = useRef(frames);
   framesRef.current = frames;
   const ghostRef = useRef<Graphics | null>(null);
   const creatingRef = useRef<string | null>(null);
-  const [iconVersion, setIconVersion] = useState(0);
-
-  useEffect(() => {
-    return subscribeIconTextureUpdates(() => {
-      setIconVersion((v) => v + 1);
-    });
-  }, []);
+  const [zoom, setZoom] = useState(1);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; wx: number; wy: number } | null>(null);
   const [creationBlueprint, setCreationBlueprint] = useState<string | null>(null);
@@ -349,7 +244,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const wiringLineRef = useRef<Graphics | null>(null);
   const connectionsRef = useRef(connections);
   connectionsRef.current = connections;
-  const placedFramesRef = useRef<ReturnType<typeof Array.prototype.map>>([]);
+  const placedFramesRef = useRef<PlacedFrame[]>([]);
   const wiringRef = useRef<{ sourceId: number; type: "POWER" | "DATA" | "CONVEYOR" } | null>(null);
   const rpcClientRef = useRef(rpcClient);
   rpcClientRef.current = rpcClient;
@@ -366,11 +261,15 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const [patchInspector, setPatchInspector] = useState<{ patch: Patch; x: number; y: number } | null>(null);
   const drawConnectionsRef = useRef<() => void>(() => {});
 
+  // --- Frame positions map for connection drawing and drag ---
+  const framePositionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+
   const getPatchAtWorldPos = (wx: number, wy: number): Patch | null => {
     const gridX = Math.floor(wx / SUB_CELL);
     const gridY = Math.floor(wy / SUB_CELL);
-    
-    for (const patch of patches) {
+    const currentPatches = patchesRef.current;
+
+    for (const patch of currentPatches) {
       if (patch.cells.some(([cx, cy]) => cx === gridX && cy === gridY)) {
         return patch;
       }
@@ -394,13 +293,12 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // --- Connection drawing (reads from framePositionsRef) ---
   const drawConnections = () => {
     const connLayer = connectionLayerRef.current;
     if (!connLayer) return;
     connLayer.clear();
 
-    // Group connections by unordered frame pair so we can draw
-    // a bundle of parallel lines instead of overlapping ones.
     const groups = new Map<string, typeof connectionsRef.current>();
     for (const conn of connectionsRef.current) {
       const a = Math.min(conn.source, conn.target);
@@ -415,23 +313,22 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     }
 
     const TYPE_ORDER: Array<"POWER" | "DATA" | "CONVEYOR"> = ["POWER", "DATA", "CONVEYOR"];
-    const OFFSET_STEP = 6; // pixels between parallel lines
+    const OFFSET_STEP = 6;
 
     for (const [, conns] of groups) {
-      // Use the first connection to find endpoints; all share same frames.
       const sample = conns[0]!;
-      const srcNode = frameNodeByIdRef.current.get(sample.source);
-      const tgtNode = frameNodeByIdRef.current.get(sample.target);
+      const srcPos = framePositionsRef.current.get(sample.source);
+      const tgtPos = framePositionsRef.current.get(sample.target);
       const srcFrame = framesRef.current.find((f) => f.id === sample.source);
       const tgtFrame = framesRef.current.find((f) => f.id === sample.target);
-      if (!srcNode || !tgtNode || !srcFrame || !tgtFrame) continue;
+      if (!srcPos || !tgtPos || !srcFrame || !tgtFrame) continue;
 
       const srcCells = FRAME_CELL_SIZES[srcFrame.size] ?? 1;
       const tgtCells = FRAME_CELL_SIZES[tgtFrame.size] ?? 1;
-      const baseX1 = srcNode.x + (srcCells * CELL) / 2;
-      const baseY1 = srcNode.y + (srcCells * CELL) / 2;
-      const baseX2 = tgtNode.x + (tgtCells * CELL) / 2;
-      const baseY2 = tgtNode.y + (tgtCells * CELL) / 2;
+      const baseX1 = srcPos.x + (srcCells * CELL) / 2;
+      const baseY1 = srcPos.y + (srcCells * CELL) / 2;
+      const baseX2 = tgtPos.x + (tgtCells * CELL) / 2;
+      const baseY2 = tgtPos.y + (tgtCells * CELL) / 2;
 
       const dx = baseX2 - baseX1;
       const dy = baseY2 - baseY1;
@@ -439,7 +336,6 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       const nx = -dy / len;
       const ny = dx / len;
 
-      // Determine which types exist for this pair in a stable order
       const presentTypes = TYPE_ORDER.filter((t) => conns.some((c) => c.type === t));
       const count = presentTypes.length;
       const startIndex = -(count - 1) / 2;
@@ -494,56 +390,43 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   }, [renderPatches]);
 
   const parseBlueprintSize = (source: string): string => {
-    const m = source.match(/FrameSize\.([SMLG])/);
-    return m ? m[1] : "M";
+    const match = source.match(/FrameSize\.([SMLG])/);
+    return match?.[1] ?? "M";
   };
 
   useEffect(() => {
     if (!blueprintSupported) return;
-    void rpcClient
-      .call<{ blueprints: Record<string, string> }>("code.blueprints")
-      .then((data) => {
-        const map = data.blueprints ?? {};
-        blueprintMapRef.current = map;
-        setBlueprintMap(map);
-      })
-      .catch(() => setBlueprintMap({}));
+    void (async () => {
+      try {
+        const result = await rpcClient.call<{ blueprints: Record<string, string> }>("blueprint.palette");
+        const bp = result.blueprints ?? {};
+        setBlueprintMap(bp);
+        blueprintMapRef.current = bp;
+      } catch {
+        // Blueprints not available
+      }
+    })();
   }, [rpcClient, blueprintSupported]);
 
-
-  const enterCreationMode = useCallback((blueprint: string) => {
-    setCreationBlueprint(blueprint);
+  const enterCreationMode = (blueprint: string) => {
     creatingRef.current = blueprint;
-    setContextMenu(null);
-    setCompContextMenu(null);
-    // Pre-draw ghost at correct size immediately
-    const ghost = ghostRef.current;
-    if (ghost) {
-      const src = blueprintMapRef.current[blueprint] ?? "";
-      const size = parseBlueprintSize(src);
-      const cells = FRAME_CELL_SIZES[size] ?? 2;
-      const boxSize = cells * CELL;
-      ghost.clear();
-      ghost.beginFill(0x3b82f6);
-      ghost.roundRect(0, 0, boxSize, boxSize, 10);
-      ghost.fill();
-    }
-  }, []);
+    setCreationBlueprint(blueprint);
+  };
 
-  const exitCreationMode = useCallback(() => {
-    setCreationBlueprint(null);
+  const exitCreationMode = () => {
     creatingRef.current = null;
-    const ghost = ghostRef.current;
-    if (ghost) ghost.visible = false;
-  }, []);
+    setCreationBlueprint(null);
+    if (ghostRef.current) {
+      ghostRef.current.visible = false;
+    }
+  };
 
-  const createPatch = async (type: string, wx: number, wy: number) => {
+  const createPatch = async (patchType: string, wx: number, wy: number) => {
     const gridX = Math.floor(wx / SUB_CELL);
     const gridY = Math.floor(wy / SUB_CELL);
-
     try {
       await rpcClient.call("patches.create", {
-        type,
+        type: patchType,
         x: gridX,
         y: gridY,
       });
@@ -555,7 +438,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     setContextMenu(null);
   };
 
-  const placedFrames = useMemo(() => {
+  const placedFrames: PlacedFrame[] = useMemo(() => {
     return frames.map((frame, index) => {
       const x = frame.position?.x ?? (index % 6) * CELL + SUB_CELL;
       const y = frame.position?.y ?? Math.floor(index / 6) * CELL + SUB_CELL;
@@ -563,6 +446,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     });
   }, [frames]);
   placedFramesRef.current = placedFrames;
+
+  // framePositionsRef sync is done after dragState is defined (see below)
 
   const requestGridRedraw = () => {
     const app = appRef.current;
@@ -590,43 +475,131 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     return false;
   };
 
-  const onFrameMove = (event: FederatedPointerEvent) => {
-    if (draggingFrameIdRef.current === null || !frameLayerRef.current) {
-      return;
+  // --- Frame drag hook ---
+  const dragState = useFrameDrag({
+    hostRef,
+    overlayRef,
+    framesRef,
+    framePositionsRef,
+    drawConnections,
+    moveFrame,
+    selectFrame,
+    onFrameMiniInspect,
+  });
+  dragState.rpcClientRef.current = rpcClient;
+
+  // Keep framePositionsRef in sync with placedFrames
+  // Skip frames that are currently being dragged or have pending move RPCs
+  useMemo(() => {
+    for (const frame of placedFrames) {
+      const isDragging = dragState.draggingFrameIdRef.current === frame.id;
+      const isPending = dragState.pendingMoveIds.current.has(frame.id);
+      if (!isDragging && !isPending) {
+        framePositionsRef.current.set(frame.id, { x: frame._x, y: frame._y });
+      }
     }
-    const id = draggingFrameIdRef.current;
-    const local = event.getLocalPosition(frameLayerRef.current);
-    const x = Math.round(local.x / CELL) * CELL;
-    const y = Math.round(local.y / CELL) * CELL;
-    const draggedFrame = framesRef.current.find((f) => f.id === id);
-    const size = draggedFrame?.size ?? "S";
-    if (isOverlapping(x, y, size, id)) {
-      return;
+    // Clean up removed frames
+    const activeIds = new Set(placedFrames.map((f) => f.id));
+    for (const id of framePositionsRef.current.keys()) {
+      if (!activeIds.has(id)) {
+        framePositionsRef.current.delete(id);
+      }
     }
-    dragMovedRef.current = true;
-    pendingDropRef.current = { id, x, y };
-    const node = frameNodeByIdRef.current.get(id);
-    if (node) {
-      node.x = x;
-      node.y = y;
+  }, [placedFrames]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const getEventClientXY = (e: FederatedPointerEvent): { x: number; y: number } => {
+    const client = (e as any).client as { x?: number; y?: number } | undefined;
+    if (typeof client?.x === "number" && typeof client?.y === "number") {
+      return { x: client.x, y: client.y };
     }
-    drawConnectionsRef.current();
+    const oe = ((e as any).originalEvent ?? (e as any).nativeEvent ?? (e as any).data?.originalEvent) as
+      | { clientX?: number; clientY?: number }
+      | undefined;
+    return { x: oe?.clientX ?? 0, y: oe?.clientY ?? 0 };
   };
 
-  const onFrameUp = () => {
-    const drop = pendingDropRef.current;
-    draggingFrameIdRef.current = null;
-    const moved = dragMovedRef.current;
-    dragMovedRef.current = false;
-    pendingDropRef.current = null;
-    if (!drop || !moved) {
-      return;
-    }
-    pendingMoveIds.current.add(drop.id);
-    moveFrame(rpcClient, drop.id, drop.x, drop.y).finally(() => {
-      pendingMoveIds.current.delete(drop.id);
-    });
-  };
+  // --- Handle frame pointer down: wiring mode or delegate to drag ---
+  const handleFramePointerDown = useCallback(
+    (e: React.PointerEvent, frameId: number) => {
+      // If wiring mode active, handle wiring target selection
+      const wiring = wiringRef.current;
+      if (wiring) {
+        e.stopPropagation();
+        const currentFrames = framesRef.current;
+        const currentConns = connectionsRef.current;
+        const tgtFrame = currentFrames.find((f) => f.id === frameId);
+        const hasConn = tgtFrame ? frameHasConnector(tgtFrame, wiring.type) : false;
+        const hasReq = tgtFrame ? frameMeetsConnectionRequirements(tgtFrame, wiring.type) : false;
+        const cardOk = isCardinallySatisfied(currentConns, currentFrames, frameId, wiring.type);
+        const pairOk = !hasConnectionBetween(currentConns, wiring.sourceId, frameId, wiring.type);
+
+        if (
+          frameId !== wiring.sourceId &&
+          tgtFrame &&
+          hasConn &&
+          hasReq &&
+          cardOk &&
+          pairOk
+        ) {
+          createConnectionRef.current(rpcClientRef.current, wiring.sourceId, frameId, wiring.type).catch(console.error);
+        }
+        wiringRef.current = null;
+        setWiringMode(null);
+        const wl = wiringLineRef.current;
+        if (wl) wl.visible = false;
+        return;
+      }
+
+      // Delegate to drag handler
+      dragState.handleFramePointerDown(e, frameId);
+    },
+    [dragState],
+  );
+
+  // --- Handle frame context menu ---
+  const handleFrameContextMenu = useCallback(
+    (e: React.MouseEvent, frameId: number) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // If wiring mode: complete connection via right-click
+      const wiring = wiringRef.current;
+      if (wiring && frameId !== wiring.sourceId) {
+        const currentFrames = framesRef.current;
+        const currentConns = connectionsRef.current;
+        const tgtFrame = currentFrames.find((f) => f.id === frameId);
+        const hasConn = tgtFrame ? frameHasConnector(tgtFrame, wiring.type) : false;
+        const hasReq = tgtFrame ? frameMeetsConnectionRequirements(tgtFrame, wiring.type) : false;
+        const cardOk = isCardinallySatisfied(currentConns, currentFrames, frameId, wiring.type);
+        if (tgtFrame && hasConn && hasReq && cardOk) {
+          createConnectionRef.current(rpcClientRef.current, wiring.sourceId, frameId, wiring.type).catch(console.error);
+        }
+        wiringRef.current = null;
+        setWiringMode(null);
+        const wl = wiringLineRef.current;
+        if (wl) wl.visible = false;
+        return;
+      }
+
+      // Check if a component badge was clicked
+      const target = e.target as HTMLElement;
+      const compEl = target.closest("[data-component-id]");
+      if (compEl) {
+        const componentId = Number(compEl.getAttribute("data-component-id"));
+        if (!Number.isNaN(componentId)) {
+          setCompContextMenu({ x: e.clientX, y: e.clientY, frameId, componentId });
+          setFrameContextMenu(null);
+          setContextMenu(null);
+          return;
+        }
+      }
+
+      setFrameContextMenu({ x: e.clientX, y: e.clientY, frameId });
+      setCompContextMenu(null);
+      setContextMenu(null);
+    },
+    [],
+  );
 
   const onBackgroundClick = (event: FederatedPointerEvent) => {
     if (event.button !== 0) {
@@ -641,9 +614,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       return;
     }
     // If in creation mode, place the frame
-    if (creatingRef.current && frameLayerRef.current) {
+    if (creatingRef.current && worldRef.current) {
       const bp = creatingRef.current;
-      const local = event.getLocalPosition(frameLayerRef.current);
+      const local = event.getLocalPosition(worldRef.current);
       const x = Math.round(local.x / CELL) * CELL;
       const y = Math.round(local.y / CELL) * CELL;
       exitCreationMode();
@@ -662,6 +635,13 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       }
     }
     selectFrame(null);
+  };
+
+  /** Sync the HTML overlay transform with the Pixi worldContainer */
+  const syncOverlayTransform = () => {
+    const world = worldRef.current;
+    if (!world || !overlayRef.current) return;
+    overlayRef.current.syncTransform(world.scale.x, world.x, world.y);
   };
 
   useEffect(() => {
@@ -712,18 +692,12 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         connectionLayerRef.current = connectionLayer;
         worldContainer.addChild(connectionLayer);
 
-        const frameLayer = new Container();
-        frameLayerRef.current = frameLayer;
-        frameLayer.eventMode = "static";
-        worldContainer.addChild(frameLayer);
-
-        // Register drag listeners on stage so they fire even when
-        // the pointer moves outside the frameLayer bounds (up/left drag).
-        app.stage.on("pointermove", onFrameMove);
-        app.stage.on("pointerup", onFrameUp);
-        app.stage.on("pointerupoutside", onFrameUp);
+        // No more Pixi frameLayer — frames are rendered as HTML overlays
 
         redrawGrid(grid, worldContainer, app.screen.width, app.screen.height);
+
+        // Initial overlay sync
+        syncOverlayTransform();
 
         // --- ResizeObserver ---
         resizeObserver = new ResizeObserver((entries) => {
@@ -757,11 +731,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           worldContainer.y = sy - worldY * newScale;
 
           redrawGrid(grid, worldContainer, app.screen.width, app.screen.height);
-
-          // Update text resolution for all frame nodes on zoom
-          for (const node of frameNodeByIdRef.current.values()) {
-            updateTextResolution(node as FrameNode, newScale);
-          }
+          syncOverlayTransform();
+          setZoom(newScale);
         };
         canvasEl.addEventListener("wheel", onWheel, { passive: false });
 
@@ -785,6 +756,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           worldContainer.x = panStartRef.current.wx + dx;
           worldContainer.y = panStartRef.current.wy + dy;
           redrawGrid(grid, worldContainer, app.screen.width, app.screen.height);
+          syncOverlayTransform();
         };
         const onPanEnd = () => {
           panningRef.current = false;
@@ -801,7 +773,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         };
         canvasEl.addEventListener("auxclick", onAuxClick);
 
-        // --- Right-click context menu ---
+        // --- Right-click context menu (background only — frame right-clicks handled by FrameCard) ---
         const onContextMenu = (e: MouseEvent) => {
           e.preventDefault();
           const rect = canvasEl!.getBoundingClientRect();
@@ -813,90 +785,10 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           const wx = Math.round(rawWx / CELL) * CELL;
           const wy = Math.round(rawWy / CELL) * CELL;
 
-          // Detect frame hit for contextual menu / wiring
-          let hitFrameId: number | null = null;
-          for (const frame of placedFramesRef.current as { id: number; size: string; _x: number; _y: number }[]) {
-            const cells = FRAME_CELL_SIZES[frame.size] ?? 1;
-            const boxSize = cells * CELL;
-            if (rawWx >= frame._x && rawWx <= frame._x + boxSize &&
-                rawWy >= frame._y && rawWy <= frame._y + boxSize) {
-              hitFrameId = frame.id;
-              break;
-            }
-          }
-
-          // If we are in wiring mode and right-click a valid target frame, complete the connection immediately
-          const wiring = wiringRef.current;
-          if (wiring && hitFrameId !== null && hitFrameId !== wiring.sourceId) {
-            const currentFrames = framesRef.current;
-            const currentConns = connectionsRef.current;
-            const tgtFrame = currentFrames.find((f) => f.id === hitFrameId);
-            const hasConn = tgtFrame ? frameHasConnector(tgtFrame, wiring.type) : false;
-            const hasReq = tgtFrame ? frameMeetsConnectionRequirements(tgtFrame, wiring.type) : false;
-            const cardOk = isCardinallySatisfied(currentConns, currentFrames, hitFrameId, wiring.type);
-            console.log(
-              "[wiring] contextmenu frame",
-              hitFrameId,
-              "source",
-              wiring.sourceId,
-              "type",
-              wiring.type,
-              "hasConn",
-              hasConn,
-              "hasReq",
-              hasReq,
-              "cardOk",
-              cardOk,
-            );
-            if (tgtFrame && hasConn && hasReq && cardOk) {
-              createConnectionRef.current(rpcClientRef.current, wiring.sourceId, hitFrameId, wiring.type).catch(console.error);
-            }
-            wiringRef.current = null;
-            setWiringMode(null);
-            const wl = wiringLineRef.current;
-            if (wl) wl.visible = false;
-            return;
-          }
-
-          if (hitFrameId !== null) {
-            // Check if click hit a component badge
-            const hitFrame = (placedFramesRef.current as { id: number; size: string; _x: number; _y: number }[])
-              .find((f) => f.id === hitFrameId);
-            const frameDTO = framesRef.current.find((f) => f.id === hitFrameId);
-            const components = frameDTO?.components ?? [];
-            let hitCompId: number | null = null;
-
-            // Use pre-computed hit areas stored on the Pixi node during render
-            const frameNode = frameNodeByIdRef.current.get(hitFrameId);
-            const hitAreas = (frameNode as any)?.__compHitAreas as
-              { componentId: number; wx: number; wy: number; w: number; h: number }[] | undefined;
-            if (hitAreas) {
-              const hitPad = 5;
-              for (const area of hitAreas) {
-                if (
-                  rawWx >= area.wx - hitPad && rawWx <= area.wx + area.w + hitPad &&
-                  rawWy >= area.wy - hitPad && rawWy <= area.wy + area.h + hitPad
-                ) {
-                  hitCompId = area.componentId;
-                  break;
-                }
-              }
-            }
-
-            if (hitCompId !== null) {
-              setCompContextMenu({ x: e.clientX, y: e.clientY, frameId: hitFrameId, componentId: hitCompId });
-              setFrameContextMenu(null);
-              setContextMenu(null);
-            } else {
-              setFrameContextMenu({ x: sx, y: sy, frameId: hitFrameId });
-              setCompContextMenu(null);
-              setContextMenu(null);
-            }
-          } else {
-            setContextMenu({ x: sx, y: sy, wx, wy });
-            setFrameContextMenu(null);
-            setCompContextMenu(null);
-          }
+          // Background context menu (no frame hit-testing needed — HTML handles frame clicks)
+          setContextMenu({ x: sx, y: sy, wx, wy });
+          setFrameContextMenu(null);
+          setCompContextMenu(null);
         };
         canvasEl.addEventListener("contextmenu", onContextMenu);
 
@@ -942,8 +834,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           // Update wiring preview line
           const wiring = wiringRef.current;
           if (wiring) {
-            const sourceFrame = (placedFramesRef.current as { id: number; size: string; _x: number; _y: number }[])
-              .find((f) => f.id === wiring.sourceId);
+            const sourceFrame = placedFramesRef.current.find((f) => f.id === wiring.sourceId);
             if (sourceFrame) {
               const srcCells = FRAME_CELL_SIZES[sourceFrame.size] ?? 1;
               const boxSize = srcCells * CELL;
@@ -1001,8 +892,6 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       patchLayerRef.current = null;
       connectionLayerRef.current = null;
       wiringLineRef.current = null;
-      frameLayerRef.current = null;
-      frameNodeByIdRef.current.clear();
       panningRef.current = false;
       if (resizeObserver) resizeObserver.disconnect();
       if (canvasEl) {
@@ -1019,409 +908,20 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     drawConnections();
   }, [connections]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // --- Re-sync frame positions and redraw connections when frames change ---
   useEffect(() => {
-    const frameLayer = frameLayerRef.current;
+    // Stage-level background click handler
     const app = appRef.current;
-    if (!frameLayer || !app) {
-      return;
-    }
-
-    const activeIds = new Set<number>();
-    for (const frame of placedFrames) {
-      activeIds.add(frame.id);
-      let node = frameNodeByIdRef.current.get(frame.id) as FrameNode | undefined;
-      if (!node) {
-        const frameId = frame.id;
-        node = new Container() as FrameNode;
-        node.eventMode = "static";
-        node.on("pointerdown", (e: FederatedPointerEvent) => {
-          const wiring = wiringRef.current;
-          if (wiring) {
-            e.stopPropagation();
-          const currentFrames = framesRef.current;
-          const currentConns = connectionsRef.current;
-          const tgtFrame = currentFrames.find((f) => f.id === frameId);
-          const hasConn = tgtFrame ? frameHasConnector(tgtFrame, wiring.type) : false;
-          const hasReq = tgtFrame ? frameMeetsConnectionRequirements(tgtFrame, wiring.type) : false;
-          const cardOk = isCardinallySatisfied(currentConns, currentFrames, frameId, wiring.type);
-          const pairOk = !hasConnectionBetween(currentConns, wiring.sourceId, frameId, wiring.type);
-          console.log(
-            "[wiring] clicked frame",
-            frameId,
-            "source",
-            wiring.sourceId,
-            "type",
-            wiring.type,
-            "hasConn",
-            hasConn,
-            "hasReq",
-            hasReq,
-            "cardOk",
-            cardOk,
-            "pairOk",
-            pairOk,
-          );
-          if (
-            frameId !== wiring.sourceId &&
-            tgtFrame &&
-            hasConn &&
-            hasReq &&
-            cardOk &&
-            pairOk
-          ) {
-              createConnectionRef.current(rpcClientRef.current, wiring.sourceId, frameId, wiring.type).catch(console.error);
-            }
-            wiringRef.current = null;
-            setWiringMode(null);
-            const wl = wiringLineRef.current;
-            if (wl) wl.visible = false;
-            return;
-          }
-          if (e.button !== 0) return;
-          e.stopPropagation();
-          draggingFrameIdRef.current = frameId;
-          dragMovedRef.current = false;
-          pendingDropRef.current = null;
-          const { x: clientX, y: clientY } = getEventClientXY(e);
-          onFrameMiniInspect?.(frameId, clientX, clientY);
-          selectFrame(frameId);
-        });
-
-        const box = new Graphics();
-        node.__box = box;
-        node.addChild(box);
-
-        const highlight = new Graphics();
-        node.__highlight = highlight;
-        node.addChild(highlight);
-
-        const errorMarker = new Graphics();
-        node.__errorMarker = errorMarker;
-        node.addChild(errorMarker);
-
-        const label = new Text({
-          text: "",
-          resolution: TEXT_RESOLUTION,
-          style: {
-            fill: 0xf8fafc,
-            fontSize: 12,
-          },
-        });
-        label.x = 8;
-        label.y = 8;
-        node.__label = label;
-        node.addChild(label);
-
-        const idLabel = new Text({
-          text: "",
-          resolution: TEXT_RESOLUTION,
-          style: {
-            fill: 0xcbd5e1,
-            fontSize: 11,
-          },
-        });
-        idLabel.x = 8;
-        idLabel.y = 28;
-        node.__idLabel = idLabel;
-        node.addChild(idLabel);
-
-        // Component badge strip (positioned at bottom of frame box)
-        const compBadgeContainer = new Container();
-        const compBadgeBg = new Graphics();
-        compBadgeContainer.addChild(compBadgeBg);
-        node.__compBadgeContainer = compBadgeContainer;
-        node.__compBadgeBg = compBadgeBg;
-        node.__compBadgeTexts = [];
-        node.addChild(compBadgeContainer);
-
-        const worldScale = worldRef.current?.scale.x ?? 1;
-        updateTextResolution(node, worldScale);
-
-        frameNodeByIdRef.current.set(frame.id, node);
-        frameLayer.addChild(node);
-      }
-
-      if (draggingFrameIdRef.current !== frame.id && !pendingMoveIds.current.has(frame.id)) {
-        node.x = frame._x;
-        node.y = frame._y;
-      }
-      const cells = FRAME_CELL_SIZES[frame.size] ?? 1;
-      const boxSize = cells * CELL;
-      const isSelected = selectedFrameId === frame.id;
-
-      let isWiringEligible = false;
-      let isWiringSource = false;
-      if (wiringMode) {
-        isWiringSource = frame.id === wiringMode.sourceId;
-        if (!isWiringSource) {
-          const conns = connectionsRef.current;
-          isWiringEligible =
-            frameHasConnector(frame, wiringMode.type) &&
-            frameMeetsConnectionRequirements(frame, wiringMode.type) &&
-            isCardinallySatisfied(conns, framesRef.current, frame.id, wiringMode.type) &&
-            !hasConnectionBetween(conns, wiringMode.sourceId, frame.id, wiringMode.type);
-        }
-      }
-
-      const prevTag = (node as any).__drawTag as string | undefined;
-      const nextTag = `${frame.size}:${isSelected}:${wiringMode ? wiringMode.type + (isWiringSource ? "S" : isWiringEligible ? "E" : "N") : ""}`;
-      if (prevTag !== nextTag) {
-        (node as any).__drawTag = nextTag;
-        node.alpha = wiringMode && !isWiringSource && !isWiringEligible ? 0.35 : 1;
-        if (node.__box) {
-          node.__box.clear();
-          node.__box.beginFill(isSelected ? 0x2563eb : 0x334155);
-          node.__box.roundRect(0, 0, boxSize, boxSize, 10);
-          node.__box.fill();
-        }
-        if (node.__highlight) {
-          node.__highlight.clear();
-          if (wiringMode) {
-            const color = CONN_COLOR[wiringMode.type] ?? 0xffffff;
-            if (isWiringSource) {
-              node.__highlight.setStrokeStyle({ width: 3, color, alpha: 1 });
-              node.__highlight.roundRect(-2, -2, boxSize + 4, boxSize + 4, 12);
-              node.__highlight.stroke();
-            } else if (isWiringEligible) {
-              node.__highlight.setStrokeStyle({ width: 2, color, alpha: 0.85 });
-              node.__highlight.roundRect(-2, -2, boxSize + 4, boxSize + 4, 12);
-              node.__highlight.stroke();
-            }
-          }
-        }
-      }
-      if (node.__label) {
-        node.__label.text = `${frame.name} #${frame.id}`;
-      }
-
-      if (node.__errorMarker) {
-        const hasComponentError =
-          (frame.components ?? []).some((c) => (c as ComponentDTO).error && (c as ComponentDTO).error !== "") ||
-          frame.canvas_badges?.has_error;
-        node.__errorMarker.clear();
-        if (hasComponentError) {
-          const markerSize = 10;
-          const padding = 4;
-          node.__errorMarker.beginFill(0x7f1d1d);
-          node.__errorMarker.drawCircle(boxSize - padding - markerSize / 2, padding + markerSize / 2, markerSize / 2);
-          node.__errorMarker.endFill();
-        }
-      }
-
-      // Render component badge strip (mini-inspector style)
-      if (node.__compBadgeContainer && node.__compBadgeBg) {
-        const components: ComponentDTO[] = frame.components ?? [];
-        // Include icon filename + whether its texture is cached in the tag
-        // so badges re-render when an icon texture finishes loading
-        const storageComp = components.find((c) => c.storage);
-        const storageTag = storageComp?.storage
-          ? `${storageComp.storage.slots_used ?? 0}/${storageComp.storage.slots_total ?? storageComp.storage.slots_count ?? 0}`
-          : "";
-        const compTag = components
-          .map((c) => {
-            const iconFile = (c.metadata?.icon || c.icon || "").trim();
-            const hasTex = iconFile ? iconTextureCache.has(iconFile) : false;
-            return `${c.id}:${c.state}:${iconFile}:${hasTex}`;
-          })
-          .join(",") + (storageTag ? `:storage:${storageTag}` : "");
-        const prevCompTag = (node as any).__compBadgeTag as string | undefined;
-        if (compTag !== prevCompTag) {
-          (node as any).__compBadgeTag = compTag;
-
-          // Remove old children
-          for (const bt of node.__compBadgeTexts ?? []) {
-            node.__compBadgeContainer!.removeChild(bt);
-            bt.destroy();
-          }
-          for (const sp of node.__compBadgeSprites ?? []) {
-            node.__compBadgeContainer!.removeChild(sp);
-            sp.destroy();
-          }
-          node.__compBadgeTexts = [];
-          node.__compBadgeSprites = [];
-          node.__compBadgeBg.clear();
-
-          if (components.length > 0) {
-            node.__compBadgeContainer.visible = true;
-            const maxRowWidth = Math.max(COMP_BADGE_SIZE, boxSize - 12); // account for container x padding
-            let cursorX = 0;
-            let cursorY = 0;
-            let rowCount = 1;
-
-            const placeChip = (width: number) => {
-              if (cursorX > 0 && cursorX + width > maxRowWidth) {
-                cursorX = 0;
-                cursorY += COMP_BADGE_SIZE + COMP_BADGE_GAP;
-                rowCount += 1;
-              }
-              const x = cursorX;
-              const y = cursorY;
-              cursorX += width + COMP_BADGE_GAP;
-              return { x, y };
-            };
-
-            for (const comp of components) {
-              const color = COMP_STATE_COLORS[comp.state] ?? COMP_DEFAULT_COLOR;
-              const { x: chipX, y: chipY } = placeChip(COMP_BADGE_SIZE);
-
-              // Draw colored square background
-              node.__compBadgeBg.beginFill(color, 0.9);
-              node.__compBadgeBg.roundRect(chipX, chipY, COMP_BADGE_SIZE, COMP_BADGE_SIZE, COMP_BADGE_RADIUS);
-              node.__compBadgeBg.fill();
-              // Border
-              node.__compBadgeBg.setStrokeStyle({ width: 1, color: 0x334155, alpha: 0.8 });
-              node.__compBadgeBg.roundRect(chipX, chipY, COMP_BADGE_SIZE, COMP_BADGE_SIZE, COMP_BADGE_RADIUS);
-              node.__compBadgeBg.stroke();
-
-              // Try to render icon sprite; fall back to letter glyph
-              const iconFile = (comp.metadata?.icon || comp.icon || "").trim();
-              const tex = iconFile ? getIconTexture(iconFile) : null;
-
-              if (tex) {
-                const sprite = new Sprite(tex);
-                const innerSize = COMP_BADGE_SIZE - COMP_ICON_PAD * 2;
-                sprite.width = innerSize;
-                sprite.height = innerSize;
-                sprite.x = chipX + COMP_ICON_PAD;
-                sprite.y = chipY + COMP_ICON_PAD;
-                node.__compBadgeContainer.addChild(sprite);
-                node.__compBadgeSprites!.push(sprite);
-              } else {
-                // Fallback: first letter of name
-                const label = (iconFile || comp.name || "?").trim();
-                const glyph = label.length > 0 ? label[0]!.toUpperCase() : "?";
-                const txt = new Text({
-                  text: glyph,
-                  resolution: TEXT_RESOLUTION,
-                  style: { fill: 0xe2e8f0, fontSize: COMP_BADGE_FONT_SIZE, fontWeight: "bold" },
-                });
-                txt.x = chipX + (COMP_BADGE_SIZE - txt.width) / 2;
-                txt.y = chipY + (COMP_BADGE_SIZE - COMP_BADGE_FONT_SIZE) / 2;
-                node.__compBadgeContainer.addChild(txt);
-                node.__compBadgeTexts!.push(txt);
-              }
-
-            }
-
-            // Storage badge chip
-            if (storageComp?.storage) {
-              const used = storageComp.storage.slots_used ?? storageComp.storage.slots.filter((s: { stack: unknown }) => s.stack).length;
-              const total = storageComp.storage.slots_total ?? storageComp.storage.slots_count ?? storageComp.storage.slots.length;
-              const storageTxt = new Text({
-                text: `📦 ${used}/${total}`,
-                resolution: TEXT_RESOLUTION,
-                style: { fill: 0xe2e8f0, fontSize: COMP_BADGE_FONT_SIZE },
-              });
-              const chipWidth = storageTxt.width + 4;
-              const { x: chipX, y: chipY } = placeChip(chipWidth);
-              storageTxt.x = chipX + 2;
-              storageTxt.y = chipY + (COMP_BADGE_SIZE - COMP_BADGE_FONT_SIZE) / 2;
-              node.__compBadgeContainer.addChild(storageTxt);
-              node.__compBadgeTexts!.push(storageTxt);
-            }
-
-            // Position at bottom-left of frame box, accounting for wrapped rows
-            node.__compBadgeContainer.x = 6;
-            const totalHeight = rowCount * COMP_BADGE_SIZE + (rowCount - 1) * COMP_BADGE_GAP;
-            node.__compBadgeContainer.y = boxSize - totalHeight - 6;
-
-            // Store hit areas on the node so the click handler can reuse exact positions
-            const containerWorldX = frame._x + 6;
-            const containerWorldY = frame._y + boxSize - totalHeight - 6;
-            // Re-walk the placeChip positions for components only (reusing same cursorX/Y state would be wrong since storage chip was placed too)
-            let hitCursorX = 0;
-            let hitCursorY = 0;
-            const hitMaxRowWidth = Math.max(COMP_BADGE_SIZE, boxSize - 12);
-            const hitAreas: { componentId: number; wx: number; wy: number; w: number; h: number }[] = [];
-            for (const comp of components) {
-              if (hitCursorX > 0 && hitCursorX + COMP_BADGE_SIZE > hitMaxRowWidth) {
-                hitCursorX = 0;
-                hitCursorY += COMP_BADGE_SIZE + COMP_BADGE_GAP;
-              }
-              hitAreas.push({
-                componentId: comp.id,
-                wx: containerWorldX + hitCursorX,
-                wy: containerWorldY + hitCursorY,
-                w: COMP_BADGE_SIZE,
-                h: COMP_BADGE_SIZE,
-              });
-              hitCursorX += COMP_BADGE_SIZE + COMP_BADGE_GAP;
-            }
-            (node as any).__compHitAreas = hitAreas;
-          } else {
-            node.__compBadgeContainer.visible = false;
-          }
-        }
-      }
-    }
-
-    for (const [id, node] of frameNodeByIdRef.current) {
-      if (!activeIds.has(id)) {
-        frameLayer.removeChild(node);
-        node.destroy({ children: true });
-        frameNodeByIdRef.current.delete(id);
-      }
-    }
+    if (!app) return;
 
     app.stage.off("pointerdown");
     app.stage.on("pointerdown", (e: FederatedPointerEvent) => {
       if (e.button !== 0) return;
 
-      // If we're wiring, handle target selection at stage level using hit-testing
+      // If we're wiring, handle cancel at stage level
       const wiring = wiringRef.current;
       if (wiring) {
-        const world = worldRef.current;
-        if (!world) return;
-
-        const pos = e.getLocalPosition(world);
-        const wx = pos.x;
-        const wy = pos.y;
-
-        let hitFrameId: number | null = null;
-        for (const frame of placedFramesRef.current as { id: number; size: string; _x: number; _y: number }[]) {
-          const cells = FRAME_CELL_SIZES[frame.size] ?? 1;
-          const boxSize = cells * CELL;
-          if (wx >= frame._x && wx <= frame._x + boxSize && wy >= frame._y && wy <= frame._y + boxSize) {
-            hitFrameId = frame.id;
-            break;
-          }
-        }
-
-        if (hitFrameId !== null && hitFrameId !== wiring.sourceId) {
-          const currentFrames = framesRef.current;
-          const currentConns = connectionsRef.current;
-          const tgtFrame = currentFrames.find((f) => f.id === hitFrameId);
-          const hasConn = tgtFrame ? frameHasConnector(tgtFrame, wiring.type) : false;
-          const hasReq = tgtFrame ? frameMeetsConnectionRequirements(tgtFrame, wiring.type) : false;
-          const cardOk = isCardinallySatisfied(currentConns, currentFrames, hitFrameId, wiring.type);
-          const pairOk = !hasConnectionBetween(currentConns, wiring.sourceId, hitFrameId, wiring.type);
-          console.log(
-            "[wiring] stage hit",
-            hitFrameId,
-            "source",
-            wiring.sourceId,
-            "type",
-            wiring.type,
-            "hasConn",
-            hasConn,
-            "hasReq",
-            hasReq,
-            "cardOk",
-            cardOk,
-            "pairOk",
-            pairOk,
-          );
-          if (tgtFrame && hasConn && hasReq && cardOk && pairOk) {
-            createConnectionRef.current(rpcClientRef.current, wiring.sourceId, hitFrameId, wiring.type).catch(console.error);
-          }
-          wiringRef.current = null;
-          setWiringMode(null);
-          const wl = wiringLineRef.current;
-          if (wl) wl.visible = false;
-          return;
-        }
-
-        // Clicked while wiring but no valid target frame: cancel wiring
+        // Clicked while wiring but didn't hit a frame card (HTML handles frame clicks)
         wiringRef.current = null;
         setWiringMode(null);
         const wl = wiringLineRef.current;
@@ -1429,20 +929,29 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         return;
       }
 
-      // Normal background click behavior - check if we didn't hit a frame
-      const targetNode = e.target as Container;
-      const isFrameClick = targetNode.label?.startsWith("frame-") || 
-                          (targetNode.parent as Container | null)?.label?.startsWith("frame-");
-      if (!isFrameClick) {
-        void onBackgroundClick(e);
-      }
+      void onBackgroundClick(e);
     });
 
     drawConnectionsRef.current();
-  }, [onBackgroundClick, placedFrames, selectFrame, selectedFrameId, wiringMode, iconVersion]);
+    // Re-sync overlay card positions after React renders new cards
+    syncOverlayTransform();
+  }, [onBackgroundClick, placedFrames, selectFrame, selectedFrameId, wiringMode]);
 
   return (
     <div ref={hostRef} style={{ width: "100%", height: "100%", position: "relative" }}>
+      {/* HTML frame overlay — synced with Pixi worldContainer transform */}
+      <FrameOverlay
+        ref={overlayRef}
+        placedFrames={placedFrames}
+        selectedFrameId={selectedFrameId}
+        wiringMode={wiringMode}
+        connections={connections}
+        frames={placedFrames}
+        zoom={zoom}
+        onFramePointerDown={handleFramePointerDown}
+        onFrameContextMenu={handleFrameContextMenu}
+      />
+
       {creationBlueprint && (
         <div
           style={{
@@ -1733,6 +1242,49 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               }}
             >
               Add Component...
+            </div>
+            {/* Accent color picker */}
+            <div style={{ padding: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>Color</div>
+            <div style={{ padding: "2px 10px", display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {[null, "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"].map((color) => (
+                <button
+                  key={color ?? "none"}
+                  type="button"
+                  title={color ?? "No color"}
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 3,
+                    border: `1px solid ${
+                      (frame?.metadata?.attributes?.accent?.base_value ?? "") === (color ?? "")
+                        ? "#e5e7eb"
+                        : "#475569"
+                    }`,
+                    background: color ?? "#1e293b",
+                    cursor: "pointer",
+                    padding: 0,
+                    position: "relative",
+                  }}
+                  onClick={() => {
+                    void updateFrameMetadata(rpcClient, frameContextMenu.frameId, {
+                      attributes: { accent: color ?? "" },
+                    });
+                    setFrameContextMenu(null);
+                  }}
+                >
+                  {!color && (
+                    <span style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 9,
+                      color: "#64748b",
+                    }}>✕</span>
+                  )}
+                </button>
+              ))}
             </div>
             <div style={{ padding: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>Connections</div>
             {connTypes.length === 0 ? (

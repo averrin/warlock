@@ -1,5 +1,6 @@
 return {
 	name = "Load Limiter",
+	category = "Power",
 	description = "Load Limiter",
 	attributes = {
 		type = {

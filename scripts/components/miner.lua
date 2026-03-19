@@ -1,5 +1,6 @@
 return {
 	name = "Miner",
+	category = "Production",
 	description = "Standard miner",
 	attributes = {
 		type = {

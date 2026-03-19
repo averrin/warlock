@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
-import { Picker, type PickerItem } from "./Picker";
+import { Picker, type PickerSection } from "./Picker";
+
+const CATEGORY_ORDER = ["Core", "Power", "Thermal", "Production", "Storage", "Network", "Connectors", "Other"];
 
 type Props = {
   isOpen: boolean;
@@ -11,7 +13,7 @@ type Props = {
 };
 
 export function ComponentPicker({ isOpen, onClose, frameId, rpcClient }: Props) {
-  const [components, setComponents] = useState<PickerItem<string>[]>([]);
+  const [sections, setSections] = useState<PickerSection<string>[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const addComponent = useGameStore((s) => s.addComponent);
 
@@ -19,18 +21,26 @@ export function ComponentPicker({ isOpen, onClose, frameId, rpcClient }: Props) 
     if (!isOpen) return;
     setIsLoading(true);
     void rpcClient
-      .call<{ sources: Record<string, string> }>("code.sources")
+      .call<{ sources: Record<string, string>; categories: Record<string, string> }>("code.sources")
       .then((data) => {
         const names = Object.keys(data.sources ?? {}).sort();
-        setComponents(
-          names.map((name) => ({
-            id: name,
-            label: name,
-            data: name,
+        const categoryMap: Record<string, string[]> = {};
+        for (const name of names) {
+          const cat = data.categories?.[name] ?? "Other";
+          if (!categoryMap[cat]) categoryMap[cat] = [];
+          categoryMap[cat].push(name);
+        }
+        const ordered = CATEGORY_ORDER.filter((c) => categoryMap[c]);
+        const rest = Object.keys(categoryMap).filter((c) => !CATEGORY_ORDER.includes(c)).sort();
+        setSections(
+          [...ordered, ...rest].map((cat) => ({
+            id: cat,
+            heading: cat,
+            items: categoryMap[cat].map((name) => ({ id: name, label: name, data: name })),
           }))
         );
       })
-      .catch(() => setComponents([]))
+      .catch(() => setSections([]))
       .finally(() => setIsLoading(false));
   }, [rpcClient, isOpen]);
 
@@ -43,11 +53,10 @@ export function ComponentPicker({ isOpen, onClose, frameId, rpcClient }: Props) 
     <Picker
       isOpen={isOpen}
       onClose={onClose}
-      items={components}
+      sections={sections}
       isLoading={isLoading}
       onSelect={handleSelect}
       placeholder="Search components..."
-      heading="Components"
     />
   );
 }

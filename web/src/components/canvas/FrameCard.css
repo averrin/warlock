@@ -1,0 +1,403 @@
+.frame-card {
+  position: absolute;
+  box-sizing: border-box;
+  background: rgba(30, 35, 40, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #e5e7eb;
+  transition:
+    box-shadow 0.2s ease,
+    opacity 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.frame-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.frame-card:active {
+  cursor: grabbing;
+}
+
+/* Health accent — left border stripe */
+.frame-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 6px 0 0 6px;
+  background: var(--health-color, #22c55e);
+  transition: background 0.3s ease;
+}
+
+/* Player accent tint */
+.frame-card[data-accent]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  pointer-events: none;
+  background: var(--accent-color, transparent);
+  opacity: 0.08;
+}
+
+/* Selection */
+.frame-card--selected {
+  border-color: #3b82f6;
+  box-shadow:
+    0 0 0 1px #3b82f6,
+    0 0 12px rgba(59, 130, 246, 0.3);
+}
+
+/* Wiring states */
+.frame-card--wiring-source {
+  border-color: var(--wiring-color, #3b82f6);
+  box-shadow:
+    0 0 0 2px var(--wiring-color, #3b82f6),
+    0 0 8px color-mix(in srgb, var(--wiring-color, #3b82f6) 40%, transparent);
+}
+
+.frame-card--wiring-eligible {
+  border-color: var(--wiring-color, #3b82f6);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wiring-color, #3b82f6) 85%, transparent);
+}
+
+.frame-card--wiring-ineligible {
+  opacity: 0.35;
+}
+
+/* === HEADER === */
+.frame-card__header {
+  padding: 6px 8px 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  flex-shrink: 0;
+}
+
+.frame-card__icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  object-fit: contain;
+}
+
+.frame-card__icon-fallback {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: #334155;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.frame-card__name {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  color: #f1f5f9;
+}
+
+.frame-card__id {
+  font-size: 9px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.frame-card__size-badge {
+  font-size: 8px;
+  font-weight: 700;
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.15);
+  padding: 1px 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* === STATUS ROW === */
+.frame-card__status {
+  padding: 2px 8px 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.frame-card__temp-bar {
+  flex: 1;
+  height: 4px;
+  background: #1e293b;
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 20px;
+}
+
+.frame-card__temp-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.frame-card__temp-label {
+  font-size: 9px;
+  color: #94a3b8;
+  font-family: 'Consolas', 'Monaco', monospace;
+  flex-shrink: 0;
+}
+
+.frame-card__power-chip {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.frame-card__power-chip--surplus {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.frame-card__power-chip--balanced {
+  background: rgba(234, 179, 8, 0.15);
+  color: #fbbf24;
+}
+
+.frame-card__power-chip--deficit {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.frame-card__power-chip--offline {
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+}
+
+/* === DIVIDER === */
+.frame-card__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* === COMPONENT LIST === */
+.frame-card__components {
+  padding: 3px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.frame-card__comp-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 2px;
+  border-radius: 3px;
+  min-height: 14px;
+}
+
+.frame-card__comp-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.frame-card__comp-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.3s ease;
+}
+
+.frame-card__comp-dot--active { background: #22c55e; }
+.frame-card__comp-dot--activating { background: #a3e635; }
+.frame-card__comp-dot--deactivating { background: #f97316; }
+.frame-card__comp-dot--deactivated { background: #475569; }
+.frame-card__comp-dot--error { background: #ef4444; }
+.frame-card__comp-dot--destroyed { background: #7f1d1d; }
+.frame-card__comp-dot--blocked { background: #a855f7; }
+.frame-card__comp-dot--broken { background: #ef4444; }
+
+.frame-card__comp-name {
+  font-size: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  color: #cbd5e1;
+}
+
+.frame-card__comp-state {
+  font-size: 7px;
+  font-weight: 600;
+  color: #64748b;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.frame-card__comp-eff {
+  font-size: 8px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: #64748b;
+  flex-shrink: 0;
+  min-width: 22px;
+  text-align: right;
+}
+
+.frame-card__comp-more {
+  font-size: 8px;
+  color: #475569;
+  padding: 1px 2px;
+}
+
+/* === STORAGE === */
+.frame-card__storage {
+  padding: 3px 8px 3px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.frame-card__storage-bar {
+  flex: 1;
+  height: 4px;
+  background: #1e293b;
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 16px;
+}
+
+.frame-card__storage-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: #3b82f6;
+  transition: width 0.3s ease;
+}
+
+.frame-card__storage-label {
+  font-size: 8px;
+  color: #94a3b8;
+  font-family: 'Consolas', 'Monaco', monospace;
+  flex-shrink: 0;
+}
+
+.frame-card__storage-items {
+  font-size: 8px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/* === EFFECTS === */
+.frame-card__effects {
+  padding: 2px 6px 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.frame-card__effect-pill {
+  font-size: 7px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.frame-card__effect-pill--overheat {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.frame-card__effect-pill--freeze {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+.frame-card__effect-pill--default {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+}
+
+/* === LOD: compact mode at low zoom === */
+.frame-card--compact .frame-card__status,
+.frame-card--compact .frame-card__components,
+.frame-card--compact .frame-card__storage,
+.frame-card--compact .frame-card__effects,
+.frame-card--compact .frame-card__divider {
+  display: none;
+}
+
+.frame-card--compact .frame-card__header {
+  padding: 4px 6px 4px 8px;
+}
+
+.frame-card--compact .frame-card__name {
+  font-size: 10px;
+}
+
+/* === SIZE TIERS — hide sections that don't fit === */
+.frame-card--tiny .frame-card__status,
+.frame-card--tiny .frame-card__components,
+.frame-card--tiny .frame-card__storage,
+.frame-card--tiny .frame-card__effects,
+.frame-card--tiny .frame-card__divider,
+.frame-card--tiny .frame-card__size-badge,
+.frame-card--tiny .frame-card__id {
+  display: none;
+}
+
+.frame-card--tiny .frame-card__header {
+  padding: 4px 4px 4px 8px;
+}
+
+.frame-card--tiny .frame-card__name {
+  font-size: 9px;
+}
+
+/* Small (M = 150px): show components but hide storage & effects */
+.frame-card--small .frame-card__storage,
+.frame-card--small .frame-card__effects {
+  display: none;
+}
+
+/* Medium (L = 225px): show components + storage, hide effects */
+.frame-card--medium .frame-card__effects {
+  display: none;
+}
+
+/* Large (G = 300px): show everything */

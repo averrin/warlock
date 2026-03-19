@@ -389,7 +389,23 @@ void registerFrameHandlers(Server& server) {
     if (params.contains("attributes") && params["attributes"].is_object()) {
       for (auto& [key, val] : params["attributes"].items()) {
         auto it = frame.data.attributes.find(key);
-        if (it == frame.data.attributes.end() || !it->second) continue;
+        if (it == frame.data.attributes.end() || !it->second) {
+          // Create new attribute if it doesn't exist (for player-settable properties like accent)
+          if (val.is_string()) {
+            frame.data.attributes[key] = std::make_shared<Attribute>(
+              key, "", AttributeType::STRING, val.get<std::string>());
+          } else if (val.is_number_integer()) {
+            frame.data.attributes[key] = std::make_shared<Attribute>(
+              key, "", AttributeType::INT, val.get<int>());
+          } else if (val.is_number()) {
+            frame.data.attributes[key] = std::make_shared<Attribute>(
+              key, "", AttributeType::FLOAT, val.get<float>());
+          } else if (val.is_boolean()) {
+            frame.data.attributes[key] = std::make_shared<Attribute>(
+              key, "", AttributeType::BOOL, val.get<bool>());
+          }
+          continue;
+        }
         auto& attr = *it->second;
         switch (attr.GetType()) {
           case AttributeType::INT:

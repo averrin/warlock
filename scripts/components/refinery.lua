@@ -1,5 +1,6 @@
 return {
 	name = "Refinery",
+	category = "Production",
 	description = "Standard refinery",
 	attributes = {
 		type = {

@@ -1,5 +1,6 @@
 return {
 	name = "Near Field Communicator",
+	category = "Network",
 	description = "Provide data link (and power) for adjusting frames.",
 	icon = "wi-fi.png",
 	attributes = {

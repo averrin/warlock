@@ -1,5 +1,6 @@
 return {
 	name = "Nexus",
+	category = "Network",
 	description = "Starting component",
 	attributes = {
 		type = {

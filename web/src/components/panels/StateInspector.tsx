@@ -3,7 +3,7 @@ import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
 import { usePatchStore, Patch } from "../../stores/patches";
 import type { ConnectionDTO, FrameDTO, PowerNetworkDTO } from "../../rpc/types";
-import { CollapsibleSection, NumberField, inputStyle, smallBtnStyle } from "../ui";
+import { CollapsibleSection, NumberField, TransformEditor, inputStyle, smallBtnStyle } from "../ui";
 import { FramePanel } from "../frame";
 
 type Props = {
@@ -263,6 +263,8 @@ function PatchRow({
   patch: Patch;
 }) {
   const removePatch = usePatchStore((s) => s.removePatch);
+  const movePatch = usePatchStore((s) => s.movePatch);
+  const [expanded, setExpanded] = useState(false);
 
   const handleDelete = async () => {
     try {
@@ -274,30 +276,49 @@ function PatchRow({
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
-      <span
-        style={{
-          width: 12,
-          height: 12,
-          borderRadius: 2,
-          background: `rgba(${patch.color.r}, ${patch.color.g}, ${patch.color.b}, ${patch.color.a / 255})`,
-          border: "1px solid #374151",
-          flexShrink: 0,
-        }}
-      />
-      <span style={{ color: "#e5e7eb" }}>
-        #{patch.id} {patch.name}
-      </span>
-      <span style={{ color: "#9ca3af", fontSize: 10 }}>
-        [{patch.cells.length} cells]
-      </span>
-      <button
-        type="button"
-        style={{ ...smallBtnStyle, color: "#ef4444", marginLeft: "auto" }}
-        onClick={handleDelete}
+    <div style={{ marginBottom: 4 }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0", cursor: "pointer" }}
+        onClick={() => setExpanded(!expanded)}
       >
-        Delete
-      </button>
+        <span style={{ color: "#6b7280", fontSize: 10 }}>{expanded ? "▼" : "▶"}</span>
+        <span
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: 2,
+            background: `rgba(${patch.color.r}, ${patch.color.g}, ${patch.color.b}, ${patch.color.a / 255})`,
+            border: "1px solid #374151",
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ color: "#e5e7eb" }}>
+          #{patch.id} {patch.name}
+        </span>
+        <span style={{ color: "#9ca3af", fontSize: 10 }}>
+          [{patch.cells.length} cells]
+        </span>
+        <button
+          type="button"
+          style={{ ...smallBtnStyle, color: "#ef4444", marginLeft: "auto" }}
+          onClick={(e) => { e.stopPropagation(); handleDelete(); }}
+        >
+          Delete
+        </button>
+      </div>
+      {expanded && (
+        <div style={{ paddingLeft: 20, paddingTop: 4, fontSize: 11, color: "#9ca3af" }}>
+          <div>Type: <span style={{ color: "#e5e7eb" }}>{patch.type}</span></div>
+          <div>Item: <span style={{ color: "#e5e7eb" }}>{patch.item}</span></div>
+          <div style={{ marginTop: 4 }}>
+            <TransformEditor
+              x={patch.bounds.x}
+              y={patch.bounds.y}
+              onChange={(x, y) => void movePatch(rpcClient, patch.id, x, y)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

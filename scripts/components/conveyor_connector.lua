@@ -1,5 +1,6 @@
 return {
 	name = "Conveyor Connector",
+	category = "Connectors",
 	description = "Connects frames via conveyor belt for item transport.",
 	attributes = {
 		type = {

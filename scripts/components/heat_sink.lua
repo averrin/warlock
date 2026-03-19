@@ -1,5 +1,6 @@
 return {
     name = "Large Copper Heat Sink",
+    category = "Thermal",
     description = "Large Copper Heat Sink",
     attributes = {
         type = {

@@ -1,5 +1,6 @@
 return {
 	name = "Core",
+	category = "Core",
 	description = "Computation core",
 	icon = "microchip.png",
 	attributes = {
