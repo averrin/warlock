@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
 import { usePatchStore, Patch } from "../../stores/patches";
 import type { ConnectionDTO, FrameDTO, PowerNetworkDTO } from "../../rpc/types";
 import { CollapsibleSection, NumberField, TransformEditor, inputStyle, smallBtnStyle } from "../ui";
 import { FramePanel } from "../frame";
+import { useWindowLayoutStore } from "../../stores/windowLayout";
 
 type Props = {
   rpcClient: RpcClient;
@@ -40,10 +41,20 @@ function EnvironmentSection({ rpcClient }: { rpcClient: RpcClient }) {
 
 function FramesSection({ rpcClient, filter }: { rpcClient: RpcClient; filter: string }) {
   const frames = useGameStore((s) => s.frames);
+  const selectedFrameId = useGameStore((s) => s.selectedFrameId);
   const createFrameAt = useGameStore((s) => s.createFrameAt);
+  const openPinnedMiniInspectorForFrame = useWindowLayoutStore((s) => s.openPinnedMiniInspectorForFrame);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("New Frame");
   const [expandedFrames, setExpandedFrames] = useState<Record<number, 0 | 1 | 2>>({});
+  const pendingExpandFrameId = useWindowLayoutStore((s) => s.pendingStateInspectorExpandFrameId);
+  const clearPendingExpand = useWindowLayoutStore((s) => s.clearPendingStateInspectorExpand);
+
+  useEffect(() => {
+    if (pendingExpandFrameId == null) return;
+    setExpandedFrames((prev) => ({ ...prev, [pendingExpandFrameId]: 1 }));
+    clearPendingExpand();
+  }, [pendingExpandFrameId, clearPendingExpand]);
 
   const filtered = useMemo(() => {
     if (!filter) return frames;
@@ -59,15 +70,59 @@ function FramesSection({ rpcClient, filter }: { rpcClient: RpcClient; filter: st
   return (
     <CollapsibleSection title={`\uD83D\uDCE6 Frames (${frames.length})`}>
       <div style={{ display: "grid", gap: 4 }}>
-        {filtered.map((frame) => (
-          <FramePanel
-            key={frame.id}
-            frame={frame}
-            rpcClient={rpcClient}
-            level={expandedFrames[frame.id] ?? 0}
-            onLevelChange={(lvl) => setExpandedFrames((prev) => ({ ...prev, [frame.id]: lvl }))}
-          />
-        ))}
+        {filtered.map((frame) => {
+          const selected = frame.id === selectedFrameId;
+          return (
+            <div
+              key={frame.id}
+              style={{
+                borderRadius: 6,
+                border: selected ? "2px solid #3b82f6" : "2px solid transparent",
+                background: selected ? "rgba(59, 130, 246, 0.07)" : undefined,
+                boxSizing: "border-box",
+                display: "flex",
+                gap: 6,
+                alignItems: "flex-start",
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <FramePanel
+                  frame={frame}
+                  rpcClient={rpcClient}
+                  level={expandedFrames[frame.id] ?? 0}
+                  onLevelChange={(lvl) => setExpandedFrames((prev) => ({ ...prev, [frame.id]: lvl }))}
+                />
+              </div>
+              <button
+                type="button"
+                title="Pin mini inspector for this frame"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPinnedMiniInspectorForFrame(frame.id);
+                }}
+                style={{
+                  width: 24,
+                  height: 24,
+                  flexShrink: 0,
+                  borderRadius: 3,
+                  border: "1px solid #374151",
+                  background: "#020617",
+                  color: "#e5e7eb",
+                  fontSize: 10,
+                  lineHeight: "16px",
+                  padding: 0,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: 6,
+                }}
+              >
+                📌
+              </button>
+            </div>
+          );
+        })}
       </div>
       {creating ? (
         <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
@@ -247,7 +302,7 @@ function PowerNetworksSection() {
     <CollapsibleSection title={`\u26A1 Power Networks (${powerNetworks.length})`}>
       {powerNetworks.length === 0 && <div style={{ color: "#6b7280" }}>No networks</div>}
       {powerNetworks.map((net, i) => (
-        <PowerNetworkRow key={net.name ?? i} net={net} />
+        <PowerNetworkRow key={`${net.name ?? "net"}-${i}`} net={net} />
       ))}
     </CollapsibleSection>
   );

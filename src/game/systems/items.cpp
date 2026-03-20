@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <filesystem>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <game/components/resource_patch.hpp>
@@ -15,6 +16,7 @@ std::vector<std::pair<int, int>> getFrameOccupiedCells(const wl::transform& t, F
   int gridY = static_cast<int>(t.position.y) / CELL;
   int cells = 1;
   switch (size) {
+    case FrameSize::XS: cells = 1; break;
     case FrameSize::S: cells = 1; break;
     case FrameSize::M: cells = 2; break;
     case FrameSize::L: cells = 3; break;
@@ -39,10 +41,84 @@ bool cellsOverlap(const std::vector<std::pair<int, int>>& a,
   }
   return false;
 }
+
+/** Neighbor→relay edges run the item timer; relay→neighbor edges are skipped in the loop.
+ * Copy progress to the sibling connection so both legs animate on the canvas. */
+void mirrorRelayOutgoingLeg(std::unordered_map<int, double> &progress,
+                            const std::vector<Connection> &conns, const Connection &conn,
+                            int relayFrameId, int neighborFrameId) {
+  auto it = progress.find(conn.data.id);
+  if (it == progress.end()) {
+    return;
+  }
+  const double v = it->second;
+  for (const auto &c2 : conns) {
+    if (c2.data.id == conn.data.id) {
+      continue;
+    }
+    if (c2.source != relayFrameId && c2.target != relayFrameId) {
+      continue;
+    }
+    const int o = c2.source == relayFrameId ? c2.target : c2.source;
+    if (o == neighborFrameId) {
+      continue;
+    }
+    progress[c2.data.id] = v;
+  }
+}
+
+void eraseRelayLegPair(std::unordered_map<int, double> &progress,
+                       const std::vector<Connection> &conns, const Connection &conn,
+                       int relayFrameId, int neighborFrameId) {
+  progress.erase(conn.data.id);
+  for (const auto &c2 : conns) {
+    if (c2.data.id == conn.data.id) {
+      continue;
+    }
+    if (c2.source != relayFrameId && c2.target != relayFrameId) {
+      continue;
+    }
+    const int o = c2.source == relayFrameId ? c2.target : c2.source;
+    if (o == neighborFrameId) {
+      continue;
+    }
+    progress.erase(c2.data.id);
+  }
+}
 } // namespace
+
+ItemsSystem::ItemsSystem() : System(50, "Items") {
+  loader = std::make_shared<ItemLoader>();
+  namespace fs = std::filesystem;
+  fs::path PATH = entt::monostate<"path"_hs>{};
+  auto &lua = entt::locator<sol::state>::value();
+  loader->load_items((PATH / "scripts" / "items").string(), lua);
+  loader->load_recipes((PATH / "scripts" / "recipes").string(), lua);
+
+  const auto &items = loader->get_items();
+  const auto &recipes = loader->get_recipes();
+  (void)items;
+  (void)recipes;
+}
+
+void ItemsSystem::setConveyorProgressForConnection(int connDataId, int senderCompId,
+                                                   double timecost) {
+  conveyor_progress_by_connection_[connDataId] =
+      std::clamp(conveyorExecutionTime[senderCompId] / timecost, 0.0, 1.0);
+}
+
+double ItemsSystem::conveyorTransferProgress(int connectionDataId) const {
+  auto it = conveyor_progress_by_connection_.find(connectionDataId);
+  if (it == conveyor_progress_by_connection_.end()) {
+    return 0.0;
+  }
+  return it->second;
+}
 
 void ItemsSystem::fixedUpdate() {
   auto &current_state = entt::locator<State>::value();
+
+  conveyor_progress_by_connection_.clear();
 
   auto frames_view = current_state.registry.view<Frame>();
   auto conns = std::vector<Connection>{};
@@ -67,13 +143,15 @@ void ItemsSystem::fixedUpdate() {
     std::shared_ptr<Component> targetConnector = nullptr;
 
     for (auto &c : sourceFrame->components) {
-      if (c->data.get<std::string>("type") == "Conveyor Connector" && c->state == ComponentState::ACTIVE) {
+      if (c->data.get_or<std::string>("type", "") == "Conveyor Connector" &&
+          c->state == ComponentState::ACTIVE) {
         sourceConnector = c;
         break;
       }
     }
     for (auto &c : targetFrame->components) {
-      if (c->data.get<std::string>("type") == "Conveyor Connector" && c->state == ComponentState::ACTIVE) {
+      if (c->data.get_or<std::string>("type", "") == "Conveyor Connector" &&
+          c->state == ComponentState::ACTIVE) {
         targetConnector = c;
         break;
       }
@@ -81,31 +159,78 @@ void ItemsSystem::fixedUpdate() {
 
     if (!sourceConnector || !targetConnector) continue;
 
-    auto mode1 = sourceConnector->data.get<std::string>("mode");
-    auto mode2 = targetConnector->data.get<std::string>("mode");
+    const bool srcRelay = sourceConnector->data.name == "Conveyor Relay";
+    const bool tgtRelay = targetConnector->data.name == "Conveyor Relay";
+    if (srcRelay && tgtRelay) continue;
+    // relay -> neighbor: item flow is applied on the neighbor -> relay edge only
+    if (srcRelay) continue;
 
     std::shared_ptr<Component> sender = nullptr;
     std::shared_ptr<Component> receiver = nullptr;
 
-    if (mode1 == "SEND" && mode2 == "RECEIVE") {
+    if (!tgtRelay) {
+      auto mode1 = sourceConnector->data.get_or<std::string>("mode", "SEND");
+      auto mode2 = targetConnector->data.get_or<std::string>("mode", "SEND");
+      if (mode1 == "SEND" && mode2 == "RECEIVE") {
+        sender = sourceConnector;
+        receiver = targetConnector;
+      } else if (mode2 == "SEND" && mode1 == "RECEIVE") {
+        sender = targetConnector;
+        receiver = sourceConnector;
+      } else {
+        continue;
+      }
+    } else {
+      if (sourceConnector->data.get_or<std::string>("mode", "SEND") != "SEND") continue;
       sender = sourceConnector;
       receiver = targetConnector;
-    } else if (mode2 == "SEND" && mode1 == "RECEIVE") {
-      sender = targetConnector;
-      receiver = sourceConnector;
     }
 
     if (!sender || !receiver) continue;
 
-    auto throughput1 = sender->data.get<float>("throughput");
-    auto throughput2 = receiver->data.get<float>("throughput");
-    auto throughput = std::min(throughput1, throughput2);
+    float throughput = std::min(sender->data.get_or<float>("throughput", 1.0f),
+                                receiver->data.get_or<float>("throughput", 1.0f));
+    if (receiver->data.name == "Conveyor Relay") {
+      float t = sender->data.get_or<float>("throughput", 1.0f);
+      const int relayFid = receiver->frame_id;
+      const int fromFid = sender->frame_id;
+      for (const auto &c2 : conns) {
+        if (c2.source != relayFid && c2.target != relayFid) continue;
+        const int o = c2.source == relayFid ? c2.target : c2.source;
+        if (o == fromFid) continue;
+        Frame *otherF = nullptr;
+        for (auto &f : frames_view) {
+          auto &fr = current_state.registry.get<Frame>(f);
+          if (fr.data.id == o) {
+            otherF = &fr;
+            break;
+          }
+        }
+        if (!otherF) continue;
+        for (auto &c : otherF->components) {
+          if (c->data.get_or<std::string>("type", "") != "Conveyor Connector" ||
+              c->state != ComponentState::ACTIVE)
+            continue;
+          t = std::min(t, c->data.get_or<float>("throughput", 1.0f));
+          break;
+        }
+      }
+      throughput = t;
+    }
 
     if (throughput <= 0) continue;
 
     auto entity = sender->data.id;
     double timecost = (1.0 / throughput) * 1000.0;
     conveyorExecutionTime[entity] += targetInterval;
+    const auto applyEdgeProgress = [&]() {
+      setConveyorProgressForConnection(conn.data.id, entity, timecost);
+      if (receiver->data.name == "Conveyor Relay") {
+        mirrorRelayOutgoingLeg(conveyor_progress_by_connection_, conns, conn, receiver->frame_id,
+                               sender->frame_id);
+      }
+    };
+    applyEdgeProgress();
 
     if (conveyorExecutionTime[entity] >= timecost) {
       auto senderTargetId = sender->data.get_or<int>("target", -1);
@@ -130,7 +255,60 @@ void ItemsSystem::fixedUpdate() {
         }
       }
 
+      // Conveyor relay: no storage — deliver to other neighbor's RECEIVE target storage.
+      if (!receiverStorage && receiver->data.name == "Conveyor Relay") {
+        const int relayFid = receiver->frame_id;
+        const int fromFid = sender->frame_id;
+        int otherNeighbor = -1;
+        for (const auto &c2 : conns) {
+          if (c2.source != relayFid && c2.target != relayFid)
+            continue;
+          const int o = c2.source == relayFid ? c2.target : c2.source;
+          if (o != fromFid) {
+            otherNeighbor = o;
+            break;
+          }
+        }
+        if (otherNeighbor >= 0) {
+          Frame *bFrame = nullptr;
+          for (auto &f : frames_view) {
+            auto &fr = current_state.registry.get<Frame>(f);
+            if (fr.data.id == otherNeighbor) {
+              bFrame = &fr;
+              break;
+            }
+          }
+          if (bFrame) {
+            std::shared_ptr<Component> bRecv = nullptr;
+            for (auto &c : bFrame->components) {
+              if (c->data.get_or<std::string>("type", "") != "Conveyor Connector" ||
+                  c->state != ComponentState::ACTIVE)
+                continue;
+              if (c->data.get_or<std::string>("mode", "SEND") == "RECEIVE") {
+                bRecv = c;
+                break;
+              }
+            }
+            if (bRecv) {
+              const int bt = bRecv->data.get_or<int>("target", -1);
+              for (auto &c : bFrame->components) {
+                if (c->data.id == bt && c->storage) {
+                  receiverStorage = c;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
       if (!senderStorage) {
+        if (receiver->data.name == "Conveyor Relay") {
+          eraseRelayLegPair(conveyor_progress_by_connection_, conns, conn, receiver->frame_id,
+                            sender->frame_id);
+        } else {
+          conveyor_progress_by_connection_.erase(conn.data.id);
+        }
         auto prev = sender->state;
         sender->state = ComponentState::COMP_ERROR;
         sender->error = "Sender target storage not found";
@@ -143,6 +321,22 @@ void ItemsSystem::fixedUpdate() {
       }
 
       if (!receiverStorage) {
+        if (receiver->data.name == "Conveyor Relay") {
+          conveyorExecutionTime[entity] = timecost;
+          applyEdgeProgress();
+          if (receiver->state == ComponentState::COMP_ERROR) {
+            auto prev = receiver->state;
+            receiver->state = ComponentState::ACTIVE;
+            receiver->error.clear();
+            auto &emitter = entt::locator<event_emitter>::value();
+            emitter.publish(component_state_changed{
+              receiver->frame_id, receiver->data.id, receiver->data.name,
+              static_cast<int>(prev), static_cast<int>(receiver->state), receiver->error
+            });
+          }
+          continue;
+        }
+        conveyor_progress_by_connection_.erase(conn.data.id);
         auto prev = receiver->state;
         receiver->state = ComponentState::COMP_ERROR;
         receiver->error = "Receiver target storage not found";
@@ -172,15 +366,20 @@ void ItemsSystem::fixedUpdate() {
         ItemStack singleItem(itemToMove->item, 1);
         if (receiverStorage->storage->canAdd(singleItem)) {
           senderStorage->storage->remove(singleItem);
-          receiverStorage->storage->add(singleItem);
+          // remove() mutates `singleItem.amount` to 0; add must use a fresh stack
+          ItemStack toReceive(itemToMove->item, 1);
+          receiverStorage->storage->add(toReceive);
           conveyorExecutionTime[entity] -= timecost;
+          applyEdgeProgress();
         } else {
            // Output is full, reset or cap timer
            conveyorExecutionTime[entity] = timecost;
+           applyEdgeProgress();
         }
       } else {
          // Input is empty, reset or cap timer
          conveyorExecutionTime[entity] = timecost;
+         applyEdgeProgress();
       }
     }
   }

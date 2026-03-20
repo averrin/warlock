@@ -60,7 +60,8 @@ public:
                                             {ComponentSize::M, 0.01},
                                             {ComponentSize::L, 0.1}};
 
-  std::map<FrameSize, float> surfaceAreas = {{FrameSize::S, 10},
+  std::map<FrameSize, float> surfaceAreas = {{FrameSize::XS, 4},
+                                             {FrameSize::S, 10},
                                              {FrameSize::M, 40},
                                              {FrameSize::L, 150},
                                              {FrameSize::G, 600}};

@@ -7,6 +7,8 @@
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 
+#include <deque>
+
 #include <game/attributes.hpp>
 #include <map>
 #include <ranges>
@@ -36,6 +38,10 @@ struct Metadata {
     entt::monostate<"id"_hs>{} = new_id;
     return new_id;
   }
+
+  /// After loading state from disk, bump the global id counter so newId() never
+  /// reuses ids already present in the registry.
+  static void reconcileGlobalIdCounter(entt::registry &registry);
   Metadata() {}
   Metadata(const Metadata &other) {
     id = other.id;
@@ -149,7 +155,7 @@ enum class ComponentState {
 
 enum class ComponentSize { S, M, L };
 
-enum class FrameSize { S, M, L, G };
+enum class FrameSize { S, M, L, G, XS };
 
 class ItemStorage : public std::enable_shared_from_this<ItemStorage> {
 public:
@@ -284,6 +290,18 @@ public:
 };
 
 struct Frame;
+
+struct DataPacket {
+  int source = -1;
+  int destination = -1;
+  std::map<std::string, std::string> headers;
+  std::string body;
+
+  template <class Archive> void serialize(Archive &ar) {
+    ar(source, destination, headers, body);
+  }
+};
+
 struct Component {
   Metadata data;
   ComponentState state = ComponentState::DEACTIVATED;
@@ -298,6 +316,11 @@ struct Component {
   ComponentMaterial material = ComponentMaterial::STEEL;
 
   std::shared_ptr<ItemStorage> storage = nullptr;
+
+  int counterpart_id = -1;
+  int counterpart_id_alt = -1;
+  std::deque<std::string> data_raw_inbox;
+  std::deque<DataPacket> data_packet_inbox;
 
   bool activate() {
     if (data.get_or<bool>("passive", false)) {
@@ -346,6 +369,10 @@ struct Component {
   };
   template <class Archive> void load(Archive &ar) {
     ar(data, size, state, require, conflict, material);
+    counterpart_id = -1;
+    counterpart_id_alt = -1;
+    data_raw_inbox.clear();
+    data_packet_inbox.clear();
   };
 
   Component() {}
@@ -356,6 +383,10 @@ struct Component {
     require = other.require;
     conflict = other.conflict;
     api = other.api;
+    data_raw_inbox = other.data_raw_inbox;
+    data_packet_inbox = other.data_packet_inbox;
+    counterpart_id = other.counterpart_id;
+    counterpart_id_alt = other.counterpart_id_alt;
   }
 };
 
@@ -366,6 +397,7 @@ struct Frame {
   ComponentMaterial material = ComponentMaterial::STEEL;
 
   std::map<FrameSize, std::map<ComponentSize, unsigned int>> limits = {
+      {FrameSize::XS, {{ComponentSize::S, 1}}},
       {FrameSize::S, {{ComponentSize::S, 8}, {ComponentSize::M, 1}}},
       {FrameSize::M, {{ComponentSize::S, 16}, {ComponentSize::M, 2}}},
       {FrameSize::L,
@@ -380,6 +412,8 @@ struct Frame {
     for (auto &c : other.components) {
       components.push_back(c);
     }
+    size = other.size;
+    material = other.material;
   }
 
   bool hasComponentType(std::string type, bool needActive = false) {
@@ -420,6 +454,17 @@ struct Frame {
     return nullptr;
   }
 
+  std::vector<std::shared_ptr<Component>>
+  getComponentsByType(std::string t) {
+    std::vector<std::shared_ptr<Component>> out;
+    for (auto &c : components) {
+      if (c->data.get<std::string>("type") == t) {
+        out.push_back(c);
+      }
+    }
+    return out;
+  }
+
   std::shared_ptr<Component> getComponentByName(std::string n) {
     for (auto &c : components) {
       if (c->data.name == n) {
@@ -435,6 +480,11 @@ struct Frame {
   };
   template <class Archive> void load(Archive &ar) {
     ar(data, components, size, material);
+    // frame_id is not serialized on Component; only addComponent() sets it. Restore after load.
+    for (auto &c : components) {
+      if (c)
+        c->frame_id = data.id;
+    }
   };
   void field_save(FieldOutputArchive &ar) const {
     FIELD(ar, data);
@@ -447,6 +497,10 @@ struct Frame {
     FIELD(ar, components);
     FIELD(ar, size);
     FIELD(ar, material);
+    for (auto &c : components) {
+      if (c)
+        c->frame_id = data.id;
+    }
   }
 };
 
@@ -456,30 +510,39 @@ enum class ConnectionType {
   CONVEYOR,
 };
 
+enum class ConnectionMedium {
+  WIRE,
+  WIRELESS,
+  BEAM,
+};
+
 struct Connection {
   Metadata data;
   int source = -1;
   int target = -1;
   ConnectionType type = ConnectionType::POWER;
+  ConnectionMedium medium = ConnectionMedium::WIRE;
 
   friend class cereal::access;
   template <class Archive> void save(Archive &ar) const {
-    ar(data, source, target, type);
+    ar(data, source, target, type, medium);
   };
   template <class Archive> void load(Archive &ar) {
-    ar(data, source, target, type);
+    ar(data, source, target, type, medium);
   };
   void field_save(FieldOutputArchive &ar) const {
     FIELD(ar, data);
     FIELD(ar, source);
     FIELD(ar, target);
     FIELD(ar, type);
+    FIELD(ar, medium);
   }
   void field_load(FieldInputArchive &ar) {
     FIELD(ar, data);
     FIELD(ar, source);
     FIELD(ar, target);
     FIELD(ar, type);
+    FIELD(ar, medium);
   }
 };
 

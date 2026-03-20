@@ -1,6 +1,7 @@
 #include <rpc/handlers/component_handler.hpp>
 #include <rpc/handlers/handler_utils.hpp>
 #include <rpc/dto.hpp>
+#include <game/connection_cleanup.hpp>
 #include <game/game_manager.hpp>
 #include <game/state.hpp>
 #include <game/components/frame.hpp>
@@ -212,6 +213,8 @@ void registerComponentHandlers(Server& server) {
     if (it == frame.components.end()) {
       throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Component not found"};
     }
+    const std::string removedType = (*it)->data.get_or<std::string>("type", "");
+    destroyConnectionsUsingConnectorType(registry, frame_data_id, removedType);
     frame.components.erase(it);
     nlohmann::json result = {{"ok", true}};
     logWebAction(server, "component.remove", "ok", {{"frame_id", frame_data_id}, {"component_id", component_id}});

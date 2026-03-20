@@ -1,3 +1,8 @@
+/* Escape dockview/transform stacking; react-cmdk defaults to z-index: 10 */
+.command-palette {
+  z-index: 50000 !important;
+}
+
 /* Override react-cmdk styles to match app theme */
 [cmdk-root] {
   --cmdk-bg: #1e293b;

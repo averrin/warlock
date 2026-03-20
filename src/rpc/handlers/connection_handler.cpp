@@ -31,13 +31,21 @@ void registerConnectionHandlers(Server& server) {
       throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Invalid connection type: " + type_str};
     }
 
+    ConnectionMedium medium = ConnectionMedium::WIRE;
+    if (params.contains("medium") && params["medium"].is_string()) {
+      auto m = magic_enum::enum_cast<ConnectionMedium>(params["medium"].get<std::string>());
+      if (m.has_value()) {
+        medium = m.value();
+      }
+    }
+
     std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
-    auto entity = gm.addConnection(source, target, conn_type_opt.value());
+    auto entity = gm.addConnection(source, target, conn_type_opt.value(), medium);
 
     auto& state = entt::locator<State>::value();
     auto& registry = state.registry;
     auto& conn = registry.get<Connection>(entity);
-    auto connJson = serializeConnection(entity, conn);
+    auto connJson = serializeConnection(entity, conn, gm.items.get());
     nlohmann::json result = {{"connection", connJson}};
     logWebAction(server, "connection.create", "ok", {{"id", conn.data.id}, {"source", source}, {"target", target}, {"type", type_str}});
     return result;
@@ -65,7 +73,7 @@ void registerConnectionHandlers(Server& server) {
     for (auto entity : view) {
       auto& conn = view.get<Connection>(entity);
       if (filter_type.has_value() && conn.type != filter_type.value()) continue;
-      connections.push_back(serializeConnection(entity, conn));
+      connections.push_back(serializeConnection(entity, conn, gm.items.get()));
     }
     return {{"connections", connections}};
   });

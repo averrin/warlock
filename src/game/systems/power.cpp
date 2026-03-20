@@ -29,12 +29,6 @@ void PowerSystem::fixedUpdate() {
 
   auto &current_state = entt::locator<State>::value();
   auto frames_view = current_state.registry.view<Frame>();
-  auto all_nodes = std::vector<int>{};
-
-  for (auto &f : frames_view) {
-    auto &frame = current_state.registry.get<Frame>(f);
-    all_nodes.push_back(frame.data.id);
-  }
 
   auto conns = std::vector<Connection>{};
   for (auto &c : current_state.registry.view<Connection>()) {
@@ -54,7 +48,9 @@ void PowerSystem::fixedUpdate() {
       conns.push_back(conn);
     }
   }
-  auto nets = findUnconnectedNets(conns, all_nodes);
+  // Only components that appear in the power adjacency graph — omit isolated frames
+  // (otherwise every unconnected frame becomes its own "network" in the UI).
+  auto nets = findUnconnectedNets(conns, {});
 
   for (auto &net : nets) {
 

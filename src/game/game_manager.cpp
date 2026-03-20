@@ -39,6 +39,34 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <unordered_set>
 #include <vector>
 
+void Metadata::reconcileGlobalIdCounter(entt::registry &registry) {
+  int max_id = entt::monostate<"id"_hs>{};
+  auto bump = [&](int id) {
+    if (id > max_id)
+      max_id = id;
+  };
+  for (auto e : registry.view<Frame>()) {
+    auto &f = registry.get<Frame>(e);
+    bump(f.data.id);
+    for (const auto &c : f.components) {
+      if (!c)
+        continue;
+      bump(c->data.id);
+      if (c->storage) {
+        for (const auto &slot : c->storage->slots) {
+          bump(slot.id);
+          if (slot.stack)
+            bump(slot.stack->id);
+        }
+      }
+    }
+  }
+  for (auto e : registry.view<Connection>()) {
+    bump(registry.get<Connection>(e).data.id);
+  }
+  entt::monostate<"id"_hs>{} = max_id;
+}
+
 namespace {
 
 nlohmann::json serializeEnvironmentWithHistory(const Environment& env) {
@@ -203,7 +231,13 @@ void GameManager::loadData() {
   }
   entt::locator<WellKnownEntities>::emplace(wk);
 
+  Metadata::reconcileGlobalIdCounter(current_state.registry);
+
   started = true;
+
+  if (exec) {
+    refresh_nexus_component_apis(*exec);
+  }
 
   log.setAsync(false);
   log.setParent(p);
@@ -255,7 +289,11 @@ void GameManager::init(LibLog::Logger parentLog) {
 
   lua.new_usertype<GameManager>(
       "GameManager", "new", sol::no_constructor, "addFrame",
-      &GameManager::addFrame, "addConnection", &GameManager::addConnection,
+      &GameManager::addFrame, "addConnection",
+      sol::overload(
+          sol::resolve<entt::entity(int, int, ConnectionType)>(&GameManager::addConnection),
+          sol::resolve<entt::entity(int, int, ConnectionType, ConnectionMedium)>(
+              &GameManager::addConnection)),
       "addFrameFromBlueprint", &GameManager::addFrameFromBlueprint);
 
   lua.set("gm", this);
@@ -265,14 +303,19 @@ void GameManager::init(LibLog::Logger parentLog) {
   log.stop(label);
 }
 
-entt::entity GameManager::addConnection(int source, int target,
-                                        ConnectionType type) {
+entt::entity GameManager::addConnection(int source, int target, ConnectionType type) {
+  return addConnection(source, target, type, ConnectionMedium::WIRE);
+}
+
+entt::entity GameManager::addConnection(int source, int target, ConnectionType type,
+                                        ConnectionMedium medium) {
   std::lock_guard<std::recursive_mutex> lock(updateMutex);
   auto &current_state = entt::locator<State>::value();
   auto e = EnttTools::createEntityFromPrototype("CONNECTION",
                                                 current_state.registry);
   auto &c = current_state.registry.get<Connection>(e);
   c.type = type;
+  c.medium = medium;
   auto &meta = current_state.registry.get<hf::meta>(e);
   c.data.id = Metadata::newId();
 
@@ -385,6 +428,7 @@ void GameManager::start() {
   systems.push_back(std::make_shared<ThermalSystem>());
   systems.push_back(std::make_shared<EnvironmentSystem>());
   exec = std::make_shared<CodeExecutionSystem>();
+  refresh_nexus_component_apis(*exec);
   systems.push_back(exec);
   items = std::make_shared<ItemsSystem>();
   systems.push_back(items);
@@ -571,7 +615,7 @@ void GameManager::serve() {
         auto connView = registry.view<Connection>();
         for (auto entity : connView) {
           auto& conn = connView.get<Connection>(entity);
-          connections.push_back(rpc::serializeConnection(entity, conn));
+          connections.push_back(rpc::serializeConnection(entity, conn, items.get()));
         }
 
         rpcServer.broadcast("event.state_update", {

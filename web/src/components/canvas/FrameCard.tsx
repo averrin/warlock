@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import type { FrameDTO, ComponentDTO } from "../../rpc/types";
 import { STATE_COLORS, EFFECT_LABELS } from "../ui";
+import { CELL } from "./connectionGeometry";
 import "./FrameCard.css";
 
 /** Frame with computed world position */
@@ -41,12 +42,11 @@ const POWER_LABELS: Record<string, string> = {
   offline: "\u26A1 offline",
 };
 
-/** Map frame cell count to a size tier class */
-function getSizeTier(cells: number): string {
-  if (cells <= 1) return "tiny";
-  if (cells <= 2) return "small";
-  // M (2 cells) = small, L (3) = medium, G (4) = large
-  if (cells <= 3) return "medium";
+/** Map cells per side (world / {@link CELL}) to a size tier class */
+function getSizeTier(cellsAlongSide: number): string {
+  if (cellsAlongSide <= 1) return "tiny";
+  if (cellsAlongSide <= 3) return "small";
+  if (cellsAlongSide <= 6) return "medium";
   return "large";
 }
 
@@ -153,7 +153,7 @@ export const FrameCard = memo(function FrameCard({
   onContextMenu,
 }: FrameCardProps) {
   const isCompact = zoom < 0.4;
-  const cells = cellSize / 75; // CELL = 75
+  const cells = cellSize / CELL;
   const sizeTier = getSizeTier(cells);
   const components = frame.components ?? [];
   const badges = frame.canvas_badges;

@@ -47,6 +47,7 @@ public:
   entt::entity addFrame(std::string name);
   int addFrameFromBlueprint(std::string name);
   entt::entity addConnection(int source, int target, ConnectionType);
+  entt::entity addConnection(int source, int target, ConnectionType, ConnectionMedium medium);
 
   std::shared_ptr<Job> startJob;
   std::recursive_mutex updateMutex;

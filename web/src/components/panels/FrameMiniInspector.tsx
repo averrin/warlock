@@ -14,8 +14,9 @@ type Props = {
 export function FrameMiniInspector({ rpcClient, panelApi }: Props) {
   const frames = useGameStore((s) => s.frames);
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
+  const selectFrame = useGameStore((s) => s.selectFrame);
   const pinnedMiniInspectors = useWindowLayoutStore((s) => s.pinnedMiniInspectors);
-  const focusPanel = useWindowLayoutStore((s) => s.focusPanel);
+  const focusStateInspectorExpandFrame = useWindowLayoutStore((s) => s.focusStateInspectorExpandFrame);
 
   const panelId = panelApi?.id ?? "frame-mini-inspector";
   const pinnedFrameId = pinnedMiniInspectors[panelId] ?? null;
@@ -53,7 +54,10 @@ export function FrameMiniInspector({ rpcClient, panelApi }: Props) {
         frame={frame}
         rpcClient={rpcClient}
         defaultLevel={1}
-        onNavigateToTree={() => focusPanel("state-inspector")}
+        onNavigateToTree={() => {
+          selectFrame(frame.id);
+          focusStateInspectorExpandFrame(frame.id);
+        }}
       />
     </div>
   );

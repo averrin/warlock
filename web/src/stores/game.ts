@@ -23,6 +23,8 @@ interface GameStore {
   environment: EnvironmentDTO | null;
   powerNetworks: PowerNetworkDTO[];
   selectedFrameId: number | null;
+  /** Multi-select (RTS-style); primary for inspector is `selectedFrameId`. */
+  selectedFrameIds: number[];
   timeControl: TimeControl;
   markers: GameMarker[];
   indicators: Record<string, { label: string; value: string; color: string }>;
@@ -38,6 +40,8 @@ interface GameStore {
   }) => void;
   fetchInitialState: (client: RpcClient) => Promise<void>;
   selectFrame: (frameId: number | null) => void;
+  setFrameSelection: (frameIds: number[]) => void;
+  toggleFrameSelection: (frameId: number) => void;
   pauseGame: (client: RpcClient) => Promise<void>;
   resumeGame: (client: RpcClient) => Promise<void>;
   setSpeed: (client: RpcClient, multiplier: number) => Promise<void>;
@@ -115,7 +119,8 @@ interface GameStore {
     client: RpcClient,
     source: number,
     target: number,
-    type: "POWER" | "DATA" | "CONVEYOR",
+    type: "POWER" | "DATA" | "CONVEYOR" | "POE",
+    medium?: "WIRE" | "WIRELESS" | "BEAM",
   ) => Promise<void>;
   removeConnection: (client: RpcClient, id: number) => Promise<void>;
   updateCoreCode: (client: RpcClient, frameId: number, code: string) => Promise<void>;
@@ -131,6 +136,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   environment: null,
   powerNetworks: [],
   selectedFrameId: null,
+  selectedFrameIds: [],
   timeControl: { paused: false, multiplier: 1 },
   markers: [],
   indicators: {},
@@ -142,15 +148,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
     client.on("event.state_update", (payload) => {
       const next = payload as { frames?: FrameDTO[]; connections?: ConnectionDTO[] };
-      set((state) => ({
-        frames: next.frames ?? state.frames,
-        connections: next.connections ?? state.connections,
-        selectedFrameId:
-          state.selectedFrameId !== null &&
-          !(next.frames ?? state.frames).some((frame) => frame.id === state.selectedFrameId)
-            ? null
-            : state.selectedFrameId,
-      }));
+      set((state) => {
+        const frames = next.frames ?? state.frames;
+        const ids = new Set(frames.map((f) => f.id));
+        const nextSel = state.selectedFrameIds.filter((id) => ids.has(id));
+        let primary = state.selectedFrameId;
+        if (primary !== null && !ids.has(primary)) {
+          primary = nextSel.length ? nextSel[nextSel.length - 1]! : null;
+        }
+        return {
+          frames,
+          connections: next.connections ?? state.connections,
+          selectedFrameIds: nextSel,
+          selectedFrameId: primary,
+        };
+      });
     });
     client.on("event.env_update", (payload) => {
       const next = payload as { env?: EnvironmentDTO };
@@ -206,19 +218,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const nextFrames = snapshot.frames ?? [];
     const nextEnv = snapshot.environment ?? null;
     const nextPower = snapshot.power_networks ?? snapshot.powerNetworks ?? [];
-    set((state) => ({
-      started: snapshot.started ?? state.started,
-      hydrated: true,
-      frames: nextFrames,
-      connections: snapshot.connections ?? [],
-      environment: nextEnv,
-      environmentHistory: nextEnv?.history ?? null,
-      powerNetworks: nextPower,
-      selectedFrameId:
-        state.selectedFrameId !== null && !nextFrames.some((frame) => frame.id === state.selectedFrameId)
-          ? null
-          : state.selectedFrameId,
-    }));
+    set((state) => {
+      const ids = new Set(nextFrames.map((f) => f.id));
+      const nextSel = state.selectedFrameIds.filter((id) => ids.has(id));
+      let primary = state.selectedFrameId;
+      if (primary !== null && !ids.has(primary)) {
+        primary = nextSel.length ? nextSel[nextSel.length - 1]! : null;
+      }
+      return {
+        started: snapshot.started ?? state.started,
+        hydrated: true,
+        frames: nextFrames,
+        connections: snapshot.connections ?? [],
+        environment: nextEnv,
+        environmentHistory: nextEnv?.history ?? null,
+        powerNetworks: nextPower,
+        selectedFrameIds: nextSel,
+        selectedFrameId: primary,
+      };
+    });
   },
 
   fetchInitialState: async (client) => {
@@ -236,7 +254,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
 
-  selectFrame: (frameId) => set({ selectedFrameId: frameId }),
+  selectFrame: (frameId) =>
+    set({
+      selectedFrameId: frameId,
+      selectedFrameIds: frameId == null ? [] : [frameId],
+    }),
+
+  setFrameSelection: (frameIds) =>
+    set({
+      selectedFrameIds: frameIds,
+      selectedFrameId: frameIds.length ? frameIds[frameIds.length - 1]! : null,
+    }),
+
+  toggleFrameSelection: (frameId) =>
+    set((state) => {
+      const had = state.selectedFrameIds.includes(frameId);
+      const next = had
+        ? state.selectedFrameIds.filter((id) => id !== frameId)
+        : [...state.selectedFrameIds, frameId];
+      let primary = state.selectedFrameId;
+      if (had && frameId === primary) {
+        primary = next.length ? next[next.length - 1]! : null;
+      } else if (!had) {
+        primary = frameId;
+      }
+      return { selectedFrameIds: next, selectedFrameId: primary };
+    }),
 
   createFrameAt: async (client, name, x, y) => {
     await client.call("frame.create", { name, position: { x, y } });
@@ -502,8 +545,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return result;
   },
 
-  createConnection: async (client, source, target, type) => {
-    await client.call("connection.create", { source, target, type });
+  createConnection: async (client, source, target, type, medium) => {
+    await client.call("connection.create", { source, target, type, medium });
     await get().fetchInitialState(client);
   },
 
@@ -567,10 +610,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const frame = get().frames.find((f) => f.id === frameId);
     const entityId = frame?.entity_id ?? frameId;
     await client.call("frame.remove", { id: entityId });
-    set((current) => ({
-      frames: current.frames.filter((f) => f.id !== frameId),
-      selectedFrameId: current.selectedFrameId === frameId ? null : current.selectedFrameId,
-    }));
+    set((current) => {
+      const nextSel = current.selectedFrameIds.filter((id) => id !== frameId);
+      let primary = current.selectedFrameId;
+      if (primary === frameId) {
+        primary = nextSel.length ? nextSel[nextSel.length - 1]! : null;
+      }
+      return {
+        frames: current.frames.filter((f) => f.id !== frameId),
+        selectedFrameIds: nextSel,
+        selectedFrameId: primary,
+      };
+    });
   },
 
   setEnvironmentField: async (client, field, value) => {

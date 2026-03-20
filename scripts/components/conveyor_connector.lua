@@ -15,6 +15,12 @@ return {
 			type = AttributeType.INT,
 			value = 1,
 		},
+		max_connection_distance = {
+			title = "Connection radius",
+			description = "Max center-to-center distance to connect (world units).",
+			type = AttributeType.FLOAT,
+			value = 500.0,
+		},
 		stable = {
 			title = "Stable",
 			description = "Does continue work after power loss",

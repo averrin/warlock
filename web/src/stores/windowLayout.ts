@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { DockviewApi, SerializedDockview } from "dockview-core";
+import { useGameStore } from "./game";
 
 const STORAGE_KEY = "warlock.web.window-layout";
 
@@ -23,6 +24,12 @@ interface WindowLayoutStore {
   dockviewApi: DockviewApi | null;
   setDockviewApi: (api: DockviewApi) => void;
   focusPanel: (panelId: string) => void;
+  /** Set when navigating from mini inspector; FramesSection expands this row then clears. */
+  pendingStateInspectorExpandFrameId: number | null;
+  focusStateInspectorExpandFrame: (frameId: number) => void;
+  clearPendingStateInspectorExpand: () => void;
+  /** Opens a floating mini inspector and pins it to the frame (focuses existing pinned for same frame). */
+  openPinnedMiniInspectorForFrame: (frameId: number) => void;
   openComponentCodeEditor: (
     params: Record<string, unknown>,
     title: string,
@@ -91,6 +98,53 @@ export const useWindowLayoutStore = create<WindowLayoutStore>((set, get) => ({
     if (panel) {
       panel.api.setActive();
     }
+  },
+  pendingStateInspectorExpandFrameId: null,
+  clearPendingStateInspectorExpand: () => set({ pendingStateInspectorExpandFrameId: null }),
+  focusStateInspectorExpandFrame: (frameId) => {
+    set({ pendingStateInspectorExpandFrameId: frameId });
+    const api = get().dockviewApi;
+    if (!api) return;
+    let panel = api.getPanel("state-inspector");
+    if (!panel) {
+      panel = api.addPanel({
+        id: "state-inspector",
+        component: "stateInspector",
+        title: "State Inspector",
+      });
+    }
+    panel.api.setActive();
+  },
+  openPinnedMiniInspectorForFrame: (frameId) => {
+    useGameStore.getState().selectFrame(frameId);
+    const api = get().dockviewApi;
+    if (!api) return;
+    const pinned = get().pinnedMiniInspectors;
+    for (const [panelId, fid] of Object.entries(pinned)) {
+      if (
+        fid === frameId &&
+        (panelId === "frame-mini-inspector" || panelId.startsWith("frame-mini-inspector-"))
+      ) {
+        const p = api.getPanel(panelId);
+        p?.api.setActive();
+        return;
+      }
+    }
+    const newId = `frame-mini-inspector-${Date.now()}`;
+    const panel = api.addPanel({
+      id: newId,
+      component: "frameMiniInspector",
+      title: "Frame Mini Inspector",
+    });
+    const w = typeof window !== "undefined" ? window.innerWidth : 1200;
+    api.addFloatingGroup(panel, {
+      x: Math.max(40, w / 2 - 190),
+      y: 120,
+      width: 380,
+      height: 260,
+    });
+    get().pinMiniInspector(newId, frameId);
+    panel.api.setActive();
   },
   openComponentCodeEditor: (params, title, position) => {
     const api = get().dockviewApi;

@@ -12,7 +12,6 @@ return {
 	code = [[
 return {
   start = function()
-    print("start");
     charger = frame:getComponentByType("Charger");
     bat = frame:getComponentByType("Battery");
     bat:activate();

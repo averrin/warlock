@@ -228,14 +228,26 @@ export function WindowWorkspace({ rpcClient }: Props) {
   const currentSpeed = timeControl.paused ? 0 : timeControl.multiplier;
 
   const openFrameMiniInspectorAt = useCallback(
-    (frameId: number, clientX: number, clientY: number) => {
+    (frameId: number, clientX: number, clientY: number, opts?: { keepInPlace?: boolean }) => {
+      if (useGameStore.getState().selectedFrameIds.length > 1) return;
       const api = apiRef.current;
       if (!api) return;
 
+      const pinned = useWindowLayoutStore.getState().pinnedMiniInspectors;
+
+      if (opts?.keepInPlace) {
+        for (const panel of api.panels) {
+          const isMiniInspector = panel.id === "frame-mini-inspector" || panel.id.startsWith("frame-mini-inspector-");
+          if (!isMiniInspector || panel.id in pinned) continue;
+          lastMiniInspectorOpenAtRef.current = performance.now();
+          panel.api.setActive();
+          return;
+        }
+      }
+
       lastMiniInspectorOpenAtRef.current = performance.now();
 
-      // Close any existing unpinned mini-inspectors
-      const pinned = useWindowLayoutStore.getState().pinnedMiniInspectors;
+      // Close any existing unpinned mini-inspectors (switching to a different frame)
       for (const panel of api.panels) {
         const isMiniInspector = panel.id === "frame-mini-inspector" || panel.id.startsWith("frame-mini-inspector-");
         if (isMiniInspector && !(panel.id in pinned)) {

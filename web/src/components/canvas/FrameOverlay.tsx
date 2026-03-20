@@ -1,15 +1,131 @@
-import { forwardRef, useImperativeHandle, useRef, useCallback, useLayoutEffect } from "react";
+import { forwardRef, useImperativeHandle, useRef, useCallback, useLayoutEffect, useMemo } from "react";
 import { FrameCard, type PlacedFrame, type WiringState } from "./FrameCard";
 import type { ConnectionDTO } from "../../rpc/types";
+import { CELL, FRAME_CELL_SIZES } from "./connectionGeometry";
 
-const CELL = 75;
+type ConnectionMedium = "WIRE" | "WIRELESS" | "BEAM";
 
-const FRAME_CELL_SIZES: Record<string, number> = {
-  S: 1,
-  M: 2,
-  L: 3,
-  G: 4,
-};
+function getConnectorComponentName(type: string, medium: ConnectionMedium): string | null {
+  if (type === "POWER") {
+    if (medium === "WIRE") return "Power Wire Connector";
+    if (medium === "WIRELESS") return "Power Wireless Connector";
+    return "Power Beam Connector";
+  }
+  if (type === "DATA") {
+    if (medium === "WIRE") return "Data Wire Connector";
+    if (medium === "WIRELESS") return "Wireless Data Connector";
+    return "Data Beam Connector";
+  }
+  if (type === "CONVEYOR") return "Conveyor Connector";
+  if (type === "POE") return "PoE Connector";
+  return null;
+}
+
+function getConnectorNamesForFrame(type: string, medium: ConnectionMedium): string[] {
+  const primary = getConnectorComponentName(type, medium);
+  if (!primary) return [];
+  const names = [primary];
+  if (type === "DATA" && medium === "WIRE") names.push("Data Relay");
+  if (type === "CONVEYOR") names.push("Conveyor Relay");
+  return names;
+}
+
+function parseFinalNumber(v: any): number | null {
+  if (typeof v === "number") return v;
+  if (v && typeof v === "object") {
+    if (typeof v.final_value !== "undefined") {
+      const n = typeof v.final_value === "number" ? v.final_value : Number(v.final_value);
+      if (!Number.isNaN(n)) return n;
+    }
+    if (typeof v.base_value !== "undefined") {
+      const n = typeof v.base_value === "number" ? v.base_value : Number(v.base_value);
+      if (!Number.isNaN(n)) return n;
+    }
+  }
+  if (typeof v !== "undefined") {
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  return null;
+}
+
+function getFrameSquareSide(frame: { size: string }): number {
+  const cells = FRAME_CELL_SIZES[frame.size] ?? 1;
+  return cells * CELL;
+}
+
+function getFrameCenter(frame: { _x: number; _y: number; size: string }): { x: number; y: number } {
+  const side = getFrameSquareSide(frame);
+  return { x: frame._x + side / 2, y: frame._y + side / 2 };
+}
+
+function getMaxConnectionDistanceForFrame(
+  frame: { components?: any[]; size: string; id: number },
+  type: string,
+  medium: ConnectionMedium,
+): number {
+  const names = getConnectorNamesForFrame(type, medium);
+  let best = Number.POSITIVE_INFINITY;
+  for (const n of names) {
+    const connector = (frame.components ?? []).find((c) => c.name === n);
+    if (!connector) continue;
+    const attr =
+      connector?.metadata?.attributes?.max_connection_distance ??
+      (connector?.attributes as Record<string, unknown> | undefined)?.max_connection_distance;
+    const d = parseFinalNumber(attr);
+    if (d != null) best = Math.min(best, d);
+  }
+  return best;
+}
+
+function segmentIntersectsAABB(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number,
+): boolean {
+  const minX = rx;
+  const maxX = rx + rw;
+  const minY = ry;
+  const maxY = ry + rh;
+
+  const dx = bx - ax;
+  const dy = by - ay;
+
+  let tmin = 0;
+  let tmax = 1;
+  const eps = 1e-6;
+
+  if (Math.abs(dx) < eps) {
+    if (ax < minX || ax > maxX) return false;
+  } else {
+    const inv = 1 / dx;
+    let tx1 = (minX - ax) * inv;
+    let tx2 = (maxX - ax) * inv;
+    if (tx1 > tx2) [tx1, tx2] = [tx2, tx1];
+    tmin = Math.max(tmin, tx1);
+    tmax = Math.min(tmax, tx2);
+    if (tmin > tmax) return false;
+  }
+
+  if (Math.abs(dy) < eps) {
+    if (ay < minY || ay > maxY) return false;
+  } else {
+    const inv = 1 / dy;
+    let ty1 = (minY - ay) * inv;
+    let ty2 = (maxY - ay) * inv;
+    if (ty1 > ty2) [ty1, ty2] = [ty2, ty1];
+    tmin = Math.max(tmin, ty1);
+    tmax = Math.min(tmax, ty2);
+    if (tmin > tmax) return false;
+  }
+
+  return true;
+}
 
 export interface FrameOverlayHandle {
   /** Update all card positions to match Pixi worldContainer. Direct DOM writes — no React re-render. */
@@ -20,8 +136,8 @@ export interface FrameOverlayHandle {
 
 interface FrameOverlayProps {
   placedFrames: PlacedFrame[];
-  selectedFrameId: number | null;
-  wiringMode: { sourceId: number; type: string } | null;
+  selectedFrameIds: number[];
+  wiringMode: { sourceId: number; type: string; medium?: string } | null;
   connections: ConnectionDTO[];
   frames: PlacedFrame[];
   zoom: number;
@@ -32,25 +148,23 @@ interface FrameOverlayProps {
 function frameHasConnector(
   frame: { components?: { name: string }[] },
   type: string,
+  medium: ConnectionMedium,
 ): boolean {
-  const CONNECTOR_COMPONENT: Record<string, string> = {
-    POWER: "Power Wire Connector",
-    DATA: "Data Wire Connector",
-    CONVEYOR: "Conveyor Connector",
-  };
-  const compName = CONNECTOR_COMPONENT[type];
-  if (!compName) return false;
-  return (frame.components ?? []).some((c) => c.name === compName);
+  const names = getConnectorNamesForFrame(type, medium);
+  return names.some((n) => (frame.components ?? []).some((c) => c.name === n));
 }
 
 function frameMeetsConnectionRequirements(
-  frame: { components?: { name: string }[] },
+  frame: { components?: { name: string; storage?: unknown }[] },
   type: string,
+  _medium: ConnectionMedium,
 ): boolean {
   if (type === "CONVEYOR") {
-    return (frame.components ?? []).some((c) => c.name === "Storage");
+    if ((frame.components ?? []).some((c) => c.name === "Conveyor Relay")) return true;
+    return (frame.components ?? []).some((c) => Boolean(c.storage));
   }
-  if (type === "DATA") {
+  if (type === "DATA" || type === "POE") {
+    if ((frame.components ?? []).some((c) => c.name === "Data Relay")) return true;
     return (frame.components ?? []).some((c) => c.name === "Core");
   }
   return true;
@@ -61,29 +175,29 @@ function isCardinallySatisfied(
   frames: { id: number; components?: any[] }[],
   frameId: number,
   type: string,
+  medium: ConnectionMedium,
 ): boolean {
-  const CONNECTOR_COMPONENT: Record<string, string> = {
-    POWER: "Power Wire Connector",
-    DATA: "Data Wire Connector",
-    CONVEYOR: "Conveyor Connector",
-  };
   const frame = frames.find((f) => f.id === frameId);
   if (!frame) return false;
-  const connectorName = CONNECTOR_COMPONENT[type];
-  const connector = (frame.components ?? []).find((c: any) => c.name === connectorName);
-  const attr =
-    (connector as any)?.metadata?.attributes?.max_connections ??
-    (connector?.attributes as Record<string, unknown> | undefined)?.max_connections;
-  let max = type === "POWER" ? 10 : 1;
-  if (attr && typeof (attr as any).final_value !== "undefined") {
-    const v = (attr as any).final_value;
-    const parsed = typeof v === "number" ? v : Number(v);
-    if (!Number.isNaN(parsed)) max = parsed;
+  const nameSet = new Set(getConnectorNamesForFrame(type, medium));
+  const def = type === "POWER" ? 10 : 1;
+  let maxTotal = 0;
+  for (const c of frame.components ?? []) {
+    if (!nameSet.has(c.name)) continue;
+    const attr =
+      (c as any)?.metadata?.attributes?.max_connections ??
+      (c.attributes as Record<string, unknown> | undefined)?.max_connections;
+    const n = parseFinalNumber(attr);
+    maxTotal += n != null ? n : def;
   }
+  if (maxTotal <= 0) maxTotal = type === "POWER" ? 10 : 1;
   const count = conns.filter(
-    (c) => (c.source === frameId || c.target === frameId) && c.type === type,
+    (c) =>
+      (c.source === frameId || c.target === frameId) &&
+      c.type === type &&
+      (c.medium ?? "WIRE") === medium,
   ).length;
-  return count < max;
+  return count < maxTotal;
 }
 
 function hasConnectionBetween(
@@ -91,11 +205,13 @@ function hasConnectionBetween(
   a: number,
   b: number,
   type: string,
+  medium: ConnectionMedium,
 ): boolean {
   return conns.some(
     (c) =>
       ((c.source === a && c.target === b) || (c.source === b && c.target === a)) &&
-      c.type === type,
+      c.type === type &&
+      (c.medium ?? "WIRE") === medium,
   );
 }
 
@@ -103,7 +219,7 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
   function FrameOverlay(
     {
       placedFrames,
-      selectedFrameId,
+      selectedFrameIds,
       wiringMode,
       connections,
       frames,
@@ -115,6 +231,13 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
     const transformRef = useRef({ scale: 1, tx: 0, ty: 0 });
+    const selectedSet = useMemo(() => new Set(selectedFrameIds), [selectedFrameIds]);
+
+    /** Lower world Y first in DOM (underneath); higher on screen (smaller Y) last so they receive pointer hits first when stacked. */
+    const orderedFrames = useMemo(
+      () => [...placedFrames].sort((a, b) => b._y - a._y),
+      [placedFrames],
+    );
 
     /**
      * Position each card using CSS zoom for crisp text rendering.
@@ -162,17 +285,72 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
         const isSource = frameId === wiringMode.sourceId;
         if (isSource) return { type: wiringMode.type, isSource: true, isEligible: false };
 
+        const medium = (wiringMode.medium ?? "WIRE") as ConnectionMedium;
+        const sourceFrame = frames.find((f) => f.id === wiringMode.sourceId) ?? null;
+        const targetFrame = frames.find((f) => f.id === frameId) ?? null;
+        let geometryOk = false;
+        if (sourceFrame && targetFrame) {
+          const sourceCenter = getFrameCenter(sourceFrame);
+          const targetCenter = getFrameCenter(targetFrame);
+          const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame, wiringMode.type, medium);
+          const targetMax = getMaxConnectionDistanceForFrame(targetFrame, wiringMode.type, medium);
+          const effectiveMax = Math.min(sourceMax, targetMax);
+          const dist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
+          geometryOk = dist <= effectiveMax;
+
+          if (
+            geometryOk &&
+            (medium === "WIRE" || medium === "BEAM")
+          ) {
+            // For wire/beam: reject if the segment between frame centers intersects any other frame.
+            for (const other of frames) {
+              if (other.id === wiringMode.sourceId || other.id === frameId) continue;
+              const side = getFrameSquareSide(other);
+              if (
+                segmentIntersectsAABB(
+                  sourceCenter.x,
+                  sourceCenter.y,
+                  targetCenter.x,
+                  targetCenter.y,
+                  other._x,
+                  other._y,
+                  side,
+                  side,
+                )
+              ) {
+                geometryOk = false;
+                break;
+              }
+            }
+          }
+        }
+
         const isEligible =
           frameHasConnector(
             frames.find((f) => f.id === frameId) ?? { components: [] },
             wiringMode.type,
+            medium,
           ) &&
           frameMeetsConnectionRequirements(
             frames.find((f) => f.id === frameId) ?? { components: [] },
             wiringMode.type,
+            medium,
           ) &&
-          isCardinallySatisfied(connections, frames, frameId, wiringMode.type) &&
-          !hasConnectionBetween(connections, wiringMode.sourceId, frameId, wiringMode.type);
+          isCardinallySatisfied(
+            connections,
+            frames,
+            frameId,
+            wiringMode.type,
+            medium,
+          ) &&
+          geometryOk &&
+          !hasConnectionBetween(
+            connections,
+            wiringMode.sourceId,
+            frameId,
+            wiringMode.type,
+            medium,
+          );
 
         return { type: wiringMode.type, isSource: false, isEligible };
       },
@@ -210,15 +388,15 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
         }}
       >
         <div ref={containerRefCallback}>
-          {placedFrames.map((frame) => {
+          {orderedFrames.map((frame) => {
             const cells = FRAME_CELL_SIZES[frame.size] ?? 1;
             const cellSize = cells * CELL;
             return (
               <FrameCard
-                key={frame.entity_id}
+                key={frame.id}
                 frame={frame}
                 cellSize={cellSize}
-                isSelected={selectedFrameId === frame.id}
+                isSelected={selectedSet.has(frame.id)}
                 wiringState={getWiringState(frame.id)}
                 zoom={zoom}
                 onPointerDown={onFramePointerDown}

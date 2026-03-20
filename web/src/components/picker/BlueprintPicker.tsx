@@ -28,7 +28,7 @@ export function BlueprintPicker({ isOpen, onClose, rpcClient, onSelect }: Props)
         setBlueprints(
           entries
             .map(([name, src]) => {
-              const size = src.match(/FrameSize\.([SMLG])/)?.[1] ?? "M";
+              const size = src.match(/FrameSize\.(\w+)/)?.[1] ?? "M";
               return {
                 id: name,
                 label: `${name} (${size})`,

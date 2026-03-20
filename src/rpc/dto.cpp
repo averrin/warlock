@@ -1,4 +1,5 @@
 #include <rpc/dto.hpp>
+#include <game/systems/items.hpp>
 #include <magic_enum.hpp>
 #include <algorithm>
 #include <string>
@@ -141,13 +142,20 @@ nlohmann::json serializeComponent(const Component& comp) {
   return json;
 }
 
-nlohmann::json serializeConnection(entt::entity entity, const Connection& conn) {
-  return {
+nlohmann::json serializeConnection(entt::entity entity, const Connection& conn,
+                                   const ItemsSystem* items) {
+  (void)entity;
+  nlohmann::json j = {
     {"id", conn.data.id},
     {"source", conn.source},
     {"target", conn.target},
-    {"type", std::string(magic_enum::enum_name(conn.type))}
+    {"type", std::string(magic_enum::enum_name(conn.type))},
+    {"medium", std::string(magic_enum::enum_name(conn.medium))}
   };
+  if (items != nullptr && conn.type == ConnectionType::CONVEYOR) {
+    j["transfer_progress"] = items->conveyorTransferProgress(conn.data.id);
+  }
+  return j;
 }
 
 // Legacy overload kept for backward compat — uses data.id for id
@@ -156,7 +164,8 @@ nlohmann::json serializeConnection(const Connection& conn) {
     {"id", conn.data.id},
     {"source", conn.source},
     {"target", conn.target},
-    {"type", std::string(magic_enum::enum_name(conn.type))}
+    {"type", std::string(magic_enum::enum_name(conn.type))},
+    {"medium", std::string(magic_enum::enum_name(conn.medium))}
   };
 }
 

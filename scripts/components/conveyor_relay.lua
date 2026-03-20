@@ -1,19 +1,19 @@
 return {
-	name = "Data Wire Connector",
+	name = "Conveyor Relay",
 	category = "Connectors",
-	description = "Provide data link (and power) for adjusting frames.",
+	description = "Two conveyor links on one XS frame; bridges neighbors (throughput = min of both links).",
 	attributes = {
 		type = {
 			title = "Type",
 			description = "",
 			type = AttributeType.STRING,
-			value = "Data Connector",
+			value = "Conveyor Connector",
 		},
 		max_connections = {
 			title = "Max Connections",
 			description = "Maximum number of connections",
 			type = AttributeType.INT,
-			value = 1,
+			value = 2,
 		},
 		max_connection_distance = {
 			title = "Connection radius",
@@ -33,20 +33,9 @@ return {
 			type = AttributeType.BOOL,
 			value = true,
 		},
-		tap = {
-			title = "Tap (mirror only)",
-			description = "If true, switch cores treat this as a mirror port: no ingress flooding, only copies from other ports.",
-			type = AttributeType.BOOL,
-			value = false,
-		},
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
-	require = { "Core" },
-	api = {
-		getConnectedFrames = function()
-			frames = oracle:getWiredFrames(frame.data.id)
-			return frames
-		end,
-	},
+	require = {},
+	api = {},
 }

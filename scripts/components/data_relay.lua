@@ -1,7 +1,7 @@
 return {
-	name = "Data Wire Connector",
+	name = "Data Relay",
 	category = "Connectors",
-	description = "Provide data link (and power) for adjusting frames.",
+	description = "Bridges two data links on one XS frame (transparent hop between neighbors).",
 	attributes = {
 		type = {
 			title = "Type",
@@ -13,7 +13,7 @@ return {
 			title = "Max Connections",
 			description = "Maximum number of connections",
 			type = AttributeType.INT,
-			value = 1,
+			value = 2,
 		},
 		max_connection_distance = {
 			title = "Connection radius",
@@ -33,20 +33,9 @@ return {
 			type = AttributeType.BOOL,
 			value = true,
 		},
-		tap = {
-			title = "Tap (mirror only)",
-			description = "If true, switch cores treat this as a mirror port: no ingress flooding, only copies from other ports.",
-			type = AttributeType.BOOL,
-			value = false,
-		},
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
-	require = { "Core" },
-	api = {
-		getConnectedFrames = function()
-			frames = oracle:getWiredFrames(frame.data.id)
-			return frames
-		end,
-	},
+	require = {},
+	api = {},
 }

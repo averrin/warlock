@@ -1,11 +1,78 @@
 #include <fstream>
 #include <game/components/frame.hpp>
 #include <game/components/items.hpp>
+#include <game/data_link.hpp>
 #include <game/oracle.hpp>
 #include <game/systems/power.hpp>
 #include <game/nexus_api.hpp>
+#include <game/state.hpp>
+#include <game/systems/code_execution.hpp>
 #include <sol/sol.hpp>
 #include <sstream>
+
+namespace {
+
+NexusApi g_nexus_api;
+
+sol::table make_nexus_component_api_table(sol::state &lua) {
+  sol::state_view L(lua);
+  sol::table t = L.create_table();
+  t["showToast"] = [](std::string message, std::string type) {
+    g_nexus_api.showToast(std::move(message), std::move(type));
+  };
+  t["setMapMarker"] = [](float x, float y, std::string label, std::string color) {
+    g_nexus_api.setMapMarker(x, y, std::move(label), std::move(color));
+  };
+  t["clearMapMarkers"] = []() { g_nexus_api.clearMapMarkers(); };
+  t["removeMapMarker"] = [](std::string label) {
+    g_nexus_api.removeMapMarker(std::move(label));
+  };
+  t["getMapMarkers"] = [](sol::this_state s) {
+    return g_nexus_api.getMapMarkers(s);
+  };
+  t["setGlobalIndicator"] = [](std::string key, std::string label,
+                               std::string value, std::string color) {
+    g_nexus_api.setGlobalIndicator(std::move(key), std::move(label),
+                                   std::move(value), std::move(color));
+  };
+  t["getMouseX"] = []() { return g_nexus_api.getMouseX(); };
+  t["getMouseY"] = []() { return g_nexus_api.getMouseY(); };
+  return t;
+}
+
+DataPacket parse_data_packet_table(sol::table t, int default_source) {
+  DataPacket p;
+  p.source = t.get_or("source", default_source);
+  p.destination = t.get_or("destination", -1);
+  p.body = t.get_or("body", std::string{});
+  sol::object ho = t["headers"];
+  if (ho.valid() && ho.get_type() == sol::type::table) {
+    sol::table headers = ho;
+    for (const auto &pair : headers) {
+      if (pair.first.get_type() != sol::type::string ||
+          pair.second.get_type() != sol::type::string)
+        continue;
+      p.headers[pair.first.as<std::string>()] =
+          pair.second.as<std::string>();
+    }
+  }
+  return p;
+}
+
+} // namespace
+
+void refresh_nexus_component_apis(CodeExecutionSystem& exec) {
+  auto& st = entt::locator<State>::value();
+  for (auto e : st.registry.view<Frame>()) {
+    auto& frame = st.registry.get<Frame>(e);
+    sol::state& L = exec.getState(frame.data.id);
+    for (auto& c : frame.components) {
+      if (c && c->data.get_or<std::string>("type", "") == "Nexus") {
+        c->api = make_nexus_component_api_table(L);
+      }
+    }
+  }
+}
 
 // Sol2 bindings for the classes
 void register_bindings(sol::state &lua) {
@@ -28,7 +95,7 @@ void register_bindings(sol::state &lua) {
                ComponentState::BLOCKED, "BROKEN", ComponentState::BROKEN);
 
   lua.new_enum("FrameSize", "S", FrameSize::S, "M", FrameSize::M, "L",
-               FrameSize::L, "G", FrameSize::G);
+               FrameSize::L, "G", FrameSize::G, "XS", FrameSize::XS);
 
   lua.new_enum("ComponentSize", "S", ComponentSize::S, "M", ComponentSize::M,
                "L", ComponentSize::L);
@@ -74,7 +141,60 @@ void register_bindings(sol::state &lua) {
       &Component::state, "size", &Component::size, "require",
       &Component::require, "conflict", &Component::conflict, "activate",
       &Component::activate, "deactivate", &Component::deactivate, "storage",
-      &Component::storage);
+      &Component::storage, "sendRaw",
+      [](std::shared_ptr<Component> self, const std::string &s) {
+        data_link_send_raw(self, s);
+      },
+      "send",
+      [](std::shared_ptr<Component> self, sol::table packet_tbl) {
+        auto p = parse_data_packet_table(packet_tbl, self->data.id);
+        data_link_send_packet(self, std::move(p));
+      },
+      "injectRaw",
+      [](std::shared_ptr<Component> self, const std::string &s) {
+        data_link_inject_raw(self, s);
+      },
+      "injectPacket",
+      [](std::shared_ptr<Component> self, sol::table packet_tbl) {
+        auto p = parse_data_packet_table(packet_tbl, self->data.id);
+        data_link_inject_packet(self, std::move(p));
+      },
+      "readRaw",
+      [](std::shared_ptr<Component> self) -> sol::optional<std::string> {
+        if (self->data_raw_inbox.empty())
+          return sol::nullopt;
+        std::string s = std::move(self->data_raw_inbox.front());
+        self->data_raw_inbox.pop_front();
+        return s;
+      },
+      "read",
+      [](std::shared_ptr<Component> self,
+         sol::this_state st) -> sol::optional<sol::table> {
+        if (self->data_packet_inbox.empty())
+          return sol::nullopt;
+        DataPacket p = std::move(self->data_packet_inbox.front());
+        self->data_packet_inbox.pop_front();
+        sol::state_view L(st);
+        sol::table t = L.create_table();
+        t["source"] = p.source;
+        t["destination"] = p.destination;
+        sol::table headers = L.create_table();
+        for (const auto &kv : p.headers)
+          headers[kv.first] = kv.second;
+        t["headers"] = headers;
+        t["body"] = p.body;
+        return t;
+      },
+      "getCounterpart",
+      [](const std::shared_ptr<Component> &self) { return self->counterpart_id; },
+      "queueDepthRaw",
+      [](const std::shared_ptr<Component> &self) {
+        return static_cast<int>(self->data_raw_inbox.size());
+      },
+      "queueDepthPacket",
+      [](const std::shared_ptr<Component> &self) {
+        return static_cast<int>(self->data_packet_inbox.size());
+      });
   lua.new_usertype<NetworkInfo>(
       "NetworkInfo", "production", &NetworkInfo::production, "consumption",
       &NetworkInfo::consumption, "accumulated", &NetworkInfo::accumulated,
@@ -104,7 +224,8 @@ void register_bindings(sol::state &lua) {
         }
         return storages;
       },
-      "hasComponentType", &Frame::hasComponentType, "getComponentByName",
+      "hasComponentType", &Frame::hasComponentType, "getComponentsByType",
+      &Frame::getComponentsByType, "getComponentByName",
       &Frame::getComponentByName);
 
   lua.new_usertype<ItemDefinition>(
@@ -141,8 +262,7 @@ void register_bindings(sol::state &lua) {
       "getMouseY", &NexusApi::getMouseY
   );
 
-  static NexusApi nexus_api;
-  lua.set("nexus", &nexus_api);
+  lua.set("nexus", &g_nexus_api);
 }
 
 // Function to create a Component from a Lua file
@@ -221,6 +341,10 @@ create_component_from_lua(sol::state &lua, const std::string &lua_source) {
   }
 
   component->api = spec["api"];
+
+  if (component->data.get_or<std::string>("type", "") == "Nexus") {
+    component->api = make_nexus_component_api_table(lua);
+  }
 
   return component;
 }

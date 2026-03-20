@@ -17,7 +17,8 @@ export function ConnectionEditor({ rpcClient }: Props) {
   const supported = isFeatureSupported(capabilityMethods.connectionEditor);
   const [source, setSource] = useState<number | null>(null);
   const [target, setTarget] = useState<number | null>(null);
-  const [type, setType] = useState<"POWER" | "DATA" | "CONVEYOR">("POWER");
+  const [type, setType] = useState<"POWER" | "DATA" | "CONVEYOR" | "POE">("POWER");
+  const [medium, setMedium] = useState<"WIRE" | "WIRELESS" | "BEAM">("WIRE");
 
   const sourceValue = source ?? selectedFrameId ?? null;
   const targetCandidates = frames.filter((frame) => frame.id !== sourceValue);
@@ -60,11 +61,20 @@ export function ConnectionEditor({ rpcClient }: Props) {
           <select
             aria-label="Connection Type"
             value={type}
-            onChange={(e) => setType(e.target.value as "POWER" | "DATA" | "CONVEYOR")}
+            onChange={(e) => setType(e.target.value as "POWER" | "DATA" | "CONVEYOR" | "POE")}
           >
             <option value="POWER">POWER</option>
             <option value="DATA">DATA</option>
             <option value="CONVEYOR">CONVEYOR</option>
+            <option value="POE">POE</option>
+          </select>
+        </label>
+        <label>
+          Connection Medium
+          <select aria-label="Connection Medium" value={medium} onChange={(e) => setMedium(e.target.value as any)}>
+            <option value="WIRE">WIRE</option>
+            <option value="WIRELESS">WIRELESS</option>
+            <option value="BEAM">BEAM</option>
           </select>
         </label>
         <button
@@ -73,7 +83,7 @@ export function ConnectionEditor({ rpcClient }: Props) {
             if (sourceValue === null || target === null) {
               return;
             }
-            createConnection(rpcClient, sourceValue, target, type).catch(console.error);
+            createConnection(rpcClient, sourceValue, target, type, medium).catch(console.error);
           }}
         >
           Create Connection

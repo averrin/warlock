@@ -187,7 +187,7 @@ void registerStateHandlers(Server& server) {
     auto connView = registry.view<Connection>();
     for (auto entity : connView) {
       auto& conn = connView.get<Connection>(entity);
-      connections.push_back(serializeConnection(entity, conn));
+      connections.push_back(serializeConnection(entity, conn, gm.items.get()));
     }
 
     nlohmann::json envJson = nullptr;

@@ -2,6 +2,7 @@
 #include <fmt/ranges.h>
 #include <game/components/frame.hpp>
 #include <game/state.hpp>
+#include <game/data_link.hpp>
 #include <game/systems/code_execution.hpp>
 #include <game/well_known_entities.hpp>
 #include <liblog/liblog.hpp>
@@ -85,9 +86,38 @@ void CodeExecutionSystem::cleanupFrame(int frame_id) {
 void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
                                               std::string function_name) {
   auto &current_state = entt::locator<State>::value();
-  auto fid = c->frame_id;
   auto comp_id = c->data.id;
   auto prev_state = c->state;
+
+  // frame_id is not persisted on Component; after save/load it stays -1 unless we repair.
+  Frame *frame_ptr = findFrameById(c->frame_id);
+  if (!frame_ptr) {
+    for (auto e : current_state.registry.view<Frame>()) {
+      auto &f = current_state.registry.get<Frame>(e);
+      for (const auto &comp : f.components) {
+        if (comp == c) {
+          c->frame_id = f.data.id;
+          frame_ptr = &f;
+          break;
+        }
+      }
+      if (frame_ptr) break;
+    }
+  }
+  const int fid = c->frame_id;
+
+  if (!frame_ptr) {
+    c->state = ComponentState::COMP_ERROR;
+    c->error = "frame not found for code execution";
+    emitLog("lua.runtime", "error", {
+        {"frame_id", fid},
+        {"component_id", comp_id},
+        {"function", function_name},
+        {"error", c->error},
+        {"prev_state", static_cast<int>(prev_state)},
+        {"new_state", static_cast<int>(c->state)}});
+    return;
+  }
 
   // get Environment
   auto &wk = entt::locator<WellKnownEntities>::value();
@@ -97,14 +127,21 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
     getState(fid).set("environment", environment);
   }
 
-  auto *frame_ptr = findFrameById(fid);
-  if (!frame_ptr) return;
-
   getState(fid).set("frame", frame_ptr);
 
   // Cache compiled script — only recompile when not cached
   if (compiled_scripts_.find(comp_id) == compiled_scripts_.end()) {
-    if (!c->data.has("code")) return;
+    if (!c->data.has("code")) {
+      c->state = ComponentState::COMP_ERROR;
+      c->error = "Core has no code attribute";
+      emitLog("lua.compile", "error", {
+          {"frame_id", fid},
+          {"component_id", comp_id},
+          {"error", c->error},
+          {"prev_state", static_cast<int>(prev_state)},
+          {"new_state", static_cast<int>(c->state)}});
+      return;
+    }
     auto code = c->data.get<std::string>("code");
     if (code.empty()) {
       c->state = ComponentState::COMP_ERROR;
@@ -168,6 +205,11 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
         {"prev_state", static_cast<int>(prev_state)},
         {"new_state", static_cast<int>(c->state)}
       });
+    } else {
+      c->error.clear();
+      if (c->state == ComponentState::COMP_ERROR) {
+        c->state = ComponentState::ACTIVE;
+      }
     }
   } else {
     c->state = ComponentState::COMP_ERROR;
@@ -183,6 +225,8 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
 }
 
 void CodeExecutionSystem::fixedUpdate() {
+  recompute_data_link_counterparts();
+
   auto &current_state = entt::locator<State>::value();
 
   for (auto &f : current_state.registry.view<Frame>()) {

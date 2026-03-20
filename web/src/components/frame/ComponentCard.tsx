@@ -206,6 +206,7 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
           <ComponentAttributes
             frameId={frameId}
             componentId={component.id}
+            componentName={component.name}
             attributes={component.attributes as Record<string, unknown> | undefined}
             rpcClient={rpcClient}
           />

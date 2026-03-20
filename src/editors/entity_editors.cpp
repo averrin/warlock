@@ -1,7 +1,9 @@
 #include <IconsFontAwesome6.h>
 #include <SFML/Graphics.hpp>
 #include <fmt/format.h>
+#include <game/connection_cleanup.hpp>
 #include <game/game_manager.hpp>
+#include <game/state.hpp>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 using namespace entt::literals;
@@ -312,6 +314,9 @@ bool EntityTreeEditor::ComponentEditor(Frame &f, std::shared_ptr<Component> c) {
     auto &gm = entt::locator<GameManager>::value();
 
     gm.updateMutex.lock();
+    auto &registry = entt::locator<State>::value().registry;
+    const std::string removedType = c->data.get_or<std::string>("type", "");
+    destroyConnectionsUsingConnectorType(registry, f.data.id, removedType);
     f.components.erase(
         std::remove_if(f.components.begin(), f.components.end(),
                        [&](auto &comp) { return comp->data.id == c->data.id; }),
@@ -533,8 +538,8 @@ void ComponentEditorWidget<Frame>(entt::registry &registry,
 
   EntityTreeEditor::ComponentsPanel(f);
 
-  static const std::array<FrameSize, 4> frame_sizes = {
-      FrameSize::S, FrameSize::M, FrameSize::L, FrameSize::G};
+  static const std::array<FrameSize, 5> frame_sizes = {
+      FrameSize::XS, FrameSize::S, FrameSize::M, FrameSize::L, FrameSize::G};
 
   float GUI_SCALE = entt::monostate<"gui_scale"_hs>{};
   static const std::array<ComponentMaterial, 6> materials = {

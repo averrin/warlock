@@ -81,3 +81,6 @@ public:
   void invalidateScript(int component_id);
   void cleanupFrame(int frame_id);
 };
+
+/** Rebind Nexus component `api` tables (not serialized); call after load and once exec exists. */
+void refresh_nexus_component_apis(CodeExecutionSystem& exec);

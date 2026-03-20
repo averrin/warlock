@@ -3,8 +3,6 @@
 #include <game/game_manager.hpp>
 #include <game/state.hpp>
 #include <game/components/frame.hpp>
-#include <algorithm>
-#include <cctype>
 #include <utils/entt.hpp>
 
 namespace rpc {
@@ -101,112 +99,6 @@ void registerCodeHandlers(Server& server) {
     gm.exec->invalidateScript(core->data.id);
     nlohmann::json result = {{"ok", true}};
     logWebAction(server, "code.update", "ok", {{"frame_id", frame_data_id}});
-    return result;
-  });
-
-  // code.update_source — {source_name: string, code: string}
-  // Update an in-memory component definition and reapply it to existing instances.
-  server.router().on("code.update_source", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
-    requireClaim(server, ctx);
-    auto& gm = entt::locator<GameManager>::value();
-    if (!gm.started) {
-      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
-    }
-    if (!params.contains("source_name") || !params.contains("code")) {
-      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Missing required parameters: source_name, code"};
-    }
-
-    std::string sourceName = params["source_name"].get<std::string>();
-    std::string code = params["code"].get<std::string>();
-
-    auto toLower = [](std::string s) {
-      for (char& ch : s) {
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-      }
-      return s;
-    };
-
-    std::string wantedLower = toLower(sourceName);
-    std::string canonicalName;
-    for (auto& [name, _] : gm.exec->sources) {
-      if (toLower(name) == wantedLower) {
-        canonicalName = name;
-        break;
-      }
-    }
-    if (canonicalName.empty()) {
-      for (auto& [name, _] : gm.exec->sources) {
-        std::string n = toLower(name);
-        if (n.find(wantedLower) != std::string::npos) {
-          canonicalName = name;
-          break;
-        }
-      }
-    }
-    if (canonicalName.empty()) {
-      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Source not found: " + sourceName};
-    }
-
-    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
-    gm.exec->sources[canonicalName] = code;
-    const std::string canonicalLower = toLower(canonicalName);
-
-    auto& state = entt::locator<State>::value();
-    auto& registry = state.registry;
-
-    auto frames = registry.view<Frame>();
-    for (auto frameEntity : frames) {
-      auto& frame = registry.get<Frame>(frameEntity);
-      for (auto& compPtr : frame.components) {
-        if (!compPtr) continue;
-        // `source_name` is keyed by the component script spec title, but in some
-        // runtime cases the instance `data.name` may differ while the `type`
-        // attribute remains stable (and is what `getComponentByType()` uses).
-        const std::string compType = compPtr->data.get_or<std::string>("type", "");
-        const std::string instTypeLower = toLower(compType);
-        const std::string instNameLower = toLower(compPtr->data.name);
-        if (instTypeLower != canonicalLower && instNameLower != canonicalLower) {
-          continue;
-        }
-
-        const int prev_data_id = compPtr->data.id;
-        const int prev_frame_id = compPtr->frame_id;
-        const ComponentState prev_state = compPtr->state;
-        const int prev_time_switch = compPtr->time_switch;
-        const ComponentState prev_next_state = compPtr->next_state;
-        const int prev_storage_slots = compPtr->storage ? compPtr->storage->slotsCount : 0;
-
-        auto rebuilt = create_component_from_lua(gm.exec->getState(frame.data.id), code);
-        if (!rebuilt) continue;
-
-        // Overwrite spec-derived fields, but preserve runtime identity and tween transition state.
-        rebuilt->data.id = prev_data_id;
-        rebuilt->frame_id = prev_frame_id;
-        rebuilt->state = prev_state;
-        rebuilt->time_switch = prev_time_switch;
-        rebuilt->next_state = prev_next_state;
-
-        const int new_storage_slots = rebuilt->data.get_or<int>("slots", 0);
-        if (compPtr->storage && prev_storage_slots == new_storage_slots) {
-          // Preserve runtime storage object when slot count matches.
-          rebuilt->storage = compPtr->storage;
-        } else {
-          rebuilt->storage = nullptr;
-        }
-
-        // Swap the shared_ptr so Lua sees a fresh Component + api table.
-        compPtr = rebuilt;
-
-        // Core scripts are compiled/cached by component id; invalidate if a Core component was refreshed.
-        const std::string typeStr = compPtr->data.get_or<std::string>("type", "");
-        if (typeStr == "Core" || compPtr->data.name == "Core") {
-          gm.exec->invalidateScript(compPtr->data.id);
-        }
-      }
-    }
-
-    nlohmann::json result = {{"ok", true}, {"source_name", canonicalName}};
-    logWebAction(server, "code.update_source", "ok", {{"source_name", canonicalName}});
     return result;
   });
 

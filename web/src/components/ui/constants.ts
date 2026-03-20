@@ -1,4 +1,4 @@
-export const FRAME_SIZES = ["S", "M", "L", "G"] as const;
+export const FRAME_SIZES = ["XS", "S", "M", "L", "G"] as const;
 export const COMPONENT_SIZES = ["S", "M", "L"] as const;
 export const MATERIALS = ["ALUMINIUM", "COPPER", "STEEL", "TITANIUM", "PLASTIC", "GLASS"] as const;
 export const CONNECTION_TYPES = ["POWER", "DATA", "CONVEYOR"] as const;

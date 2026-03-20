@@ -31,6 +31,7 @@ describe("game store - speed control", () => {
       connections: [],
       powerNetworks: [],
       selectedFrameId: null,
+      selectedFrameIds: [],
       timeControl: { paused: false, multiplier: 1 },
       environment: null,
       environmentHistory: null,
@@ -83,6 +84,7 @@ describe("game store - environment status", () => {
       connections: [],
       powerNetworks: [],
       selectedFrameId: null,
+      selectedFrameIds: [],
       environment: null,
       environmentHistory: null,
     });
@@ -129,6 +131,7 @@ describe("game store - snapshot and push updates", () => {
       connections: [],
       powerNetworks: [],
       selectedFrameId: null,
+      selectedFrameIds: [],
       environment: null,
       environmentHistory: null,
       timeControl: { paused: false, multiplier: 1 },

@@ -48,7 +48,6 @@ return {
 		test = "yes",
 		setTarget = function(self, battery)
 			bid = battery.data.id
-			print("setTarget", bid);
 			self.data.attributes["target"]:SetBaseValue(bid)
 		end,
 		getConsumption = function(self)

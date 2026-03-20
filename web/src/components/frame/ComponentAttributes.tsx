@@ -1,6 +1,20 @@
+import type { CSSProperties } from "react";
 import type { RpcClient } from "../../rpc/client";
+import type { ComponentDTO } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
-import { NumberField, TextField } from "../ui";
+import { NumberField, SelectField, TextField } from "../ui";
+
+const CONVEYOR_CONNECTOR_NAME = "Conveyor Connector";
+const CONVEYOR_MODE_OPTIONS = ["SEND", "RECEIVE"] as const;
+
+const targetSelectStyle: CSSProperties = {
+  fontSize: 11,
+  borderRadius: 3,
+  border: "1px solid #374151",
+  background: "#0b1220",
+  color: "#e5e7eb",
+  padding: "1px 4px",
+};
 
 type AttributeValue = string | number | boolean | unknown;
 
@@ -42,6 +56,8 @@ type SingleAttributeProps = {
   val: AttributeValue;
   frameId: number;
   componentId: number;
+  componentName: string;
+  frameComponents: ComponentDTO[];
   rpcClient: RpcClient;
   updateAttribute: (
     client: RpcClient,
@@ -57,6 +73,8 @@ function SingleAttribute({
   val,
   frameId,
   componentId,
+  componentName,
+  frameComponents,
   rpcClient,
   updateAttribute,
 }: SingleAttributeProps) {
@@ -73,10 +91,54 @@ function SingleAttribute({
   const onChange = (newVal: string | number | boolean) =>
     void updateAttribute(rpcClient, frameId, componentId, attrKey, newVal);
 
+  const isConveyorModeSelect =
+    componentName === CONVEYOR_CONNECTOR_NAME && attrKey === "mode" && type === "string";
+  const modeStr =
+    typeof rawValue === "string" && rawValue.length > 0 ? rawValue : "SEND";
+  const modeOptions = !(CONVEYOR_MODE_OPTIONS as readonly string[]).includes(modeStr)
+    ? [modeStr, ...CONVEYOR_MODE_OPTIONS]
+    : [...CONVEYOR_MODE_OPTIONS];
+
+  const isTargetComponentSelect = attrKey === "target" && type === "int";
+  const targetIdRaw = typeof rawValue === "number" ? rawValue : Number(rawValue);
+  const targetId = Number.isFinite(targetIdRaw) ? Math.trunc(targetIdRaw) : -1;
+  const targetCandidates = frameComponents.filter((c) => c.id !== componentId);
+  const targetIds = new Set(targetCandidates.map((c) => c.id));
+  const orphanTarget = targetId >= 0 && !targetIds.has(targetId);
+
   return (
     <div style={{ display: "grid", gap: 2 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {type === "bool" ? (
+        {isConveyorModeSelect ? (
+          <SelectField
+            label={label}
+            value={modeStr}
+            options={modeOptions}
+            onChange={(v) => onChange(v)}
+          />
+        ) : isTargetComponentSelect ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
+            <span style={{ minWidth: 90, fontSize: 11, color: "#9ca3af" }}>{label}:</span>
+            <select
+              value={targetId < 0 ? "" : String(targetId)}
+              onChange={(e) => {
+                const v = e.target.value;
+                onChange(v === "" ? -1 : Number(v));
+              }}
+              style={targetSelectStyle}
+            >
+              <option value="">None</option>
+              {orphanTarget && (
+                <option value={String(targetId)}>#{targetId} (unavailable)</option>
+              )}
+              {targetCandidates.map((c) => (
+                <option key={c.id} value={String(c.id)}>
+                  {c.name} (#{c.id})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : type === "bool" ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
             <span style={{ minWidth: 90, fontSize: 11, color: "#9ca3af" }}>{label}:</span>
             <input
@@ -137,12 +199,22 @@ function SingleAttribute({
 type Props = {
   frameId: number;
   componentId: number;
+  componentName: string;
   attributes: Record<string, AttributeValue> | undefined;
   rpcClient: RpcClient;
 };
 
-export function ComponentAttributes({ frameId, componentId, attributes, rpcClient }: Props) {
+export function ComponentAttributes({
+  frameId,
+  componentId,
+  componentName,
+  attributes,
+  rpcClient,
+}: Props) {
   const updateComponentAttribute = useGameStore((s) => s.updateComponentAttribute);
+  const frameComponents = useGameStore(
+    (s) => s.frames.find((f) => f.id === frameId)?.components ?? [],
+  );
 
   if (!attributes) return null;
 
@@ -160,6 +232,8 @@ export function ComponentAttributes({ frameId, componentId, attributes, rpcClien
           val={val}
           frameId={frameId}
           componentId={componentId}
+          componentName={componentName}
+          frameComponents={frameComponents}
           rpcClient={rpcClient}
           updateAttribute={updateComponentAttribute}
         />

@@ -5,7 +5,48 @@ import { useGameStore } from "./stores/game";
 import { usePatchStore, Patch, PatchType } from "./stores/patches";
 import { useSceneStore } from "./stores/scene";
 import { AppShell } from "./components/layout/AppShell";
-import { Toaster, toast } from "react-hot-toast";
+import { Toaster, toast, type DefaultToastOptions } from "react-hot-toast";
+
+const warlockToastOptions: DefaultToastOptions = {
+  duration: 4500,
+  style: {
+    background: "#111827",
+    color: "#e5e7eb",
+    border: "1px solid #374151",
+    borderRadius: 6,
+    boxShadow: "0 12px 48px rgba(0, 0, 0, 0.55)",
+    width: 400,
+    maxWidth: "min(400px, calc(100vw - 32px))",
+    padding: "12px 16px",
+    fontSize: 14,
+    lineHeight: 1.45,
+  },
+  success: {
+    duration: 3500,
+    style: {
+      borderLeft: "3px solid #22c55e",
+    },
+    iconTheme: {
+      primary: "#22c55e",
+      secondary: "#111827",
+    },
+  },
+  error: {
+    duration: 5500,
+    style: {
+      borderLeft: "3px solid #ef4444",
+    },
+    iconTheme: {
+      primary: "#ef4444",
+      secondary: "#111827",
+    },
+  },
+  blank: {
+    style: {
+      borderLeft: "3px solid #64748b",
+    },
+  },
+};
 
 export default function App() {
   const client = useRpcClient();
@@ -68,7 +109,7 @@ export default function App() {
 
   return (
     <>
-      <Toaster position="bottom-right" />
+      <Toaster position="bottom-right" toastOptions={warlockToastOptions} />
       <AppShell rpcClient={client} />
     </>
   );

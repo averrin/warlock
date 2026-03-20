@@ -2,6 +2,7 @@ import "react-cmdk/dist/cmdk.css";
 import "./picker.css";
 import CommandPalette, { filterItems, getItemIndex } from "react-cmdk";
 import { useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 
 export type PickerItem<T = unknown> = {
   id: string;
@@ -67,7 +68,7 @@ export function Picker<T>({
 
   const filteredItems = search ? filterItems(structuredItems, search) : structuredItems;
 
-  return (
+  const palette = (
     <CommandPalette
       isOpen={isOpen}
       page="root"
@@ -107,4 +108,6 @@ export function Picker<T>({
       </CommandPalette.Page>
     </CommandPalette>
   );
+
+  return typeof document !== "undefined" ? createPortal(palette, document.body) : palette;
 }

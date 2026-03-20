@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Application, Container, Graphics } from "pixi.js";
 import type { FederatedPointerEvent } from "pixi.js";
@@ -6,40 +6,45 @@ import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
 import { usePatchStore, Patch } from "../../stores/patches";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
-import type { ComponentDTO } from "../../rpc/types";
+import type { ComponentDTO, ConnectionDTO } from "../../rpc/types";
 import { ComponentContextMenu } from "./ComponentContextMenu";
 import { PatchMiniInspector } from "./PatchMiniInspector";
 import { ComponentPicker, BlueprintPicker } from "../picker";
 import { FrameOverlay, type FrameOverlayHandle } from "./FrameOverlay";
 import { useFrameDrag } from "./useFrameDrag";
 import type { PlacedFrame } from "./FrameCard";
+import { netAvailable } from "../../utils/power";
+import {
+  CELL,
+  FRAME_CELL_SIZES,
+  isGroupMoveValid,
+  snappedTopLeftsOverlappingCell,
+  segmentForPairNthConnection,
+  sortConnectionsForPair,
+} from "./connectionGeometry";
 
 type Props = {
   rpcClient: RpcClient;
-  onFrameMiniInspect?: (frameId: number, clientX: number, clientY: number) => void;
+  onFrameMiniInspect?: (
+    frameId: number,
+    clientX: number,
+    clientY: number,
+    opts?: { keepInPlace: boolean },
+  ) => void;
 };
 
-const SUB_CELL = 25;
-const CELL = SUB_CELL * 3;
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 3.0;
 const ZOOM_FACTOR = 0.1;
-const MINOR_LINE_COLOR = 0x1a2332;
-const MINOR_LINE_ALPHA = 0.25;
-const MAJOR_LINE_COLOR = 0x1f2937;
-const MAJOR_LINE_ALPHA = 0.4;
+const GRID_LINE_COLOR = 0x1f2937;
+const GRID_LINE_ALPHA = 0.35;
 const GRID_DOT_COLOR = 0x374151;
 const GRID_DOT_ALPHA = 0.5;
 const GRID_DOT_RADIUS = 1.5;
-const MINOR_HIDE_THRESHOLD = 6;
-const MAJOR_HIDE_THRESHOLD = 4;
-
-const FRAME_CELL_SIZES: Record<string, number> = {
-  S: 1,
-  M: 2,
-  L: 3,
-  G: 4,
-};
+/** Hide grid when one cell projects smaller than this (screen px). */
+const GRID_HIDE_THRESHOLD = 4;
+/** Dots at corners every N cells (S frame = 3 cells per side). */
+const GRID_DOT_STRIDE_CELLS = 3;
 
 const CONN_COLOR: Record<string, number> = {
   POWER: 0xeab308,
@@ -47,11 +52,152 @@ const CONN_COLOR: Record<string, number> = {
   CONVEYOR: 0x22c55e,
 };
 
+const POWER_LINE_DIM = 0x6b7280;
+const CONVEYOR_DIM = 0x166534;
+const DASH_LEN = 7;
+const DASH_GAP = 5;
+
+function strokeDashedLine(
+  g: Graphics,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  dash: number,
+  gap: number,
+  width: number,
+  color: number,
+  alpha: number,
+  phase: number,
+) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return;
+  const ux = dx / len;
+  const uy = dy / len;
+  const period = dash + gap;
+  let t = phase % period;
+  if (t < 0) t += period;
+  t = -t;
+  while (t < len) {
+    const t0 = Math.max(0, t);
+    const t1 = Math.min(len, t + dash);
+    if (t0 + 1e-4 < t1) {
+      g.setStrokeStyle({ width, color, alpha });
+      g.moveTo(x1 + ux * t0, y1 + uy * t0);
+      g.lineTo(x1 + ux * t1, y1 + uy * t1);
+      g.stroke();
+    }
+    t += period;
+  }
+}
+
+const DEFAULT_MARKER_COLOR = 0xff0000;
+
+/** Parse #RGB / #RRGGBB / #RRGGBBAA (alpha ignored for Pixi fill). */
+function parseHexColorString(s: string): number | null {
+  const t = s.trim().replace(/^#/, "");
+  if (!t) return null;
+  if (/^[0-9a-fA-F]{3}$/.test(t)) {
+    return parseInt(
+      t
+        .split("")
+        .map((c) => c + c)
+        .join(""),
+      16,
+    );
+  }
+  if (/^[0-9a-fA-F]{6}$/.test(t)) {
+    return parseInt(t, 16);
+  }
+  if (/^[0-9a-fA-F]{8}$/.test(t)) {
+    return parseInt(t.slice(0, 6), 16);
+  }
+  return null;
+}
+
+/** Map marker color from server/Lua (hex, CSS names, rgb()) to Pixi 0xRRGGBB; unknown strings → default. */
+function markerColorToPixi(color: string | undefined): number {
+  if (color == null) return DEFAULT_MARKER_COLOR;
+  const trimmed = color.trim();
+  if (!trimmed) return DEFAULT_MARKER_COLOR;
+
+  const hex = parseHexColorString(trimmed);
+  if (hex != null) return hex;
+
+  if (typeof document === "undefined") return DEFAULT_MARKER_COLOR;
+
+  const probe = document.createElement("div");
+  probe.style.color = "";
+  probe.style.color = trimmed;
+  if (!probe.style.color) return DEFAULT_MARKER_COLOR;
+
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) return DEFAULT_MARKER_COLOR;
+  ctx.fillStyle = trimmed;
+  const normalized = ctx.fillStyle as string;
+  if (normalized.startsWith("#")) {
+    const h = normalized.slice(1);
+    if (h.length === 3) {
+      return parseInt(
+        h
+          .split("")
+          .map((c) => c + c)
+          .join(""),
+        16,
+      );
+    }
+    return parseInt(h.length >= 6 ? h.slice(0, 6) : h, 16) & 0xffffff;
+  }
+  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(normalized);
+  if (rgb) {
+    return (
+      ((Number(rgb[1]) & 255) << 16) |
+      ((Number(rgb[2]) & 255) << 8) |
+      (Number(rgb[3]) & 255)
+    );
+  }
+  return DEFAULT_MARKER_COLOR;
+}
+
 const CONNECTOR_COMPONENT: Record<string, string> = {
   POWER: "Power Wire Connector",
   DATA: "Data Wire Connector",
   CONVEYOR: "Conveyor Connector",
 };
+
+type ConnectionMedium = "WIRE" | "WIRELESS" | "BEAM";
+
+function getConnectorComponentName(type: string, medium: ConnectionMedium): string | null {
+  if (type === "POWER") {
+    if (medium === "WIRE") return "Power Wire Connector";
+    if (medium === "WIRELESS") return "Power Wireless Connector";
+    return "Power Beam Connector";
+  }
+  if (type === "DATA") {
+    if (medium === "WIRE") return "Data Wire Connector";
+    if (medium === "WIRELESS") return "Wireless Data Connector";
+    return "Data Beam Connector";
+  }
+  if (type === "CONVEYOR") {
+    return "Conveyor Connector";
+  }
+  if (type === "POE") {
+    return "PoE Connector";
+  }
+  return null;
+}
+
+/** Primary connector + relay variants that satisfy the same connection role. */
+function getConnectorNamesForFrame(type: string, medium: ConnectionMedium): string[] {
+  const primary = getConnectorComponentName(type, medium);
+  if (!primary) return [];
+  const names = [primary];
+  if (type === "DATA" && medium === "WIRE") names.push("Data Relay");
+  if (type === "CONVEYOR") names.push("Conveyor Relay");
+  return names;
+}
 
 function toCssHex(n: number): string {
   return `#${n.toString(16).padStart(6, "0")}`;
@@ -67,79 +213,198 @@ function frameHasComponentByName(
 function frameHasConnector(
   frame: { components?: { name: string }[] },
   type: string,
+  medium: ConnectionMedium,
 ): boolean {
-  const compName = CONNECTOR_COMPONENT[type];
-  if (!compName) return false;
-  return frameHasComponentByName(frame, compName);
+  const names = getConnectorNamesForFrame(type, medium);
+  return names.some((n) => frameHasComponentByName(frame, n));
 }
 
 function frameMeetsConnectionRequirements(
-  frame: { components?: { name: string }[] },
+  frame: { components?: ComponentDTO[] },
   type: string,
+  medium: ConnectionMedium,
 ): boolean {
   if (type === "CONVEYOR") {
-    return frameHasComponentByName(frame, "Storage");
+    if ((frame.components ?? []).some((c) => c.name === "Conveyor Relay")) return true;
+    return (frame.components ?? []).some((c) => c.storage);
   }
-  if (type === "DATA") {
+  if (type === "DATA" || type === "POE") {
+    if ((frame.components ?? []).some((c) => c.name === "Data Relay")) return true;
     return frameHasComponentByName(frame, "Core");
   }
   return true;
+}
+
+function isConveyorPairMisconfigured(
+  sourceFrame: { components?: ComponentDTO[] } | undefined,
+  targetFrame: { components?: ComponentDTO[] } | undefined,
+): boolean {
+  if (!sourceFrame || !targetFrame) return true;
+  return (
+    !frameMeetsConnectionRequirements(sourceFrame, "CONVEYOR", "WIRE") ||
+    !frameMeetsConnectionRequirements(targetFrame, "CONVEYOR", "WIRE")
+  );
 }
 
 function getMaxConnectionsForFrameType(
   frames: { id: number; components?: ComponentDTO[] }[],
   frameId: number,
   type: string,
+  medium: ConnectionMedium,
 ): number {
   const frame = frames.find((f) => f.id === frameId);
   if (!frame) return type === "POWER" ? 10 : 1;
-  const connectorName = CONNECTOR_COMPONENT[type];
-  const connector = (frame.components ?? []).find((c) => c.name === connectorName);
-  const attr =
-    connector?.metadata?.attributes?.max_connections ??
-    (connector?.attributes as Record<string, unknown> | undefined)?.max_connections;
-  if (attr && typeof (attr as any).final_value !== "undefined") {
-    const v = (attr as any).final_value;
-    if (typeof v === "number") return v;
-    const parsed = Number(v);
-    if (!Number.isNaN(parsed)) return parsed;
+  const nameSet = new Set(getConnectorNamesForFrame(type, medium));
+  const def = type === "POWER" ? 10 : 1;
+  let maxTotal = 0;
+  for (const c of frame.components ?? []) {
+    if (!nameSet.has(c.name)) continue;
+    const attr =
+      c.metadata?.attributes?.max_connections ??
+      (c.attributes as Record<string, unknown> | undefined)?.max_connections;
+    const n = parseFinalNumber(attr as any);
+    maxTotal += n != null ? n : def;
   }
-  return type === "POWER" ? 10 : 1;
+  if (maxTotal <= 0) return def;
+  return maxTotal;
 }
 
 function getConnectionCountForFrameType(
-  conns: { source: number; target: number; type: string }[],
+  conns: { source: number; target: number; type: string; medium?: string }[],
   frameId: number,
   type: string,
+  medium: ConnectionMedium,
 ): number {
-  return conns.filter(
-    (c) => (c.source === frameId || c.target === frameId) && c.type === type,
-  ).length;
+  return conns.filter((c) => {
+    const cm = c.medium ?? "WIRE";
+    return (c.source === frameId || c.target === frameId) && c.type === type && cm === medium;
+  }).length;
 }
 
 function isCardinallySatisfied(
-  conns: { source: number; target: number; type: string }[],
+  conns: { source: number; target: number; type: string; medium?: string }[],
   frames: { id: number; components?: ComponentDTO[] }[],
   frameId: number,
   type: string,
+  medium: ConnectionMedium,
 ): boolean {
-  const max = getMaxConnectionsForFrameType(frames, frameId, type);
+  const max = getMaxConnectionsForFrameType(frames, frameId, type, medium);
   if (max <= 0) return false;
-  const count = getConnectionCountForFrameType(conns, frameId, type);
+  const count = getConnectionCountForFrameType(conns, frameId, type, medium);
   return count < max;
 }
 
 function hasConnectionBetween(
-  conns: { source: number; target: number; type: string }[],
+  conns: { source: number; target: number; type: string; medium?: string }[],
   a: number,
   b: number,
   type: string,
+  medium: ConnectionMedium,
 ): boolean {
   return conns.some(
     (c) =>
       ((c.source === a && c.target === b) || (c.source === b && c.target === a)) &&
-      c.type === type,
+      c.type === type &&
+      (c.medium ?? "WIRE") === medium,
   );
+}
+
+function parseFinalNumber(v: any): number | null {
+  if (typeof v === "number") return v;
+  if (v && typeof v === "object") {
+    if (typeof v.final_value !== "undefined") {
+      const n = typeof v.final_value === "number" ? v.final_value : Number(v.final_value);
+      if (!Number.isNaN(n)) return n;
+    }
+    if (typeof v.base_value !== "undefined") {
+      const n = typeof v.base_value === "number" ? v.base_value : Number(v.base_value);
+      if (!Number.isNaN(n)) return n;
+    }
+  }
+  if (typeof v !== "undefined") {
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  return null;
+}
+
+function getFrameSquareSide(frame: { size: string }): number {
+  const cells = FRAME_CELL_SIZES[frame.size] ?? 1;
+  return cells * CELL;
+}
+
+function getFrameCenter(frame: { position?: { x: number; y: number }; size: string }): { x: number; y: number } | null {
+  if (!frame.position) return null;
+  const side = getFrameSquareSide(frame);
+  return { x: frame.position.x + side / 2, y: frame.position.y + side / 2 };
+}
+
+function getMaxConnectionDistanceForFrame(
+  frame: { components?: ComponentDTO[]; size: string; id: number },
+  type: string,
+  medium: ConnectionMedium,
+): number {
+  const names = getConnectorNamesForFrame(type, medium);
+  let best = Number.POSITIVE_INFINITY;
+  for (const n of names) {
+    const connector = (frame.components ?? []).find((c) => c.name === n);
+    if (!connector) continue;
+    const attr =
+      connector.metadata?.attributes?.max_connection_distance ??
+      (connector.attributes as Record<string, unknown> | undefined)?.max_connection_distance;
+    const d = parseFinalNumber(attr);
+    if (d != null) best = Math.min(best, d);
+  }
+  return best;
+}
+
+function segmentIntersectsAABB(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number,
+): boolean {
+  const minX = rx;
+  const maxX = rx + rw;
+  const minY = ry;
+  const maxY = ry + rh;
+
+  const dx = bx - ax;
+  const dy = by - ay;
+
+  let tmin = 0;
+  let tmax = 1;
+  const eps = 1e-6;
+
+  if (Math.abs(dx) < eps) {
+    if (ax < minX || ax > maxX) return false;
+  } else {
+    const inv = 1 / dx;
+    let tx1 = (minX - ax) * inv;
+    let tx2 = (maxX - ax) * inv;
+    if (tx1 > tx2) [tx1, tx2] = [tx2, tx1];
+    tmin = Math.max(tmin, tx1);
+    tmax = Math.min(tmax, tx2);
+    if (tmin > tmax) return false;
+  }
+
+  if (Math.abs(dy) < eps) {
+    if (ay < minY || ay > maxY) return false;
+  } else {
+    const inv = 1 / dy;
+    let ty1 = (minY - ay) * inv;
+    let ty2 = (maxY - ay) * inv;
+    if (ty1 > ty2) [ty1, ty2] = [ty2, ty1];
+    tmin = Math.max(tmin, ty1);
+    tmax = Math.min(tmax, ty2);
+    if (tmin > tmax) return false;
+  }
+
+  return true;
 }
 
 function redrawGrid(
@@ -156,55 +421,36 @@ function redrawGrid(
   const wx1 = wx0 + screenW / scale;
   const wy1 = wy0 + screenH / scale;
 
-  // --- Minor grid lines (SUB_CELL spacing) ---
-  const minorPx = SUB_CELL * scale;
-  if (minorPx >= MINOR_HIDE_THRESHOLD) {
-    const sxMin = Math.floor(wx0 / SUB_CELL) * SUB_CELL;
-    const sxMax = Math.ceil(wx1 / SUB_CELL) * SUB_CELL;
-    const syMin = Math.floor(wy0 / SUB_CELL) * SUB_CELL;
-    const syMax = Math.ceil(wy1 / SUB_CELL) * SUB_CELL;
+  const cellPx = CELL * scale;
+  if (cellPx < GRID_HIDE_THRESHOLD) return;
 
-    grid.setStrokeStyle({ width: 1, color: MINOR_LINE_COLOR, alpha: MINOR_LINE_ALPHA });
-    for (let x = sxMin; x <= sxMax; x += SUB_CELL) {
-      if (x % CELL === 0) continue;
-      grid.moveTo(x, syMin);
-      grid.lineTo(x, syMax);
-    }
-    for (let y = syMin; y <= syMax; y += SUB_CELL) {
-      if (y % CELL === 0) continue;
-      grid.moveTo(sxMin, y);
-      grid.lineTo(sxMax, y);
-    }
-    grid.stroke();
+  const sxMin = Math.floor(wx0 / CELL) * CELL;
+  const sxMax = Math.ceil(wx1 / CELL) * CELL;
+  const syMin = Math.floor(wy0 / CELL) * CELL;
+  const syMax = Math.ceil(wy1 / CELL) * CELL;
+
+  grid.setStrokeStyle({ width: 1, color: GRID_LINE_COLOR, alpha: GRID_LINE_ALPHA });
+  for (let x = sxMin; x <= sxMax; x += CELL) {
+    grid.moveTo(x, syMin);
+    grid.lineTo(x, syMax);
   }
-
-  // --- Major grid lines (CELL spacing) ---
-  const majorPx = CELL * scale;
-  if (majorPx >= MAJOR_HIDE_THRESHOLD) {
-    const cxMin = Math.floor(wx0 / CELL) * CELL;
-    const cxMax = Math.ceil(wx1 / CELL) * CELL;
-    const cyMin = Math.floor(wy0 / CELL) * CELL;
-    const cyMax = Math.ceil(wy1 / CELL) * CELL;
-
-    grid.setStrokeStyle({ width: 1, color: MAJOR_LINE_COLOR, alpha: MAJOR_LINE_ALPHA });
-    for (let x = cxMin; x <= cxMax; x += CELL) {
-      grid.moveTo(x, cyMin);
-      grid.lineTo(x, cyMax);
-    }
-    for (let y = cyMin; y <= cyMax; y += CELL) {
-      grid.moveTo(cxMin, y);
-      grid.lineTo(cxMax, y);
-    }
-    grid.stroke();
-
-    // --- Dots at CELL intersections ---
-    for (let x = cxMin; x <= cxMax; x += CELL) {
-      for (let y = cyMin; y <= cyMax; y += CELL) {
-        grid.circle(x, y, GRID_DOT_RADIUS);
-      }
-    }
-    grid.fill({ color: GRID_DOT_COLOR, alpha: GRID_DOT_ALPHA });
+  for (let y = syMin; y <= syMax; y += CELL) {
+    grid.moveTo(sxMin, y);
+    grid.lineTo(sxMax, y);
   }
+  grid.stroke();
+
+  const dotStep = GRID_DOT_STRIDE_CELLS * CELL;
+  const dotMinX = Math.floor(wx0 / dotStep) * dotStep;
+  const dotMaxX = Math.ceil(wx1 / dotStep) * dotStep;
+  const dotMinY = Math.floor(wy0 / dotStep) * dotStep;
+  const dotMaxY = Math.ceil(wy1 / dotStep) * dotStep;
+  for (let x = dotMinX; x <= dotMaxX; x += dotStep) {
+    for (let y = dotMinY; y <= dotMaxY; y += dotStep) {
+      grid.circle(x, y, GRID_DOT_RADIUS);
+    }
+  }
+  grid.fill({ color: GRID_DOT_COLOR, alpha: GRID_DOT_ALPHA });
 }
 
 export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
@@ -220,6 +466,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const patchTypes = usePatchStore((s) => s.patchTypes);
   const frames = useGameStore((s) => s.frames);
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
+  const selectedFrameIds = useGameStore((s) => s.selectedFrameIds);
+  const setFrameSelection = useGameStore((s) => s.setFrameSelection);
+  const toggleFrameSelection = useGameStore((s) => s.toggleFrameSelection);
   const markers = useGameStore((s) => s.markers);
   const markerLayerRef = useRef<Graphics | null>(null);
   const markersRef = useRef(markers);
@@ -242,20 +491,35 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const blueprintMapRef = useRef<Record<string, string>>({});
   const blueprintSupported = isFeatureSupported(capabilityMethods.blueprintPalette);
   const connections = useGameStore((s) => s.connections);
+  const powerNetworks = useGameStore((s) => s.powerNetworks);
   const createConnection = useGameStore((s) => s.createConnection);
   const removeConnection = useGameStore((s) => s.removeConnection);
+  const removeFrame = useGameStore((s) => s.removeFrame);
   const connectionLayerRef = useRef<Graphics | null>(null);
   const wiringLineRef = useRef<Graphics | null>(null);
   const connectionsRef = useRef(connections);
   connectionsRef.current = connections;
+  const powerNetworksRef = useRef(powerNetworks);
+  powerNetworksRef.current = powerNetworks;
   const placedFramesRef = useRef<PlacedFrame[]>([]);
-  const wiringRef = useRef<{ sourceId: number; type: "POWER" | "DATA" | "CONVEYOR" } | null>(null);
+  const wiringRef = useRef<
+    { sourceId: number; type: "POWER" | "DATA" | "CONVEYOR" | "POE"; medium: "WIRE" | "WIRELESS" | "BEAM" } | null
+  >(null);
   const rpcClientRef = useRef(rpcClient);
   rpcClientRef.current = rpcClient;
+  const selectedFrameIdsRef = useRef(selectedFrameIds);
+  selectedFrameIdsRef.current = selectedFrameIds;
   const createConnectionRef = useRef(createConnection);
   createConnectionRef.current = createConnection;
-  const [wiringMode, setWiringMode] = useState<{ sourceId: number; type: "POWER" | "DATA" | "CONVEYOR" } | null>(null);
+  const [wiringMode, setWiringMode] = useState<
+    { sourceId: number; type: "POWER" | "DATA" | "CONVEYOR" | "POE"; medium: "WIRE" | "WIRELESS" | "BEAM" } | null
+  >(null);
   const [frameContextMenu, setFrameContextMenu] = useState<{ x: number; y: number; frameId: number } | null>(null);
+  const [bulkFrameContextMenu, setBulkFrameContextMenu] = useState<{
+    x: number;
+    y: number;
+    frameIds: number[];
+  } | null>(null);
   const [frameRenaming, setFrameRenaming] = useState<{ frameId: number; name: string } | null>(null);
   const [compContextMenu, setCompContextMenu] = useState<{
     x: number; y: number; frameId: number; componentId: number;
@@ -264,13 +528,21 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const [blueprintPickerOpen, setBlueprintPickerOpen] = useState<{ wx: number; wy: number } | null>(null);
   const [patchInspector, setPatchInspector] = useState<{ patch: Patch; x: number; y: number } | null>(null);
   const drawConnectionsRef = useRef<() => void>(() => {});
+  const drawRestrictedDropZonesRef = useRef<() => void>(() => {});
+  const restrictedDropLayerRef = useRef<Graphics | null>(null);
+  const selectionBoxRef = useRef<Graphics | null>(null);
+  const boxSelectSessionRef = useRef<{
+    active: boolean;
+    wx0: number;
+    wy0: number;
+  } | null>(null);
 
   // --- Frame positions map for connection drawing and drag ---
   const framePositionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
 
   const getPatchAtWorldPos = (wx: number, wy: number): Patch | null => {
-    const gridX = Math.floor(wx / SUB_CELL);
-    const gridY = Math.floor(wy / SUB_CELL);
+    const gridX = Math.floor(wx / CELL);
+    const gridY = Math.floor(wy / CELL);
     const currentPatches = patchesRef.current;
 
     for (const patch of currentPatches) {
@@ -288,6 +560,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       if (!target.closest("[data-context-menu]")) {
         setContextMenu(null);
         setFrameContextMenu(null);
+        setBulkFrameContextMenu(null);
         setCompContextMenu(null);
         setFrameRenaming(null);
         setPatchInspector(null);
@@ -316,8 +589,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       arr.push(conn);
     }
 
-    const TYPE_ORDER: Array<"POWER" | "DATA" | "CONVEYOR"> = ["POWER", "DATA", "CONVEYOR"];
-    const OFFSET_STEP = 6;
+    const dashAnimPhase = performance.now() * 0.004;
 
     for (const [, conns] of groups) {
       const sample = conns[0]!;
@@ -327,45 +599,84 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       const tgtFrame = framesRef.current.find((f) => f.id === sample.target);
       if (!srcPos || !tgtPos || !srcFrame || !tgtFrame) continue;
 
-      const srcCells = FRAME_CELL_SIZES[srcFrame.size] ?? 1;
-      const tgtCells = FRAME_CELL_SIZES[tgtFrame.size] ?? 1;
-      const baseX1 = srcPos.x + (srcCells * CELL) / 2;
-      const baseY1 = srcPos.y + (srcCells * CELL) / 2;
-      const baseX2 = tgtPos.x + (tgtCells * CELL) / 2;
-      const baseY2 = tgtPos.y + (tgtCells * CELL) / 2;
+      const getPosition = (id: number) => framePositionsRef.current.get(id) ?? null;
+      const getFrameSize = (id: number) => framesRef.current.find((f) => f.id === id)?.size;
 
-      const dx = baseX2 - baseX1;
-      const dy = baseY2 - baseY1;
-      const len = Math.sqrt(dx * dx + dy * dy) || 1;
-      const nx = -dy / len;
-      const ny = dx / len;
+      const sorted = sortConnectionsForPair(conns) as ConnectionDTO[];
+      sorted.forEach((conn, idx) => {
+        const seg = segmentForPairNthConnection(sorted, idx, getPosition, getFrameSize);
+        if (!seg) return;
+        const { x1, y1, x2, y2 } = seg;
 
-      const presentTypes = TYPE_ORDER.filter((t) => conns.some((c) => c.type === t));
-      const count = presentTypes.length;
-      const startIndex = -(count - 1) / 2;
+        const type = conn.type;
+        const medium = (conn.medium ?? "WIRE") as ConnectionMedium;
+        const conveyorBad = type === "CONVEYOR" && isConveyorPairMisconfigured(srcFrame, tgtFrame);
 
-      presentTypes.forEach((type, idx) => {
-        const offset = (startIndex + idx) * OFFSET_STEP;
-        const ox = nx * offset;
-        const oy = ny * offset;
+        let color = CONN_COLOR[type] ?? 0xffffff;
+        let alpha = 0.7;
+        let width = 2;
 
-        const x1 = baseX1 + ox;
-        const y1 = baseY1 + oy;
-        const x2 = baseX2 + ox;
-        const y2 = baseY2 + oy;
+        if (type === "POWER") {
+          const net = powerNetworksRef.current.find((n) => n.frames?.includes(conn.source));
+          const noPower = !net || netAvailable(net) <= 0;
+          if (noPower) {
+            color = POWER_LINE_DIM;
+            alpha = 0.55;
+          }
+        }
 
-        const color = CONN_COLOR[type] ?? 0xffffff;
-        connLayer.setStrokeStyle({ width: 2, color, alpha: 0.7 });
-        connLayer.moveTo(x1, y1);
-        connLayer.lineTo(x2, y2);
-        connLayer.stroke();
+        if (conveyorBad) {
+          color = CONVEYOR_DIM;
+          alpha = 0.45;
+        }
+
+        const wirelessDash = medium === "WIRELESS";
+        const conveyorAnim =
+          type === "CONVEYOR" &&
+          typeof conn.transfer_progress === "number" &&
+          conn.transfer_progress > 0.02 &&
+          conn.transfer_progress < 0.98;
+
+        if (wirelessDash || conveyorAnim) {
+          strokeDashedLine(
+            connLayer,
+            x1,
+            y1,
+            x2,
+            y2,
+            wirelessDash ? DASH_LEN : 5,
+            wirelessDash ? DASH_GAP : 4,
+            width,
+            color,
+            alpha,
+            dashAnimPhase,
+          );
+        } else {
+          connLayer.setStrokeStyle({ width, color, alpha });
+          connLayer.moveTo(x1, y1);
+          connLayer.lineTo(x2, y2);
+          connLayer.stroke();
+        }
 
         const mx = (x1 + x2) / 2;
         const my = (y1 + y2) / 2;
-        connLayer.circle(mx, my, 4);
-        connLayer.fill({ color, alpha: 0.9 });
+
+        if (conveyorBad) {
+          const arm = 5;
+          connLayer.setStrokeStyle({ width: 2, color, alpha: alpha + 0.15 });
+          connLayer.moveTo(mx - arm, my - arm);
+          connLayer.lineTo(mx + arm, my + arm);
+          connLayer.stroke();
+          connLayer.moveTo(mx - arm, my + arm);
+          connLayer.lineTo(mx + arm, my - arm);
+          connLayer.stroke();
+        } else {
+          connLayer.circle(mx, my, 4);
+          connLayer.fill({ color, alpha: 0.9 });
+        }
       });
     }
+    drawRestrictedDropZonesRef.current();
   };
   drawConnectionsRef.current = drawConnections;
 
@@ -375,7 +686,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     layer.clear();
     const currentMarkers = markersRef.current;
     for (const marker of currentMarkers) {
-      const colorNum = marker.color ? parseInt(marker.color.replace("#", "0x")) : 0xff0000;
+      const colorNum = markerColorToPixi(marker.color);
       layer.circle(marker.x, marker.y, 8);
       layer.fill({ color: colorNum });
       layer.stroke({ color: 0xffffff, width: 2 });
@@ -398,7 +709,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       const alpha = a / 255;
 
       for (const [cx, cy] of patch.cells) {
-        gfx.rect(cx * SUB_CELL, cy * SUB_CELL, SUB_CELL, SUB_CELL);
+        gfx.rect(cx * CELL, cy * CELL, CELL, CELL);
       }
       gfx.fill({ color, alpha });
 
@@ -411,7 +722,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   }, [renderPatches]);
 
   const parseBlueprintSize = (source: string): string => {
-    const match = source.match(/FrameSize\.([SMLG])/);
+    const match = source.match(/FrameSize\.(\w+)/);
     return match?.[1] ?? "M";
   };
 
@@ -419,7 +730,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     if (!blueprintSupported) return;
     void (async () => {
       try {
-        const result = await rpcClient.call<{ blueprints: Record<string, string> }>("blueprint.palette");
+        const result = await rpcClient.call<{ blueprints: Record<string, string> }>("code.blueprints");
         const bp = result.blueprints ?? {};
         setBlueprintMap(bp);
         blueprintMapRef.current = bp;
@@ -443,8 +754,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   };
 
   const createPatch = async (patchType: string, wx: number, wy: number) => {
-    const gridX = Math.floor(wx / SUB_CELL);
-    const gridY = Math.floor(wy / SUB_CELL);
+    const gridX = Math.floor(wx / CELL);
+    const gridY = Math.floor(wy / CELL);
     try {
       await rpcClient.call("patches.create", {
         type: patchType,
@@ -461,8 +772,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
 
   const placedFrames: PlacedFrame[] = useMemo(() => {
     return frames.map((frame, index) => {
-      const x = frame.position?.x ?? (index % 6) * CELL + SUB_CELL;
-      const y = frame.position?.y ?? Math.floor(index / 6) * CELL + SUB_CELL;
+      const slotStride = (FRAME_CELL_SIZES.S ?? 3) * CELL;
+      const x = frame.position?.x ?? (index % 6) * slotStride + CELL;
+      const y = frame.position?.y ?? Math.floor(index / 6) * slotStride + CELL;
       return { ...frame, _x: x, _y: y };
     });
   }, [frames]);
@@ -503,29 +815,94 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     framesRef,
     framePositionsRef,
     drawConnections,
+    connectionsRef,
     moveFrame,
     selectFrame,
+    toggleFrameSelection,
     onFrameMiniInspect,
   });
   dragState.rpcClientRef.current = rpcClient;
 
+  drawRestrictedDropZonesRef.current = () => {
+    const layer = restrictedDropLayerRef.current;
+    const world = worldRef.current;
+    const app = appRef.current;
+    if (!layer || !world || !app) return;
+    layer.clear();
+    const dragging = dragState.draggingFrameIdsRef.current;
+    if (!dragging || dragging.size !== 1) return;
+
+    const frameId = [...dragging][0]!;
+    const dragFrame = framesRef.current.find((f) => f.id === frameId);
+    if (!dragFrame) return;
+
+    const fc = FRAME_CELL_SIZES[dragFrame.size] ?? 1;
+    const side = fc * CELL;
+
+    const scale = world.scale.x;
+    const wx0 = -world.x / scale;
+    const wy0 = -world.y / scale;
+    const wx1 = wx0 + app.screen.width / scale;
+    const wy1 = wy0 + app.screen.height / scale;
+
+    const pad = CELL;
+    const focusMinX = wx0 - pad;
+    const focusMaxX = wx1 + pad;
+    const focusMinY = wy0 - pad;
+    const focusMaxY = wy1 + pad;
+
+    const ixMin = Math.floor(focusMinX / CELL);
+    const ixMax = Math.ceil(focusMaxX / CELL);
+    const iyMin = Math.floor(focusMinY / CELL);
+    const iyMax = Math.ceil(focusMaxY / CELL);
+
+    let cellStride = 1;
+    let approxCells = (ixMax - ixMin) * (iyMax - iyMin);
+    while (approxCells > 14000 && cellStride < 5) {
+      cellStride++;
+      approxCells = Math.ceil((ixMax - ixMin) / cellStride) * Math.ceil((iyMax - iyMin) / cellStride);
+    }
+
+    // Per grid cell: red iff no snapped top-left exists that both overlaps this cell and is valid.
+    // (Avoids misleading "top-left only" red that still allows the frame body to sit on wires.)
+    for (let ix = ixMin; ix < ixMax; ix += cellStride) {
+      for (let iy = iyMin; iy < iyMax; iy += cellStride) {
+        const tops = snappedTopLeftsOverlappingCell(ix, iy, side);
+        if (tops.length === 0) continue;
+
+        let anyValid = false;
+        for (const p of tops) {
+          const candidate = new Map([[frameId, p]]);
+          if (isGroupMoveValid(candidate, connectionsRef.current, framesRef.current, framePositionsRef.current)) {
+            anyValid = true;
+            break;
+          }
+        }
+        if (!anyValid) {
+          layer.rect(ix * CELL, iy * CELL, CELL * cellStride, CELL * cellStride);
+        }
+      }
+    }
+    layer.fill({ color: 0xff3355, alpha: 0.14 });
+  };
+
   // Keep framePositionsRef in sync with placedFrames
   // Skip frames that are currently being dragged or have pending move RPCs
-  useMemo(() => {
+  useLayoutEffect(() => {
     for (const frame of placedFrames) {
-      const isDragging = dragState.draggingFrameIdRef.current === frame.id;
+      const isDragging = dragState.draggingFrameIdsRef.current?.has(frame.id) ?? false;
       const isPending = dragState.pendingMoveIds.current.has(frame.id);
       if (!isDragging && !isPending) {
         framePositionsRef.current.set(frame.id, { x: frame._x, y: frame._y });
       }
     }
-    // Clean up removed frames
     const activeIds = new Set(placedFrames.map((f) => f.id));
     for (const id of framePositionsRef.current.keys()) {
       if (!activeIds.has(id)) {
         framePositionsRef.current.delete(id);
       }
     }
+    // dragState.* refs are stable; omit dragState object from deps (new wrapper each render).
   }, [placedFrames]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getEventClientXY = (e: FederatedPointerEvent): { x: number; y: number } => {
@@ -549,10 +926,49 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         const currentFrames = framesRef.current;
         const currentConns = connectionsRef.current;
         const tgtFrame = currentFrames.find((f) => f.id === frameId);
-        const hasConn = tgtFrame ? frameHasConnector(tgtFrame, wiring.type) : false;
-        const hasReq = tgtFrame ? frameMeetsConnectionRequirements(tgtFrame, wiring.type) : false;
-        const cardOk = isCardinallySatisfied(currentConns, currentFrames, frameId, wiring.type);
-        const pairOk = !hasConnectionBetween(currentConns, wiring.sourceId, frameId, wiring.type);
+        const hasConn = tgtFrame ? frameHasConnector(tgtFrame, wiring.type, wiring.medium) : false;
+        const hasReq = tgtFrame
+          ? frameMeetsConnectionRequirements(tgtFrame, wiring.type, wiring.medium)
+          : false;
+        const cardOk = isCardinallySatisfied(currentConns, currentFrames, frameId, wiring.type, wiring.medium);
+        const pairOk = !hasConnectionBetween(currentConns, wiring.sourceId, frameId, wiring.type, wiring.medium);
+        const sourceFrame = currentFrames.find((f) => f.id === wiring.sourceId);
+        const sourceCenter = sourceFrame ? getFrameCenter(sourceFrame) : null;
+        const targetCenter = tgtFrame ? getFrameCenter(tgtFrame) : null;
+        let geometryOk = false;
+        if (sourceFrame && tgtFrame && sourceCenter && targetCenter) {
+          const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame, wiring.type, wiring.medium);
+          const targetMax = getMaxConnectionDistanceForFrame(tgtFrame, wiring.type, wiring.medium);
+          const effectiveMax = Math.min(sourceMax, targetMax);
+          const dist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
+          geometryOk = dist <= effectiveMax;
+
+          if (
+            geometryOk &&
+            (wiring.medium === "WIRE" || wiring.medium === "BEAM")
+          ) {
+            for (const other of currentFrames) {
+              if (other.id === wiring.sourceId || other.id === frameId) continue;
+              if (!other.position) continue;
+              const side = getFrameSquareSide(other);
+              if (
+                segmentIntersectsAABB(
+                  sourceCenter.x,
+                  sourceCenter.y,
+                  targetCenter.x,
+                  targetCenter.y,
+                  other.position.x,
+                  other.position.y,
+                  side,
+                  side,
+                )
+              ) {
+                geometryOk = false;
+                break;
+              }
+            }
+          }
+        }
 
         if (
           frameId !== wiring.sourceId &&
@@ -560,9 +976,10 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           hasConn &&
           hasReq &&
           cardOk &&
-          pairOk
+          pairOk &&
+          geometryOk
         ) {
-          createConnectionRef.current(rpcClientRef.current, wiring.sourceId, frameId, wiring.type).catch(console.error);
+          createConnectionRef.current(rpcClientRef.current, wiring.sourceId, frameId, wiring.type, wiring.medium).catch(console.error);
         }
         wiringRef.current = null;
         setWiringMode(null);
@@ -589,11 +1006,54 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         const currentFrames = framesRef.current;
         const currentConns = connectionsRef.current;
         const tgtFrame = currentFrames.find((f) => f.id === frameId);
-        const hasConn = tgtFrame ? frameHasConnector(tgtFrame, wiring.type) : false;
-        const hasReq = tgtFrame ? frameMeetsConnectionRequirements(tgtFrame, wiring.type) : false;
-        const cardOk = isCardinallySatisfied(currentConns, currentFrames, frameId, wiring.type);
-        if (tgtFrame && hasConn && hasReq && cardOk) {
-          createConnectionRef.current(rpcClientRef.current, wiring.sourceId, frameId, wiring.type).catch(console.error);
+        const hasConn = tgtFrame ? frameHasConnector(tgtFrame, wiring.type, wiring.medium) : false;
+        const hasReq = tgtFrame
+          ? frameMeetsConnectionRequirements(tgtFrame, wiring.type, wiring.medium)
+          : false;
+        const cardOk = isCardinallySatisfied(currentConns, currentFrames, frameId, wiring.type, wiring.medium);
+        const sourceFrame = currentFrames.find((f) => f.id === wiring.sourceId);
+        const sourceCenter = sourceFrame ? getFrameCenter(sourceFrame) : null;
+        const targetCenter = tgtFrame ? getFrameCenter(tgtFrame) : null;
+        let geometryOk = false;
+        if (sourceFrame && tgtFrame && sourceCenter && targetCenter) {
+          const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame, wiring.type, wiring.medium);
+          const targetMax = getMaxConnectionDistanceForFrame(tgtFrame, wiring.type, wiring.medium);
+          const effectiveMax = Math.min(sourceMax, targetMax);
+          const dist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
+          geometryOk = dist <= effectiveMax;
+
+          if (geometryOk && (wiring.medium === "WIRE" || wiring.medium === "BEAM")) {
+            for (const other of currentFrames) {
+              if (other.id === wiring.sourceId || other.id === frameId) continue;
+              if (!other.position) continue;
+              const side = getFrameSquareSide(other);
+              if (
+                segmentIntersectsAABB(
+                  sourceCenter.x,
+                  sourceCenter.y,
+                  targetCenter.x,
+                  targetCenter.y,
+                  other.position.x,
+                  other.position.y,
+                  side,
+                  side,
+                )
+              ) {
+                geometryOk = false;
+                break;
+              }
+            }
+          }
+        }
+
+        if (tgtFrame && hasConn && hasReq && cardOk && geometryOk) {
+          createConnectionRef.current(
+            rpcClientRef.current,
+            wiring.sourceId,
+            frameId,
+            wiring.type,
+            wiring.medium,
+          ).catch(console.error);
         }
         wiringRef.current = null;
         setWiringMode(null);
@@ -610,16 +1070,54 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         if (!Number.isNaN(componentId)) {
           setCompContextMenu({ x: e.clientX, y: e.clientY, frameId, componentId });
           setFrameContextMenu(null);
+          setBulkFrameContextMenu(null);
           setContextMenu(null);
           return;
         }
       }
 
+      if (selectedFrameIdsRef.current.length > 1 && selectedFrameIdsRef.current.includes(frameId)) {
+        setBulkFrameContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          frameIds: [...selectedFrameIdsRef.current],
+        });
+        setFrameContextMenu(null);
+        setCompContextMenu(null);
+        setContextMenu(null);
+        return;
+      }
+
       setFrameContextMenu({ x: e.clientX, y: e.clientY, frameId });
+      setBulkFrameContextMenu(null);
       setCompContextMenu(null);
       setContextMenu(null);
     },
     [],
+  );
+
+  const removeFramesBulk = useCallback(
+    async (ids: number[]) => {
+      if (ids.length === 0) return;
+      const client = rpcClientRef.current;
+      const connIds = new Set<number>();
+      for (const c of useGameStore.getState().connections) {
+        if (ids.includes(c.source) || ids.includes(c.target)) connIds.add(c.id);
+      }
+      for (const cid of connIds) {
+        await removeConnection(client, cid);
+      }
+      for (const fid of ids) {
+        if (wiringRef.current?.sourceId === fid) {
+          wiringRef.current = null;
+          setWiringMode(null);
+          const wl = wiringLineRef.current;
+          if (wl) wl.visible = false;
+        }
+        await removeFrame(client, fid);
+      }
+    },
+    [removeConnection, removeFrame],
   );
 
   const onBackgroundClick = (event: FederatedPointerEvent) => {
@@ -655,7 +1153,102 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         return;
       }
     }
-    selectFrame(null);
+    // Marquee selection start (clears selection on click-up if no drag — see pointerup handler)
+    const app = appRef.current;
+    const canvasEl = app?.canvas ?? null;
+    const worldContainer = worldRef.current;
+    const boxGfx = selectionBoxRef.current;
+    if (!canvasEl || !worldContainer || !boxGfx) {
+      selectFrame(null);
+      return;
+    }
+    const { x: clientX, y: clientY } = getEventClientXY(event);
+    const rect = canvasEl.getBoundingClientRect();
+    const sx = clientX - rect.left;
+    const sy = clientY - rect.top;
+    const scale = worldContainer.scale.x;
+    const wx = (sx - worldContainer.x) / scale;
+    const wy = (sy - worldContainer.y) / scale;
+    boxSelectSessionRef.current = {
+      active: true,
+      wx0: wx,
+      wy0: wy,
+    };
+    boxGfx.clear();
+    boxGfx.visible = true;
+
+    const onMove = (pe: PointerEvent) => {
+      const sess = boxSelectSessionRef.current;
+      if (!sess?.active) return;
+      const r = canvasEl.getBoundingClientRect();
+      const csx = pe.clientX - r.left;
+      const csy = pe.clientY - r.top;
+      const curWx = (csx - worldContainer.x) / scale;
+      const curWy = (csy - worldContainer.y) / scale;
+      const x0 = Math.min(sess.wx0, curWx);
+      const y0 = Math.min(sess.wy0, curWy);
+      const x1 = Math.max(sess.wx0, curWx);
+      const y1 = Math.max(sess.wy0, curWy);
+      boxGfx.clear();
+      boxGfx.rect(x0, y0, x1 - x0, y1 - y0);
+      boxGfx.fill({ color: 0x3b82f6, alpha: 0.12 });
+      boxGfx.stroke({ width: 1, color: 0x3b82f6, alpha: 0.95 });
+    };
+
+    const onUp = (pe: PointerEvent) => {
+      const sess = boxSelectSessionRef.current;
+      boxSelectSessionRef.current = null;
+      boxGfx.clear();
+      boxGfx.visible = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+
+      if (!sess?.active) return;
+
+      const r = canvasEl.getBoundingClientRect();
+      const csx = pe.clientX - r.left;
+      const csy = pe.clientY - r.top;
+      const curWx = (csx - worldContainer.x) / scale;
+      const curWy = (csy - worldContainer.y) / scale;
+      const dragDist = Math.hypot(curWx - sess.wx0, curWy - sess.wy0);
+      const minSide = 4 / scale;
+      if (dragDist < minSide) {
+        if (!pe.shiftKey) {
+          selectFrame(null);
+        }
+        return;
+      }
+
+      const bx0 = Math.min(sess.wx0, curWx);
+      const by0 = Math.min(sess.wy0, curWy);
+      const bx1 = Math.max(sess.wx0, curWx);
+      const by1 = Math.max(sess.wy0, curWy);
+
+      const hit: number[] = [];
+      for (const f of placedFramesRef.current) {
+        const side = getFrameSquareSide(f);
+        const fx = f._x;
+        const fy = f._y;
+        if (bx0 < fx + side && bx1 > fx && by0 < fy + side && by1 > fy) {
+          hit.push(f.id);
+        }
+      }
+      hit.sort((a, b) => a - b);
+      if (hit.length === 0) {
+        if (!pe.shiftKey) selectFrame(null);
+        return;
+      }
+      if (pe.shiftKey) {
+        const merged = [...new Set([...selectedFrameIdsRef.current, ...hit])];
+        merged.sort((a, b) => a - b);
+        setFrameSelection(merged);
+      } else {
+        setFrameSelection(hit);
+      }
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   };
 
   /** Sync the HTML overlay transform with the Pixi worldContainer */
@@ -704,6 +1297,10 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         gridRef.current = grid;
         worldContainer.addChild(grid);
 
+        const restrictedDropLayer = new Graphics();
+        restrictedDropLayerRef.current = restrictedDropLayer;
+        worldContainer.addChild(restrictedDropLayer);
+
         const patchLayer = new Container();
         patchLayer.label = "patches";
         worldContainer.addChild(patchLayer);
@@ -717,12 +1314,31 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         connectionLayerRef.current = connectionLayer;
         worldContainer.addChild(connectionLayer);
 
+        const selectionBox = new Graphics();
+        selectionBox.visible = false;
+        selectionBoxRef.current = selectionBox;
+        worldContainer.addChild(selectionBox);
+
         // No more Pixi frameLayer — frames are rendered as HTML overlays
 
         redrawGrid(grid, worldContainer, app.screen.width, app.screen.height);
 
         // Initial overlay sync
         syncOverlayTransform();
+
+        const onConnAnimTick = () => {
+          const conns = useGameStore.getState().connections;
+          const anyWireless = conns.some((c) => (c.medium ?? "WIRE") === "WIRELESS");
+          const anyConveyorAnim = conns.some(
+            (c) =>
+              c.type === "CONVEYOR" &&
+              typeof c.transfer_progress === "number" &&
+              c.transfer_progress > 0.02 &&
+              c.transfer_progress < 0.98,
+          );
+          if (anyWireless || anyConveyorAnim) drawConnectionsRef.current();
+        };
+        app.ticker.add(onConnAnimTick);
 
         // --- ResizeObserver ---
         resizeObserver = new ResizeObserver((entries) => {
@@ -813,6 +1429,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           // Background context menu (no frame hit-testing needed — HTML handles frame clicks)
           setContextMenu({ x: sx, y: sy, wx, wy });
           setFrameContextMenu(null);
+          setBulkFrameContextMenu(null);
           setCompContextMenu(null);
         };
         canvasEl.addEventListener("contextmenu", onContextMenu);
@@ -859,7 +1476,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             const wx = Math.round(cursorWx / CELL) * CELL;
             const wy = Math.round(cursorWy / CELL) * CELL;
             const src = blueprintMapRef.current[creatingRef.current] ?? "";
-            const sizeKey = src.match(/FrameSize\.([SMLG])/)?.[1] ?? "M";
+            const sizeKey = parseBlueprintSize(src);
             const cells = FRAME_CELL_SIZES[sizeKey] ?? 2;
             const boxSize = cells * CELL;
             ghost.clear();
@@ -873,7 +1490,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             ghost.visible = false;
           }
 
-          // Update wiring preview line
+          // Update wiring preview: max-distance circle + line to cursor
           const wiring = wiringRef.current;
           if (wiring) {
             const sourceFrame = placedFramesRef.current.find((f) => f.id === wiring.sourceId);
@@ -883,8 +1500,15 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               const cx = sourceFrame._x + boxSize / 2;
               const cy = sourceFrame._y + boxSize / 2;
               const color = CONN_COLOR[wiring.type] ?? 0xffffff;
+              const medium = wiring.medium ?? "WIRE";
+              const rawR = getMaxConnectionDistanceForFrame(sourceFrame, wiring.type, medium);
+              const radius =
+                Number.isFinite(rawR) && rawR > 0 && rawR < 1e15 ? rawR : 1000;
               wiringLine.clear();
-              wiringLine.setStrokeStyle({ width: 2, color, alpha: 0.8 });
+              wiringLine.setStrokeStyle({ width: 1, color, alpha: 0.42 });
+              wiringLine.circle(cx, cy, radius);
+              wiringLine.stroke();
+              wiringLine.setStrokeStyle({ width: 2, color, alpha: 0.85 });
               wiringLine.moveTo(cx, cy);
               wiringLine.lineTo(cursorWx, cursorWy);
               wiringLine.stroke();
@@ -914,6 +1538,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
 
         // Store cleanup references on the canvas element
         (canvasEl as any).__canvasCleanup = () => {
+          app.ticker.remove(onConnAnimTick);
           canvasEl!.removeEventListener("wheel", onWheel);
           canvasEl!.removeEventListener("pointerdown", onPanStart);
           canvasEl!.removeEventListener("pointermove", onPanMove);
@@ -932,9 +1557,11 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       appRef.current = null;
       worldRef.current = null;
       gridRef.current = null;
+      restrictedDropLayerRef.current = null;
       patchLayerRef.current = null;
       markerLayerRef.current = null;
       connectionLayerRef.current = null;
+      selectionBoxRef.current = null;
       wiringLineRef.current = null;
       panningRef.current = false;
       if (resizeObserver) resizeObserver.disconnect();
@@ -950,7 +1577,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
 
   useEffect(() => {
     drawConnections();
-  }, [connections]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connections, powerNetworks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Re-sync frame positions and redraw connections when frames change ---
   useEffect(() => {
@@ -981,13 +1608,29 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     syncOverlayTransform();
   }, [onBackgroundClick, placedFrames, selectFrame, selectedFrameId, wiringMode]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("input, textarea, select, [contenteditable=true]")) return;
+      const ids = [...useGameStore.getState().selectedFrameIds];
+      if (ids.length === 0) return;
+      e.preventDefault();
+      const n = ids.length;
+      if (!window.confirm(`Remove ${n} frame${n === 1 ? "" : "s"}? Connections will be removed.`)) return;
+      void removeFramesBulk(ids).catch(console.error);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [removeFramesBulk]);
+
   return (
     <div ref={hostRef} style={{ width: "100%", height: "100%", position: "relative" }}>
       {/* HTML frame overlay — synced with Pixi worldContainer transform */}
       <FrameOverlay
         ref={overlayRef}
         placedFrames={placedFrames}
-        selectedFrameId={selectedFrameId}
+        selectedFrameIds={selectedFrameIds}
         wiringMode={wiringMode}
         connections={connections}
         frames={placedFrames}
@@ -1045,19 +1688,53 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       {wiringMode && (() => {
         const sourceId = wiringMode.sourceId;
         const conns = connections;
+        const medium = wiringMode.medium ?? "WIRE";
+        const sourceFrame = frames.find((f) => f.id === sourceId);
+        const sourceCenter = sourceFrame ? getFrameCenter(sourceFrame) : null;
         const eligibleTargets = frames.filter((frame) => {
           if (frame.id === sourceId) return false;
-          if (!frameHasConnector(frame, wiringMode.type)) return false;
-          if (!frameMeetsConnectionRequirements(frame, wiringMode.type)) return false;
-          if (!isCardinallySatisfied(conns, frames, frame.id, wiringMode.type)) return false;
-          if (hasConnectionBetween(conns, sourceId, frame.id, wiringMode.type)) return false;
+          const targetCenter = getFrameCenter(frame);
+          if (!sourceCenter || !targetCenter) return false;
+
+          const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame!, wiringMode.type, medium);
+          const targetMax = getMaxConnectionDistanceForFrame(frame, wiringMode.type, medium);
+          const effectiveMax = Math.min(sourceMax, targetMax);
+          const dist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
+          if (dist > effectiveMax) return false;
+
+          if (medium === "WIRE" || medium === "BEAM") {
+            for (const other of frames) {
+              if (other.id === sourceId || other.id === frame.id) continue;
+              const otherCenter = getFrameCenter(other);
+              if (!otherCenter || !other.position) continue;
+              const side = getFrameSquareSide(other);
+              if (
+                segmentIntersectsAABB(
+                  sourceCenter.x,
+                  sourceCenter.y,
+                  targetCenter.x,
+                  targetCenter.y,
+                  other.position.x,
+                  other.position.y,
+                  side,
+                  side,
+                )
+              ) {
+                return false;
+              }
+            }
+          }
+          if (!frameHasConnector(frame, wiringMode.type, wiringMode.medium ?? "WIRE")) return false;
+          if (!frameMeetsConnectionRequirements(frame, wiringMode.type, wiringMode.medium ?? "WIRE")) return false;
+          if (!isCardinallySatisfied(conns, frames, frame.id, wiringMode.type, wiringMode.medium ?? "WIRE")) return false;
+          if (hasConnectionBetween(conns, sourceId, frame.id, wiringMode.type, wiringMode.medium ?? "WIRE")) return false;
           return true;
         });
         if (eligibleTargets.length > 0) return null;
 
         let reason = "No eligible target frames for this connection.";
         if (wiringMode.type === "CONVEYOR") {
-          reason = "Conveyor connections require a frame with a Storage component.";
+          reason = "Conveyor connections require a frame with item storage (e.g. Storage or Big Storage).";
         } else if (wiringMode.type === "DATA") {
           reason = "Data connections require a frame with a Core component.";
         }
@@ -1143,25 +1820,71 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           )}
         </div>
       )}
+      {bulkFrameContextMenu &&
+        createPortal(
+          <div
+            data-context-menu
+            style={{
+              position: "fixed",
+              top: bulkFrameContextMenu.y,
+              left: bulkFrameContextMenu.x,
+              background: "#1e293b",
+              border: "1px solid #334155",
+              borderRadius: 6,
+              padding: "4px 0",
+              fontSize: 12,
+              color: "#e5e7eb",
+              zIndex: 9999,
+              minWidth: 190,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+            }}
+          >
+            <div
+              style={{
+                padding: "4px 10px 6px",
+                fontSize: 11,
+                color: "#94a3b8",
+                fontWeight: 600,
+                borderBottom: "1px solid #1e3a5f",
+              }}
+            >
+              {bulkFrameContextMenu.frameIds.length} frames selected
+            </div>
+            <div
+              style={{ padding: "4px 10px", cursor: "pointer", color: "#f87171" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              onClick={() => {
+                const ids = bulkFrameContextMenu.frameIds;
+                if (!window.confirm(`Remove ${ids.length} frames? Connections will be removed.`)) return;
+                setBulkFrameContextMenu(null);
+                void removeFramesBulk(ids).catch(console.error);
+              }}
+            >
+              Remove frames…
+            </div>
+          </div>,
+          document.body,
+        )}
       {frameContextMenu && (() => {
         const frame = frames.find((f) => f.id === frameContextMenu.frameId);
         const allConnInfo = (["POWER", "DATA", "CONVEYOR"] as const).map((type) => {
           if (!frame) {
             return { type, available: false as const, reason: "Frame not found." };
           }
-          if (!frameHasConnector(frame, type)) {
+          if (!frameHasConnector(frame, type, "WIRE")) {
             return { type, available: false as const, reason: "No connector component on this frame." };
           }
-          if (!frameMeetsConnectionRequirements(frame, type)) {
+          if (!frameMeetsConnectionRequirements(frame, type, "WIRE")) {
             let reason = "Frame does not meet connection requirements.";
             if (type === "CONVEYOR") {
-              reason = "Requires a Storage component on this frame.";
+              reason = "Requires a component with item storage on this frame.";
             } else if (type === "DATA") {
               reason = "Requires a Core component on this frame.";
             }
             return { type, available: false as const, reason };
           }
-          if (!isCardinallySatisfied(connections, frames, frame.id, type)) {
+          if (!isCardinallySatisfied(connections, frames, frame.id, type, "WIRE")) {
             return { type, available: false as const, reason: "Max connections reached for this frame." };
           }
           return { type, available: true as const, reason: "" };
@@ -1335,7 +2058,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               <div style={{ padding: "4px 10px", color: "#6b7280" }}>
                 No connectors available
                 {allConnInfo
-                  .filter((c) => !c.available && c.reason && frame && frameHasConnector(frame, c.type))
+                  .filter((c) => !c.available && c.reason && frame && frameHasConnector(frame, c.type, "WIRE"))
                   .map((c) => (
                     <div key={c.type} style={{ marginTop: 2, fontSize: 10, color: "#9ca3af" }}>
                       {c.type}: {c.reason}
@@ -1350,8 +2073,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   onClick={() => {
-                    wiringRef.current = { sourceId: frameContextMenu.frameId, type };
-                    setWiringMode({ sourceId: frameContextMenu.frameId, type });
+                    wiringRef.current = { sourceId: frameContextMenu.frameId, type, medium: "WIRE" };
+                    setWiringMode({ sourceId: frameContextMenu.frameId, type, medium: "WIRE" });
                     setFrameContextMenu(null);
                   }}
                 >
@@ -1430,6 +2153,41 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
                 ))}
               </>
             )}
+            <div style={{ borderTop: "1px solid #334155", marginTop: 4 }} />
+            <div
+              style={{ padding: "4px 10px", cursor: "pointer", color: "#f87171" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              onClick={() => {
+                const fid = frameContextMenu.frameId;
+                if (
+                  !window.confirm(
+                    "Remove this frame? All connections to it will be destroyed.",
+                  )
+                ) {
+                  return;
+                }
+                setFrameContextMenu(null);
+                void (async () => {
+                  const client = rpcClientRef.current;
+                  if (wiringRef.current?.sourceId === fid) {
+                    wiringRef.current = null;
+                    setWiringMode(null);
+                    const wl = wiringLineRef.current;
+                    if (wl) wl.visible = false;
+                  }
+                  const toRemove = connections.filter(
+                    (c) => c.source === fid || c.target === fid,
+                  );
+                  for (const c of toRemove) {
+                    await removeConnection(client, c.id);
+                  }
+                  await removeFrame(client, fid);
+                })().catch(console.error);
+              }}
+            >
+              Remove frame…
+            </div>
           </div>,
           document.body
         );

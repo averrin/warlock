@@ -113,6 +113,9 @@ export interface ConnectionDTO {
   source: number;
   target: number;
   type: string;
+  medium?: string;
+  /** 0..1 while an item is moving along this conveyor edge (server-driven). */
+  transfer_progress?: number;
 }
 
 export interface EnvironmentDTO {

@@ -27,6 +27,12 @@ return {
 			type = AttributeType.INT,
 			value = 10,
 		},
+		max_connection_distance = {
+			title = "Connection radius",
+			description = "Max center-to-center distance to connect (world units).",
+			type = AttributeType.FLOAT,
+			value = 1000.0,
+		},
 		temp_proof = {
 			title = "Temp Proof",
 			description = "Does not overheat or freeze",

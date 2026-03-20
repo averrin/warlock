@@ -52,6 +52,8 @@ const char *ComponentSizeToString(ComponentSize size) {
 
 const char *FrameSizeToString(FrameSize size) {
   switch (size) {
+  case FrameSize::XS:
+    return "XS";
   case FrameSize::S:
     return "Small";
   case FrameSize::M:
