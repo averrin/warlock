@@ -12,6 +12,7 @@
 //   1. Remove the X(...) line here.
 //   Old files containing that component will silently skip its block.
 // ---------------------------------------------------------------------------
+#include <game/components/resource_patch.hpp>
 
 // clang-format off
 #define COMPONENT_LIST(X)                              \
@@ -34,6 +35,7 @@
   X(wl::sprite,                "sprite")              \
   X(wl::relation,              "relation")            \
   X(wl::text,                  "text")                \
+  X(ResourcePatch,             "ResourcePatch")       \
   X(entt::tag<"proto"_hs>,     "proto")               \
   X(entt::tag<"item"_hs>,      "item")
 // clang-format on

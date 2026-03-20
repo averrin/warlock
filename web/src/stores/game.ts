@@ -15,6 +15,22 @@ export interface GameMarker {
   color: string;
 }
 
+/** Preserve AttributeDTO fields (e.g. modifiers) when only base_value changes. */
+function mergeComponentAttributePatch(
+  previous: unknown,
+  value: string | number | boolean,
+): string | number | boolean | Record<string, unknown> {
+  if (
+    previous &&
+    typeof previous === "object" &&
+    !Array.isArray(previous) &&
+    "base_value" in previous
+  ) {
+    return { ...(previous as Record<string, unknown>), base_value: value };
+  }
+  return value;
+}
+
 interface GameStore {
   started: boolean;
   hydrated: boolean;
@@ -87,6 +103,13 @@ interface GameStore {
     componentId: number,
     key: string,
     value: string | number | boolean,
+  ) => Promise<void>;
+  setComponentAttributeModifiers: (
+    client: RpcClient,
+    frameId: number,
+    componentId: number,
+    key: string,
+    modifiers: string[],
   ) => Promise<void>;
   storageAddSlot: (client: RpcClient, frameId: number, componentId: number) => Promise<void>;
   storageSetSlot: (
@@ -487,7 +510,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
                       ...component,
                       attributes: {
                         ...(component.attributes ?? {}),
-                        [key]: value,
+                        [key]: mergeComponentAttributePatch(component.attributes?.[key], value),
                       },
                     }
                   : component,
@@ -495,6 +518,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
             },
       ),
     }));
+  },
+
+  setComponentAttributeModifiers: async (client, frameId, componentId, key, modifiers) => {
+    await client.call("component.set_attribute_modifiers", {
+      frame_id: frameId,
+      component_id: componentId,
+      key,
+      modifiers,
+    });
+    await get().fetchInitialState(client);
   },
 
   storageAddSlot: async (client, frameId, componentId) => {

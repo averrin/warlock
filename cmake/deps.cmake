@@ -5,7 +5,6 @@ set(FMT_VERSION 11.0.0)
 set(LUA_VERSION 5.4.6)
 set(TASKFLOW_VERSION 3.7.0)
 set(ENTT_VERSION 3.13.2)
-include(cmake/deps/imgui_sfml.cmake)
 include(cmake/deps/lua.cmake)
 
 

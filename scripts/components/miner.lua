@@ -17,7 +17,7 @@ return {
 			title = "Recipe",
 			description = "Active recipe",
 			type = AttributeType.STRING,
-			value = "Spark Ore",
+			value = "",
 		},
 		heat = {
 			title = "Heat",

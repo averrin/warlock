@@ -17,9 +17,15 @@ import { netAvailable } from "../../utils/power";
 import {
   CELL,
   FRAME_CELL_SIZES,
+  connectionWiringGeometryOk,
+  edgeExitTowardPoint,
+  frameCenterFromTopLeft,
   isGroupMoveValid,
-  snappedTopLeftsOverlappingCell,
+  isHypotheticalFramePlacementValid,
+  obstacleCellKeysFromPatches,
+  OFFSET_STEP,
   segmentForPairNthConnection,
+  snappedTopLeftsOverlappingCell,
   sortConnectionsForPair,
 } from "./connectionGeometry";
 
@@ -407,6 +413,43 @@ function segmentIntersectsAABB(
   return true;
 }
 
+function wiringGeometryOk(
+  sourceId: number,
+  targetId: number,
+  wType: "POWER" | "DATA" | "CONVEYOR" | "POE",
+  wMedium: ConnectionMedium,
+  currentFrames: { id: number; size: string; position?: { x: number; y: number }; components?: ComponentDTO[] }[],
+  currentConns: ConnectionDTO[],
+  getPosition: (id: number) => { x: number; y: number } | null,
+  getFrameSize: (id: number) => string | undefined,
+  obstacleCells?: Set<string>,
+): boolean {
+  const sourceFrame = currentFrames.find((f) => f.id === sourceId);
+  const tgtFrame = currentFrames.find((f) => f.id === targetId);
+  const srcOrigin = getPosition(sourceId);
+  const tgtOrigin = getPosition(targetId);
+  if (!sourceFrame || !tgtFrame || !srcOrigin || !tgtOrigin) return false;
+  const sourceCenter = frameCenterFromTopLeft(srcOrigin, getFrameSize(sourceId));
+  const targetCenter = frameCenterFromTopLeft(tgtOrigin, getFrameSize(targetId));
+  const centerDist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
+  const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame, wType, wMedium);
+  const targetMax = getMaxConnectionDistanceForFrame(tgtFrame, wType, wMedium);
+  const effectiveMax = Math.min(sourceMax, targetMax);
+  return connectionWiringGeometryOk(
+    sourceId,
+    targetId,
+    wType,
+    wMedium,
+    effectiveMax,
+    centerDist,
+    currentFrames,
+    currentConns,
+    getPosition,
+    getFrameSize,
+    obstacleCells,
+  );
+}
+
 function redrawGrid(
   grid: Graphics,
   world: Container,
@@ -463,6 +506,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const patches = usePatchStore((s) => s.patches);
   const patchesRef = useRef(patches);
   patchesRef.current = patches;
+  const obstacleCells = useMemo(() => obstacleCellKeysFromPatches(patches), [patches]);
+  const obstacleCellsRef = useRef(obstacleCells);
+  obstacleCellsRef.current = obstacleCells;
   const patchTypes = usePatchStore((s) => s.patchTypes);
   const frames = useGameStore((s) => s.frames);
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
@@ -660,6 +706,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
 
         const mx = (x1 + x2) / 2;
         const my = (y1 + y2) / 2;
+        const bundleCount = sorted.length;
+        const sockR = bundleCount > 1 ? Math.min(3.5, OFFSET_STEP / 2 - 1) : 4;
 
         if (conveyorBad) {
           const arm = 5;
@@ -671,8 +719,12 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           connLayer.lineTo(mx + arm, my - arm);
           connLayer.stroke();
         } else {
-          connLayer.circle(mx, my, 4);
-          connLayer.fill({ color, alpha: 0.9 });
+          connLayer.circle(x1, y1, sockR);
+          connLayer.fill({ color, alpha: 0.88 });
+          connLayer.stroke({ color: 0xffffff, width: 1, alpha: 0.35 });
+          connLayer.circle(x2, y2, sockR);
+          connLayer.fill({ color, alpha: 0.88 });
+          connLayer.stroke({ color: 0xffffff, width: 1, alpha: 0.35 });
         }
       });
     }
@@ -814,6 +866,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     overlayRef,
     framesRef,
     framePositionsRef,
+    obstacleCellsRef,
     drawConnections,
     connectionsRef,
     moveFrame,
@@ -873,7 +926,15 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         let anyValid = false;
         for (const p of tops) {
           const candidate = new Map([[frameId, p]]);
-          if (isGroupMoveValid(candidate, connectionsRef.current, framesRef.current, framePositionsRef.current)) {
+          if (
+            isGroupMoveValid(
+              candidate,
+              connectionsRef.current,
+              framesRef.current,
+              framePositionsRef.current,
+              obstacleCellsRef.current,
+            )
+          ) {
             anyValid = true;
             break;
           }
@@ -933,42 +994,27 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         const cardOk = isCardinallySatisfied(currentConns, currentFrames, frameId, wiring.type, wiring.medium);
         const pairOk = !hasConnectionBetween(currentConns, wiring.sourceId, frameId, wiring.type, wiring.medium);
         const sourceFrame = currentFrames.find((f) => f.id === wiring.sourceId);
-        const sourceCenter = sourceFrame ? getFrameCenter(sourceFrame) : null;
-        const targetCenter = tgtFrame ? getFrameCenter(tgtFrame) : null;
-        let geometryOk = false;
-        if (sourceFrame && tgtFrame && sourceCenter && targetCenter) {
-          const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame, wiring.type, wiring.medium);
-          const targetMax = getMaxConnectionDistanceForFrame(tgtFrame, wiring.type, wiring.medium);
-          const effectiveMax = Math.min(sourceMax, targetMax);
-          const dist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
-          geometryOk = dist <= effectiveMax;
-
-          if (
-            geometryOk &&
-            (wiring.medium === "WIRE" || wiring.medium === "BEAM")
-          ) {
-            for (const other of currentFrames) {
-              if (other.id === wiring.sourceId || other.id === frameId) continue;
-              if (!other.position) continue;
-              const side = getFrameSquareSide(other);
-              if (
-                segmentIntersectsAABB(
-                  sourceCenter.x,
-                  sourceCenter.y,
-                  targetCenter.x,
-                  targetCenter.y,
-                  other.position.x,
-                  other.position.y,
-                  side,
-                  side,
-                )
-              ) {
-                geometryOk = false;
-                break;
-              }
-            }
-          }
-        }
+        const getPosition = (id: number) => {
+          const p = framePositionsRef.current.get(id);
+          if (p) return p;
+          const f = currentFrames.find((x) => x.id === id);
+          return f?.position ? { x: f.position.x, y: f.position.y } : null;
+        };
+        const getFrameSize = (id: number) => currentFrames.find((f) => f.id === id)?.size;
+        const geometryOk =
+          sourceFrame && tgtFrame
+            ? wiringGeometryOk(
+                wiring.sourceId,
+                frameId,
+                wiring.type,
+                wiring.medium,
+                currentFrames,
+                currentConns,
+                getPosition,
+                getFrameSize,
+                obstacleCellsRef.current,
+              )
+            : false;
 
         if (
           frameId !== wiring.sourceId &&
@@ -1012,39 +1058,27 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           : false;
         const cardOk = isCardinallySatisfied(currentConns, currentFrames, frameId, wiring.type, wiring.medium);
         const sourceFrame = currentFrames.find((f) => f.id === wiring.sourceId);
-        const sourceCenter = sourceFrame ? getFrameCenter(sourceFrame) : null;
-        const targetCenter = tgtFrame ? getFrameCenter(tgtFrame) : null;
-        let geometryOk = false;
-        if (sourceFrame && tgtFrame && sourceCenter && targetCenter) {
-          const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame, wiring.type, wiring.medium);
-          const targetMax = getMaxConnectionDistanceForFrame(tgtFrame, wiring.type, wiring.medium);
-          const effectiveMax = Math.min(sourceMax, targetMax);
-          const dist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
-          geometryOk = dist <= effectiveMax;
-
-          if (geometryOk && (wiring.medium === "WIRE" || wiring.medium === "BEAM")) {
-            for (const other of currentFrames) {
-              if (other.id === wiring.sourceId || other.id === frameId) continue;
-              if (!other.position) continue;
-              const side = getFrameSquareSide(other);
-              if (
-                segmentIntersectsAABB(
-                  sourceCenter.x,
-                  sourceCenter.y,
-                  targetCenter.x,
-                  targetCenter.y,
-                  other.position.x,
-                  other.position.y,
-                  side,
-                  side,
-                )
-              ) {
-                geometryOk = false;
-                break;
-              }
-            }
-          }
-        }
+        const getPosition = (id: number) => {
+          const p = framePositionsRef.current.get(id);
+          if (p) return p;
+          const f = currentFrames.find((x) => x.id === id);
+          return f?.position ? { x: f.position.x, y: f.position.y } : null;
+        };
+        const getFrameSize = (id: number) => currentFrames.find((f) => f.id === id)?.size;
+        const geometryOk =
+          sourceFrame && tgtFrame
+            ? wiringGeometryOk(
+                wiring.sourceId,
+                frameId,
+                wiring.type,
+                wiring.medium,
+                currentFrames,
+                currentConns,
+                getPosition,
+                getFrameSize,
+                obstacleCellsRef.current,
+              )
+            : false;
 
         if (tgtFrame && hasConn && hasReq && cardOk && geometryOk) {
           createConnectionRef.current(
@@ -1138,6 +1172,20 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       const local = event.getLocalPosition(worldRef.current);
       const x = Math.round(local.x / CELL) * CELL;
       const y = Math.round(local.y / CELL) * CELL;
+      const src = blueprintMapRef.current[bp] ?? "";
+      const sizeKey = parseBlueprintSize(src);
+      if (
+        !isHypotheticalFramePlacementValid(
+          { x, y },
+          sizeKey,
+          framesRef.current,
+          connectionsRef.current,
+          framePositionsRef.current,
+          obstacleCellsRef.current,
+        )
+      ) {
+        return;
+      }
       exitCreationMode();
       void createFromBlueprint(rpcClient, bp, { x, y });
       return;
@@ -1479,8 +1527,16 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             const sizeKey = parseBlueprintSize(src);
             const cells = FRAME_CELL_SIZES[sizeKey] ?? 2;
             const boxSize = cells * CELL;
+            const valid = isHypotheticalFramePlacementValid(
+              { x: wx, y: wy },
+              sizeKey,
+              framesRef.current,
+              connectionsRef.current,
+              framePositionsRef.current,
+              obstacleCellsRef.current,
+            );
             ghost.clear();
-            ghost.beginFill(0x3b82f6);
+            ghost.beginFill(valid ? 0x3b82f6 : 0xff3355);
             ghost.roundRect(0, 0, boxSize, boxSize, 10);
             ghost.fill();
             ghost.x = wx;
@@ -1499,6 +1555,11 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               const boxSize = srcCells * CELL;
               const cx = sourceFrame._x + boxSize / 2;
               const cy = sourceFrame._y + boxSize / 2;
+              const socket = edgeExitTowardPoint(
+                { x: sourceFrame._x, y: sourceFrame._y },
+                sourceFrame.size,
+                { x: cursorWx, y: cursorWy },
+              );
               const color = CONN_COLOR[wiring.type] ?? 0xffffff;
               const medium = wiring.medium ?? "WIRE";
               const rawR = getMaxConnectionDistanceForFrame(sourceFrame, wiring.type, medium);
@@ -1509,9 +1570,12 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               wiringLine.circle(cx, cy, radius);
               wiringLine.stroke();
               wiringLine.setStrokeStyle({ width: 2, color, alpha: 0.85 });
-              wiringLine.moveTo(cx, cy);
+              wiringLine.moveTo(socket.x, socket.y);
               wiringLine.lineTo(cursorWx, cursorWy);
               wiringLine.stroke();
+              wiringLine.circle(socket.x, socket.y, 5);
+              wiringLine.fill({ color, alpha: 0.35 });
+              wiringLine.stroke({ width: 2, color, alpha: 0.95 });
               wiringLine.visible = true;
             }
           } else if (wiringLine.visible) {
@@ -1634,6 +1698,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         wiringMode={wiringMode}
         connections={connections}
         frames={placedFrames}
+        obstacleCells={obstacleCells}
         zoom={zoom}
         onFramePointerDown={handleFramePointerDown}
         onFrameContextMenu={handleFrameContextMenu}
@@ -1690,40 +1755,28 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         const conns = connections;
         const medium = wiringMode.medium ?? "WIRE";
         const sourceFrame = frames.find((f) => f.id === sourceId);
-        const sourceCenter = sourceFrame ? getFrameCenter(sourceFrame) : null;
+        const getPosition = (id: number) => {
+          const f = placedFrames.find((x) => x.id === id);
+          return f ? { x: f._x, y: f._y } : null;
+        };
+        const getFrameSize = (id: number) => placedFrames.find((f) => f.id === id)?.size;
         const eligibleTargets = frames.filter((frame) => {
           if (frame.id === sourceId) return false;
-          const targetCenter = getFrameCenter(frame);
-          if (!sourceCenter || !targetCenter) return false;
-
-          const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame!, wiringMode.type, medium);
-          const targetMax = getMaxConnectionDistanceForFrame(frame, wiringMode.type, medium);
-          const effectiveMax = Math.min(sourceMax, targetMax);
-          const dist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
-          if (dist > effectiveMax) return false;
-
-          if (medium === "WIRE" || medium === "BEAM") {
-            for (const other of frames) {
-              if (other.id === sourceId || other.id === frame.id) continue;
-              const otherCenter = getFrameCenter(other);
-              if (!otherCenter || !other.position) continue;
-              const side = getFrameSquareSide(other);
-              if (
-                segmentIntersectsAABB(
-                  sourceCenter.x,
-                  sourceCenter.y,
-                  targetCenter.x,
-                  targetCenter.y,
-                  other.position.x,
-                  other.position.y,
-                  side,
-                  side,
-                )
-              ) {
-                return false;
-              }
-            }
-          }
+          if (!sourceFrame) return false;
+          if (
+            !wiringGeometryOk(
+              sourceId,
+              frame.id,
+              wiringMode.type,
+              medium,
+              frames,
+              conns,
+              getPosition,
+              getFrameSize,
+              obstacleCells,
+            )
+          )
+            return false;
           if (!frameHasConnector(frame, wiringMode.type, wiringMode.medium ?? "WIRE")) return false;
           if (!frameMeetsConnectionRequirements(frame, wiringMode.type, wiringMode.medium ?? "WIRE")) return false;
           if (!isCardinallySatisfied(conns, frames, frame.id, wiringMode.type, wiringMode.medium ?? "WIRE")) return false;
@@ -1791,6 +1844,28 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             }}
           >
             Create Frame...
+          </div>
+          <div
+            style={{ padding: "4px 10px", cursor: "pointer" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            onClick={() => {
+              const { wx, wy } = contextMenu;
+              setContextMenu(null);
+              const def = `Marker ${Math.round(wx)}, ${Math.round(wy)}`;
+              const label = window.prompt("Marker name", def);
+              const trimmed = label?.trim();
+              if (trimmed) {
+                void rpcClient.call("input.marker_set", {
+                  x: wx,
+                  y: wy,
+                  label: trimmed,
+                  color: "#ff0000",
+                });
+              }
+            }}
+          >
+            Add marker...
           </div>
           {patchTypes.length > 0 && (
             <>

@@ -144,6 +144,7 @@ public:
                          .to(p * bot)
                          .during(d / 2.f)
                          .via(easing::linear);
+      easing.tween.seek(0, true);
     } else if (easing.easing_type == AttributeEasingType::SIN) {
       easing.tween = tweeny::from(p * bot)
                          .to(p * 1.f)
@@ -152,6 +153,7 @@ public:
                          .to(p * bot)
                          .during(d / 2.f)
                          .via(easing::sinusoidalInOut);
+      easing.tween.seek(0, true);
     } else if (easing.easing_type == AttributeEasingType::JITTER) {
       AddModifier(
           std::make_shared<Modifier>("Jitter", [](const Attribute &attr) {

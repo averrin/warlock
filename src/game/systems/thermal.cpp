@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <game/components/frame.hpp>
@@ -29,7 +30,7 @@ void ThermalSystem::fixedUpdate() {
     for (auto &component : frame.components) {
       if (component->data.get<std::string>("type") == "Temp Control" &&
           component->state == ComponentState::ACTIVE) {
-        acTemp += component->data.get_or<float>("heat", 0.0f);
+        acTemp += std::max(0.f, component->data.get_or<float>("heat", 0.0f));
       }
     }
     for (auto &component : frame.components) {
@@ -44,7 +45,7 @@ void ThermalSystem::fixedUpdate() {
         if (component->state != ComponentState::DEACTIVATED &&
             component->state != ComponentState::BROKEN &&
             component->state != ComponentState::DESTROYED) {
-          auto heat = component->data.get_or<float>("heat", 0.0f);
+          auto heat = std::max(0.f, component->data.get_or<float>("heat", 0.0f));
           temp += heat;
         }
         temp += acTemp;

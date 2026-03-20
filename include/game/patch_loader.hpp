@@ -20,6 +20,7 @@ struct PatchTypeDefinition {
   std::string name;
   std::string description;
   std::string item;
+  bool obstacle = false;
   PatchColor color;
   PatchGeneration generation;
 };

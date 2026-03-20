@@ -1,13 +1,10 @@
 #pragma once
-#include <SFML/Graphics.hpp>
 #include <utils/entt.hpp>
 
 namespace wl {
 
 struct color {
   uint8_t r = 255, g = 255, b = 255, a = 255;
-  operator sf::Color() const { return sf::Color(r, g, b, a); }
-  static color from_sf(sf::Color c) { return {c.r, c.g, c.b, c.a}; }
 };
 
 struct visual_state {

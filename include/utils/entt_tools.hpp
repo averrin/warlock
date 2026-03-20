@@ -38,8 +38,12 @@ public:
       for (auto e : existing) {
         if (dst.get<hf::meta>(e).id == src.get<hf::meta>(entity).id) {
           dst.destroy(e);
-          dst.emplace<entt::tag<"override"_hs>>(copy);
-          src.emplace<entt::tag<"override"_hs>>(entity);
+          if (!dst.all_of<entt::tag<"override"_hs>>(copy)) {
+            dst.emplace<entt::tag<"override"_hs>>(copy);
+          }
+          if (!src.all_of<entt::tag<"override"_hs>>(entity)) {
+            src.emplace<entt::tag<"override"_hs>>(entity);
+          }
         }
       }
       TypeVisitor<all_components, EmplaceVisitor>::visit(entity, src, copy,

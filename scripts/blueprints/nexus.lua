@@ -5,5 +5,7 @@ return {
 		"Core",
 		"Nexus",
 		"Power Wire Connector",
+		"Life Support",
+		"Data Wire Connector",
 	},
 }

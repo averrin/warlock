@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   CELL,
   groupMoveAvoidsWireIntersections,
+  isGroupMoveValid,
+  isHypotheticalFramePlacementValid,
+  obstacleCellKeysFromPatches,
   segmentForPairAndType,
   segmentIntersectsAxisAlignedRect,
   snappedTopLeftsOverlappingCell,
@@ -52,6 +55,27 @@ describe("groupMoveAvoidsWireIntersections", () => {
     expect(ok).toBe(false);
   });
 
+  it("blocks moving a wire endpoint when the updated wire would cut a stationary third frame", () => {
+    const wide = [
+      { id: 1, size: "S", position: { x: 0, y: 0 } },
+      { id: 2, size: "S", position: { x: 400, y: 0 } },
+      { id: 3, size: "S", position: { x: 200, y: 0 } },
+    ] as const;
+    const posWide = new Map<number, { x: number; y: number }>([
+      [1, { x: 0, y: 0 }],
+      [2, { x: 400, y: 0 }],
+      [3, { x: 200, y: 0 }],
+    ]);
+    const moves = new Map([[1, { x: 120, y: 0 }]]);
+    const ok = groupMoveAvoidsWireIntersections(
+      moves,
+      [{ source: 1, target: 2, type: "POWER", medium: "WIRE" }],
+      wide,
+      posWide,
+    );
+    expect(ok).toBe(false);
+  });
+
   it("ignores WIRELESS for blocking", () => {
     const moves = new Map([[3, { x: 150, y: 0 }]]);
     const ok = groupMoveAvoidsWireIntersections(
@@ -61,6 +85,51 @@ describe("groupMoveAvoidsWireIntersections", () => {
       positions,
     );
     expect(ok).toBe(true);
+  });
+
+  it("blocks WIRE through obstacle cells", () => {
+    const moves = new Map([[1, { x: 0, y: 0 }]]);
+    // Horizontal POWER WIRE between (0,0) and (300,0) S-frames runs at y≈37.5 → grid row iy=1.
+    const rocks = new Set(["6,1"]);
+    const ok = groupMoveAvoidsWireIntersections(
+      moves,
+      [{ source: 1, target: 2, type: "POWER", medium: "WIRE" }],
+      frames,
+      positions,
+      rocks,
+    );
+    expect(ok).toBe(false);
+  });
+});
+
+describe("obstacleCellKeysFromPatches", () => {
+  it("collects only obstacle patches", () => {
+    const s = obstacleCellKeysFromPatches([
+      { obstacle: true, cells: [[1, 2]] },
+      { obstacle: false, cells: [[9, 9]] },
+    ]);
+    expect(s.has("1,2")).toBe(true);
+    expect(s.has("9,9")).toBe(false);
+  });
+});
+
+describe("isGroupMoveValid + obstacles", () => {
+  const frames = [{ id: 1, size: "S", position: { x: 0, y: 0 } }] as const;
+  const positions = new Map<number, { x: number; y: number }>([[1, { x: 0, y: 0 }]]);
+
+  it("rejects frame top-left on rock cell", () => {
+    const rocks = new Set(["0,0"]);
+    const moves = new Map([[1, { x: 0, y: 0 }]]);
+    expect(isGroupMoveValid(moves, [], [...frames], positions, rocks)).toBe(false);
+  });
+});
+
+describe("isHypotheticalFramePlacementValid", () => {
+  it("matches isGroupMoveValid for a new S frame", () => {
+    const existing = [{ id: 1, size: "S", position: { x: 0, y: 0 } }];
+    const positions = new Map<number, { x: number; y: number }>([[1, { x: 0, y: 0 }]]);
+    expect(isHypotheticalFramePlacementValid({ x: 200, y: 0 }, "S", existing, [], positions)).toBe(true);
+    expect(isHypotheticalFramePlacementValid({ x: 0, y: 0 }, "S", existing, [], positions)).toBe(false);
   });
 });
 
@@ -90,6 +159,6 @@ describe("segmentForPairAndType", () => {
     const data = segmentForPairAndType(conns, "DATA", getPosition, getFrameSize);
     expect(power).not.toBeNull();
     expect(data).not.toBeNull();
-    expect(power!.y1).toBeCloseTo(data!.y1 - 6, 5);
+    expect(power!.y1).toBeCloseTo(data!.y1 - 10, 5);
   });
 });

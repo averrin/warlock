@@ -13,6 +13,7 @@ interface UseFrameDragOptions {
   overlayRef: React.RefObject<FrameOverlayHandle | null>;
   framesRef: React.MutableRefObject<{ id: number; size: string; position?: { x: number; y: number } }[]>;
   framePositionsRef: React.MutableRefObject<Map<number, { x: number; y: number }>>;
+  obstacleCellsRef: React.MutableRefObject<Set<string>>;
   drawConnections: () => void;
   connectionsRef: React.MutableRefObject<readonly ConnectionLike[]>;
   moveFrame: (rpcClient: any, frameId: number, x: number, y: number) => Promise<void>;
@@ -31,6 +32,7 @@ export function useFrameDrag({
   overlayRef,
   framesRef,
   framePositionsRef,
+  obstacleCellsRef,
   drawConnections,
   connectionsRef,
   moveFrame,
@@ -146,7 +148,15 @@ export function useFrameDrag({
         }
         if (!changed) return;
 
-        if (!isGroupMoveValid(candidate, connectionsRef.current, framesRef.current, framePositionsRef.current)) {
+        if (
+          !isGroupMoveValid(
+            candidate,
+            connectionsRef.current,
+            framesRef.current,
+            framePositionsRef.current,
+            obstacleCellsRef.current,
+          )
+        ) {
           return;
         }
 
@@ -221,6 +231,7 @@ export function useFrameDrag({
       framesRef,
       drawConnections,
       connectionsRef,
+      obstacleCellsRef,
       moveFrame,
       overlayRef,
       hostRef,

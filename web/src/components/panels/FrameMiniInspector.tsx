@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 import type { DockviewPanelApi } from "dockview-core";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
@@ -9,6 +9,21 @@ import { FramePanel } from "../frame";
 type Props = {
   rpcClient: RpcClient;
   panelApi?: DockviewPanelApi;
+};
+
+const rootStyle: CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+  boxSizing: "border-box",
+};
+
+const scrollStyle: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflowY: "auto",
 };
 
 export function FrameMiniInspector({ rpcClient, panelApi }: Props) {
@@ -40,25 +55,29 @@ export function FrameMiniInspector({ rpcClient, panelApi }: Props) {
 
   if (!frame) {
     return (
-      <div data-mini-inspector-panel>
-        <Panel title="Frame Mini Inspector">
-          <div style={{ fontSize: 12, color: "#9ca3af" }}>No frame selected</div>
-        </Panel>
+      <div data-mini-inspector-panel style={rootStyle}>
+        <div style={scrollStyle}>
+          <Panel title="Frame Mini Inspector">
+            <div style={{ fontSize: 12, color: "#9ca3af" }}>No frame selected</div>
+          </Panel>
+        </div>
       </div>
     );
   }
 
   return (
-    <div data-mini-inspector-panel>
-      <FramePanel
-        frame={frame}
-        rpcClient={rpcClient}
-        defaultLevel={1}
-        onNavigateToTree={() => {
-          selectFrame(frame.id);
-          focusStateInspectorExpandFrame(frame.id);
-        }}
-      />
+    <div data-mini-inspector-panel style={rootStyle}>
+      <div style={scrollStyle}>
+        <FramePanel
+          frame={frame}
+          rpcClient={rpcClient}
+          defaultLevel={1}
+          onNavigateToTree={() => {
+            selectFrame(frame.id);
+            focusStateInspectorExpandFrame(frame.id);
+          }}
+        />
+      </div>
     </div>
   );
 }

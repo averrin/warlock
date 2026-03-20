@@ -11,6 +11,8 @@ export interface Patch {
   name: string;
   type: string;
   item: string;
+  /** Terrain obstacle: blocks frame placement and wire/beam paths. */
+  obstacle?: boolean;
   cells: [number, number][];
   bounds: { x: number; y: number; w: number; h: number };
   color: { r: number; g: number; b: number; a: number };
@@ -20,6 +22,7 @@ export interface PatchType {
   key: string;
   name: string;
   item: string;
+  obstacle?: boolean;
   color: { r: number; g: number; b: number; a: number };
 }
 

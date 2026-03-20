@@ -1,7 +1,7 @@
 import { forwardRef, useImperativeHandle, useRef, useCallback, useLayoutEffect, useMemo } from "react";
 import { FrameCard, type PlacedFrame, type WiringState } from "./FrameCard";
 import type { ConnectionDTO } from "../../rpc/types";
-import { CELL, FRAME_CELL_SIZES } from "./connectionGeometry";
+import { CELL, connectionWiringGeometryOk, frameCenterFromTopLeft, FRAME_CELL_SIZES } from "./connectionGeometry";
 
 type ConnectionMedium = "WIRE" | "WIRELESS" | "BEAM";
 
@@ -49,16 +49,6 @@ function parseFinalNumber(v: any): number | null {
   return null;
 }
 
-function getFrameSquareSide(frame: { size: string }): number {
-  const cells = FRAME_CELL_SIZES[frame.size] ?? 1;
-  return cells * CELL;
-}
-
-function getFrameCenter(frame: { _x: number; _y: number; size: string }): { x: number; y: number } {
-  const side = getFrameSquareSide(frame);
-  return { x: frame._x + side / 2, y: frame._y + side / 2 };
-}
-
 function getMaxConnectionDistanceForFrame(
   frame: { components?: any[]; size: string; id: number },
   type: string,
@@ -78,55 +68,6 @@ function getMaxConnectionDistanceForFrame(
   return best;
 }
 
-function segmentIntersectsAABB(
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-  rx: number,
-  ry: number,
-  rw: number,
-  rh: number,
-): boolean {
-  const minX = rx;
-  const maxX = rx + rw;
-  const minY = ry;
-  const maxY = ry + rh;
-
-  const dx = bx - ax;
-  const dy = by - ay;
-
-  let tmin = 0;
-  let tmax = 1;
-  const eps = 1e-6;
-
-  if (Math.abs(dx) < eps) {
-    if (ax < minX || ax > maxX) return false;
-  } else {
-    const inv = 1 / dx;
-    let tx1 = (minX - ax) * inv;
-    let tx2 = (maxX - ax) * inv;
-    if (tx1 > tx2) [tx1, tx2] = [tx2, tx1];
-    tmin = Math.max(tmin, tx1);
-    tmax = Math.min(tmax, tx2);
-    if (tmin > tmax) return false;
-  }
-
-  if (Math.abs(dy) < eps) {
-    if (ay < minY || ay > maxY) return false;
-  } else {
-    const inv = 1 / dy;
-    let ty1 = (minY - ay) * inv;
-    let ty2 = (maxY - ay) * inv;
-    if (ty1 > ty2) [ty1, ty2] = [ty2, ty1];
-    tmin = Math.max(tmin, ty1);
-    tmax = Math.min(tmax, ty2);
-    if (tmin > tmax) return false;
-  }
-
-  return true;
-}
-
 export interface FrameOverlayHandle {
   /** Update all card positions to match Pixi worldContainer. Direct DOM writes — no React re-render. */
   syncTransform(scale: number, tx: number, ty: number): void;
@@ -140,6 +81,8 @@ interface FrameOverlayProps {
   wiringMode: { sourceId: number; type: string; medium?: string } | null;
   connections: ConnectionDTO[];
   frames: PlacedFrame[];
+  /** Terrain obstacle grid keys for wire/beam geometry (same as GameCanvas drag rules). */
+  obstacleCells: Set<string>;
   zoom: number;
   onFramePointerDown: (e: React.PointerEvent, frameId: number) => void;
   onFrameContextMenu: (e: React.MouseEvent, frameId: number) => void;
@@ -223,6 +166,7 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
       wiringMode,
       connections,
       frames,
+      obstacleCells,
       zoom,
       onFramePointerDown,
       onFrameContextMenu,
@@ -288,40 +232,35 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
         const medium = (wiringMode.medium ?? "WIRE") as ConnectionMedium;
         const sourceFrame = frames.find((f) => f.id === wiringMode.sourceId) ?? null;
         const targetFrame = frames.find((f) => f.id === frameId) ?? null;
+        const getPosition = (id: number) => {
+          const f = frames.find((x) => x.id === id);
+          return f ? { x: f._x, y: f._y } : null;
+        };
+        const getFrameSize = (id: number) => frames.find((f) => f.id === id)?.size;
         let geometryOk = false;
         if (sourceFrame && targetFrame) {
-          const sourceCenter = getFrameCenter(sourceFrame);
-          const targetCenter = getFrameCenter(targetFrame);
-          const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame, wiringMode.type, medium);
-          const targetMax = getMaxConnectionDistanceForFrame(targetFrame, wiringMode.type, medium);
-          const effectiveMax = Math.min(sourceMax, targetMax);
-          const dist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
-          geometryOk = dist <= effectiveMax;
-
-          if (
-            geometryOk &&
-            (medium === "WIRE" || medium === "BEAM")
-          ) {
-            // For wire/beam: reject if the segment between frame centers intersects any other frame.
-            for (const other of frames) {
-              if (other.id === wiringMode.sourceId || other.id === frameId) continue;
-              const side = getFrameSquareSide(other);
-              if (
-                segmentIntersectsAABB(
-                  sourceCenter.x,
-                  sourceCenter.y,
-                  targetCenter.x,
-                  targetCenter.y,
-                  other._x,
-                  other._y,
-                  side,
-                  side,
-                )
-              ) {
-                geometryOk = false;
-                break;
-              }
-            }
+          const srcOrigin = getPosition(wiringMode.sourceId);
+          const tgtOrigin = getPosition(frameId);
+          if (srcOrigin && tgtOrigin) {
+            const sourceCenter = frameCenterFromTopLeft(srcOrigin, getFrameSize(wiringMode.sourceId));
+            const targetCenter = frameCenterFromTopLeft(tgtOrigin, getFrameSize(frameId));
+            const centerDist = Math.hypot(targetCenter.x - sourceCenter.x, targetCenter.y - sourceCenter.y);
+            const sourceMax = getMaxConnectionDistanceForFrame(sourceFrame, wiringMode.type, medium);
+            const targetMax = getMaxConnectionDistanceForFrame(targetFrame, wiringMode.type, medium);
+            const effectiveMax = Math.min(sourceMax, targetMax);
+            geometryOk = connectionWiringGeometryOk(
+              wiringMode.sourceId,
+              frameId,
+              wiringMode.type,
+              medium,
+              effectiveMax,
+              centerDist,
+              frames,
+              connections,
+              getPosition,
+              getFrameSize,
+              obstacleCells,
+            );
           }
         }
 
@@ -354,7 +293,7 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
 
         return { type: wiringMode.type, isSource: false, isEligible };
       },
-      [wiringMode, connections, frames],
+      [wiringMode, connections, frames, obstacleCells],
     );
 
     // After React renders new/updated cards, reapply screen positions.

@@ -216,6 +216,7 @@ void registerStateHandlers(Server& server) {
         {"name", meta.name},
         {"type", patch.patch_type},
         {"item", patch.item_name},
+        {"obstacle", patch.obstacle},
         {"cells", cells_arr},
         {"bounds", {{"x", patch.min_x}, {"y", patch.min_y}, 
                     {"w", patch.max_x - patch.min_x + 1}, 

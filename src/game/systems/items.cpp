@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
+#include <game/frame_deposit_query.hpp>
 #include <game/components/resource_patch.hpp>
 #include <game/state.hpp>
 #include <game/systems/items.hpp>
@@ -10,38 +11,6 @@
 #include <utils/entt.hpp>
 
 namespace {
-std::vector<std::pair<int, int>> getFrameOccupiedCells(const wl::transform& t, FrameSize size) {
-  const int CELL = 75;
-  int gridX = static_cast<int>(t.position.x) / CELL;
-  int gridY = static_cast<int>(t.position.y) / CELL;
-  int cells = 1;
-  switch (size) {
-    case FrameSize::XS: cells = 1; break;
-    case FrameSize::S: cells = 1; break;
-    case FrameSize::M: cells = 2; break;
-    case FrameSize::L: cells = 3; break;
-    case FrameSize::G: cells = 4; break;
-  }
-  
-  std::vector<std::pair<int, int>> result;
-  for (int dy = 0; dy < cells; ++dy) {
-    for (int dx = 0; dx < cells; ++dx) {
-      result.emplace_back(gridX + dx, gridY + dy);
-    }
-  }
-  return result;
-}
-
-bool cellsOverlap(const std::vector<std::pair<int, int>>& a, 
-                  const std::vector<std::pair<int, int>>& b) {
-  for (const auto& ca : a) {
-    for (const auto& cb : b) {
-      if (ca.first == cb.first && ca.second == cb.second) return true;
-    }
-  }
-  return false;
-}
-
 /** Neighbor→relay edges run the item timer; relay→neighbor edges are skipped in the loop.
  * Copy progress to the sibling connection so both legs animate on the canvas. */
 void mirrorRelayOutgoingLeg(std::unordered_map<int, double> &progress,
@@ -113,6 +82,29 @@ double ItemsSystem::conveyorTransferProgress(int connectionDataId) const {
     return 0.0;
   }
   return it->second;
+}
+
+std::shared_ptr<Modifier> ItemsSystem::sharedRecipeModifier(const std::string &recipeName) {
+  if (!loader) {
+    return nullptr;
+  }
+  const auto &recipes = loader->get_recipes();
+  auto recipe =
+      std::find_if(recipes.begin(), recipes.end(),
+                   [&](const RecipeDefinition &r) { return r.name == recipeName; });
+  if (recipe == recipes.end() || recipe->powerCost == 0.0f) {
+    return nullptr;
+  }
+  auto it = modifiers.find(recipeName);
+  if (it != modifiers.end()) {
+    return it->second;
+  }
+  const float pc = recipe->powerCost;
+  auto mod = std::make_shared<Modifier>(recipeName, [=](const Attribute &attr) {
+    return std::get<float>(attr.GetBaseValue()) + pc;
+  });
+  modifiers[recipeName] = mod;
+  return mod;
 }
 
 void ItemsSystem::fixedUpdate() {
@@ -400,35 +392,35 @@ void ItemsSystem::fixedUpdate() {
       }
     }
     for (auto &c : frame.components) {
-      // Miner-patch overlap detection
-      if (c->data.get<std::string>("type") == "Miner" && c->state == ComponentState::ACTIVE) {
-        if (current_state.registry.valid(f) && current_state.registry.all_of<wl::transform>(f)) {
-          auto& frame_transform = current_state.registry.get<wl::transform>(f);
-          auto frame_cells = getFrameOccupiedCells(frame_transform, frame.size);
-          
-          for (auto patch_e : current_state.registry.view<ResourcePatch>()) {
-            auto& patch = current_state.registry.get<ResourcePatch>(patch_e);
-            if (cellsOverlap(frame_cells, patch.cells)) {
-              // Miner overlaps this patch - can extract patch.item_name
-              break;
-            }
-          }
-        }
-      }
-
       if (c->data.get_or<std::string>("recipe", "") != "" &&
           c->state == ComponentState::ACTIVE) {
         auto recipe_name = c->data.get_or<std::string>("recipe", "");
         if (recipe_name == "") {
           continue;
         }
-        auto recipe = std::find_if(loader->get_recipes().begin(),
-                                   loader->get_recipes().end(),
+        auto recipe_end = loader->get_recipes().end();
+        auto recipe = std::find_if(loader->get_recipes().begin(), recipe_end,
                                    [recipe_name](const RecipeDefinition &r) {
                                      return r.name == recipe_name;
                                    });
 
-        if (recipe != loader->get_recipes().end()) {
+        bool recipe_valid = (recipe != recipe_end);
+        if (recipe_valid && c->data.get<std::string>("type") == "Miner") {
+          auto deposits =
+              depositItemsUnderFrame(current_state.registry, f, frame);
+          bool produces_deposit = false;
+          for (const auto &out : recipe->outputs) {
+            if (deposits.count(out.item.name)) {
+              produces_deposit = true;
+              break;
+            }
+          }
+          if (!produces_deposit) {
+            recipe_valid = false;
+          }
+        }
+
+        if (recipe_valid) {
           if (c->data.attributes.find("consumption") !=
               c->data.attributes.end()) {
             auto consumption = c->data.attributes["consumption"];
@@ -445,12 +437,9 @@ void ItemsSystem::fixedUpdate() {
             if (lastRecipe.find(c->data.id) == lastRecipe.end() ||
                 recipe_name != lastRecipe[c->data.id]) {
               if (modifiers.find(lastRecipe[c->data.id]) != modifiers.end()) {
-                // fmt::print("Removing modifier for {}\n",
-                //            lastRecipe[c->data.id]);
                 consumption->RemoveModifier(modifiers[lastRecipe[c->data.id]]);
               }
               if (modifiers.find(recipe_name) != modifiers.end()) {
-                // fmt::print("Setting modifier for {}\n", recipe_name);
                 consumption->AddModifier(modifiers[recipe_name]);
               }
             }
@@ -458,8 +447,6 @@ void ItemsSystem::fixedUpdate() {
           lastRecipe[c->data.id] = recipe_name;
 
           if (storages.size() == 0) {
-            // fmt::print("No storage found for item producer {}\n",
-            // c->data.id);
             continue;
           }
 
@@ -549,19 +536,20 @@ void ItemsSystem::fixedUpdate() {
               }
             }
 
-            // Reset the timer
             lastExecutionTime[entity] = 0.0;
           }
         } else {
-
-          if (lastRecipe.find(c->data.id) == lastRecipe.end() ||
-              recipe_name != lastRecipe[c->data.id]) {
-            if (modifiers.find(lastRecipe[c->data.id]) != modifiers.end()) {
-              auto consumption = c->data.attributes["consumption"];
-              consumption->RemoveModifier(modifiers[lastRecipe[c->data.id]]);
+          if (c->data.attributes.find("consumption") !=
+              c->data.attributes.end()) {
+            auto consumption = c->data.attributes["consumption"];
+            if (lastRecipe.find(c->data.id) != lastRecipe.end()) {
+              const std::string prev = lastRecipe[c->data.id];
+              if (modifiers.find(prev) != modifiers.end()) {
+                consumption->RemoveModifier(modifiers[prev]);
+              }
             }
-            lastRecipe[c->data.id] = recipe_name;
           }
+          lastRecipe[c->data.id] = recipe_name;
         }
       }
     }

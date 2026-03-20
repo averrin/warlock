@@ -37,13 +37,8 @@ int main(int argc, char *argv[]) {
   argparse::ArgumentParser program(APP_NAME);
 
   program.add_argument("--ui-mode")
-      .help("UI runtime mode: web | native | headless")
+      .help("Headless runtime: web (default) or headless. Connect the web UI via WebSocket RPC.")
       .default_value(std::string("web"));
-
-  program.add_argument("--no-editor")
-      .help("disable editor")
-      .default_value(false)
-      .implicit_value(true);
 
   program.add_argument("--no-debug")
       .help("disable debug logs")
@@ -68,12 +63,13 @@ int main(int argc, char *argv[]) {
     std::exit(1);
   }
   std::string uiMode = program.get<std::string>("--ui-mode");
-  bool noeditor = program["--no-editor"] == true;
-  bool useNativeUi = uiMode == "native";
-  bool headless = uiMode == "headless" || uiMode == "web";
-
-  if (uiMode != "web" && uiMode != "native" && uiMode != "headless") {
-    fmt::print(stderr, "Invalid --ui-mode '{}'. Expected: web, native, headless.\n", uiMode);
+  if (uiMode == "native") {
+    fmt::print(stderr,
+               "Error: --ui-mode native was removed. Use web (default) or headless.\n");
+    return EXIT_FAILURE;
+  }
+  if (uiMode != "web" && uiMode != "headless") {
+    fmt::print(stderr, "Invalid --ui-mode '{}'. Expected: web, headless.\n", uiMode);
     return EXIT_FAILURE;
   }
 
@@ -131,14 +127,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  if (useNativeUi) {
-    app.log.warn("Native ImGui/SFML UI is retired from primary runtime. Use web GUI instead.");
-    if (!noeditor) {
-      app.log.warn("Ignoring editor startup in native mode.");
-    }
-  }
-
-  while (headless || useNativeUi) {
+  while (true) {
     app.serve();
     gm.serve();
     std::this_thread::sleep_for(16ms);

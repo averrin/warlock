@@ -23,5 +23,7 @@ public:
   std::shared_ptr<ItemLoader> loader;
   void fixedUpdate() override;
   double conveyorTransferProgress(int connectionDataId) const;
+  /** Same shared_ptr as used in simulation for recipe power modifiers (consumption). */
+  std::shared_ptr<Modifier> sharedRecipeModifier(const std::string &recipeName);
   ItemsSystem();
 };

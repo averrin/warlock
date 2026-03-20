@@ -36,7 +36,6 @@
 #include <game/state.hpp>
 #include <game/oracle.hpp>
 #include <game/well_known_entities.hpp>
-#include <utils/assets_loader.hpp>
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -96,7 +95,6 @@ struct TestHarness::Impl {
 
     auto& gm = entt::locator<GameManager>::emplace();
     gm_ptr = &gm;
-    gm.headless = true;
 
     gm.init(log);
     // Set a custom panic handler so we get a message before any abort
@@ -163,7 +161,6 @@ struct TestHarness::Impl {
     // must be destroyed while the Lua state is still alive.
     entt::locator<rpc::Server>::reset();
     entt::locator<WellKnownEntities>::reset();
-    entt::locator<AssetLoader>::reset();
     entt::locator<State>::reset();
     entt::locator<Prototypes>::reset();
     entt::locator<MetaData>::reset();

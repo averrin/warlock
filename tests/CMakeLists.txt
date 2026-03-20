@@ -8,7 +8,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
-# ─── Unit tests (no game engine, no SFML) ─────────────────────────────────────
+# ─── Unit tests (no game engine) ─────────────────────────────────────────────
 add_executable(warlock_unit
   unit/test_message.cpp
   unit/test_router.cpp
@@ -72,7 +72,7 @@ add_executable(warlock_e2e
   rpc_client.cpp
   ${E2E_TEST_SRC}
   ${E2E_GAME_SRC}
-  ${DEPS_SOURCES}           # Lua, implot, imgui, etc. from parent CMake
+  ${DEPS_SOURCES}           # Lua, etc. from parent CMake
 )
 
 target_include_directories(warlock_e2e PRIVATE
@@ -96,15 +96,11 @@ target_link_libraries(warlock_e2e PRIVATE
   nlohmann_json::nlohmann_json
   ixwebsocket
   fmt
-  sfml-graphics
-  sfml-window
-  sfml-system
-  ImGui-SFML::ImGui-SFML
   Backward::Interface
   argparse
 )
 if(MSVC)
-  target_link_libraries(warlock_e2e PRIVATE ws2_32 winmm opengl32)
+  target_link_libraries(warlock_e2e PRIVATE ws2_32 winmm)
 endif()
 
 target_compile_features(warlock_e2e PUBLIC cxx_std_20)

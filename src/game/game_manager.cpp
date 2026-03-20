@@ -14,7 +14,6 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <game/meta_data.hpp>
 #include <game/patch_loader.hpp>
 #include <game/state.hpp>
-#include <utils/assets_loader.hpp>
 #include <utils/data/loader.hpp>
 
 #include <algorithm> // For std::ranges::transform
@@ -23,10 +22,8 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <iomanip>
 #include <game/components/frame.hpp>
 #include <game/systems/environment.hpp>
-#include <game/systems/input.hpp>
 #include <game/systems/items.hpp>
 #include <game/systems/power.hpp>
-#include <game/systems/presentation.hpp>
 #include <game/systems/thermal.hpp>
 #include <game/systems/tweening.hpp>
 #include <rpc/dto.hpp>
@@ -411,9 +408,6 @@ void GameManager::start() {
   saveData();
 
   fs::path PATH = entt::monostate<"path"_hs>{};
-  auto assetLoader = entt::locator<AssetLoader>::emplace((PATH / "assets").string());
-  log.var("Assets", assetLoader.getTextures().size());
-
   log.setParent(nullptr);
   log.setAsync(true);
   auto label = "Location generation";
@@ -432,11 +426,6 @@ void GameManager::start() {
   systems.push_back(exec);
   items = std::make_shared<ItemsSystem>();
   systems.push_back(items);
-  if (!headless) {
-    systems.push_back(std::make_shared<PresentationSystem>());
-    input = std::make_shared<InputSystem>();
-    systems.push_back(input);
-  }
 
   for (auto &c : exec->sources) {
     components.push_back(c.first);
@@ -450,13 +439,6 @@ void GameManager::start() {
     auto component = create_component_from_lua(
         exec->getState(e.frame.data.id), exec->getScript(e.component_name));
     e.frame.addComponent(component);
-  });
-
-  emitter.connect<input_selected_position>([&](auto &e, auto &em) {
-    auto nf = addFrame("New Frame");
-    auto &transform = current_state.registry.get<wl::transform>(nf);
-    transform.position = e.position;
-    current_state.registry.replace<wl::transform>(nf, transform);
   });
 
   if (current_state.registry.template storage<entt::entity>().size() > 0) {
@@ -692,6 +674,3 @@ void GameManager::releaseScript(entt::registry &registry, entt::entity entity) {
   script.handlers.destroy(script.self);
 }
 
-void GameManager::startFramePlacement() {
-  input->startPositionSelection("FRAME_GHOST_M", 128);
-}

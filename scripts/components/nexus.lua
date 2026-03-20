@@ -1,6 +1,6 @@
 return {
 	name = "Nexus",
-	category = "Network",
+	category = "Unique",
 	description = "Starting component",
 	attributes = {
 		type = {
@@ -31,6 +31,12 @@ return {
 			description = "Number of slots",
 			type = AttributeType.INT,
 			value = 1,
+		},
+		temp_proof = {
+			title = "Temp Proof",
+			description = "Does not overheat or freeze",
+			type = AttributeType.BOOL,
+			value = true,
 		},
 	},
 	state = ComponentState.ACTIVE,

@@ -38,8 +38,6 @@ build target=bin_name:
 [no-cd]
 run *args: (build bin_name)
   {{ if os_family() == "windows" { \
-    "Copy-Item -Force ./" + build_dir + "/_deps/sfml-build/lib/Debug/*.dll ./" + build_dir + "/bin/Debug/; " + \
-    "Copy-Item -Force ./" + build_dir + "/_deps/sfml-src/extlibs/bin/x64/*.dll ./" + build_dir + "/bin/Debug/; " + \
     "./" + build_dir + "/bin/Debug/" + bin_name + ".exe " + args \
   } else { \
     "./" + build_dir + "/bin/" + bin_name + " " + args \
@@ -69,8 +67,6 @@ test-serial: (build "warlock_serial")
 [no-cd]
 test-e2e: (build "warlock_e2e")
   {{ if os_family() == "windows" { \
-    "Copy-Item -Force ./" + build_dir + "/_deps/sfml-build/lib/Debug/*.dll ./" + build_dir + "/tests/Debug/; " + \
-    "Copy-Item -Force ./" + build_dir + "/_deps/sfml-src/extlibs/bin/x64/*.dll ./" + build_dir + "/tests/Debug/; " + \
     "./" + build_dir + "/tests/Debug/warlock_e2e.exe --reporter console" \
   } else { \
     "./" + build_dir + "/tests/warlock_e2e --reporter console" \

@@ -3,6 +3,7 @@ import { useRpcClient } from "./hooks/useRpc";
 import { useConnectionStore } from "./stores/connection";
 import { useGameStore } from "./stores/game";
 import { usePatchStore, Patch, PatchType } from "./stores/patches";
+import { useRecipeStore, type RecipeDTO } from "./stores/recipes";
 import { useSceneStore } from "./stores/scene";
 import { AppShell } from "./components/layout/AppShell";
 import { Toaster, toast, type DefaultToastOptions } from "react-hot-toast";
@@ -82,6 +83,12 @@ export default function App() {
           usePatchStore.getState().setPatchTypes(typeData.types ?? []);
         } catch (e) {
           console.error("Failed to fetch patch types:", e);
+        }
+        try {
+          const recipeData = await client.call<{ recipes: RecipeDTO[] }>("recipes.list");
+          useRecipeStore.getState().setRecipes(recipeData.recipes ?? []);
+        } catch (e) {
+          console.error("Failed to fetch recipes:", e);
         }
       })();
     });

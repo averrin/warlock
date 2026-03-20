@@ -7,6 +7,7 @@
 #include <game/state.hpp>
 #include <utils/entt.hpp>
 #include <utils/entt_draw.hpp>
+#include <algorithm>
 #include <fmt/core.h>
 #include <random>
 
@@ -31,6 +32,7 @@ nlohmann::json serializePatch(entt::entity e, const ResourcePatch& patch, const 
     {"name", meta.name},
     {"type", patch.patch_type},
     {"item", patch.item_name},
+    {"obstacle", patch.obstacle},
     {"cells", cells_arr},
     {"bounds", {{"x", patch.min_x}, {"y", patch.min_y}, 
                 {"w", patch.max_x - patch.min_x + 1}, 
@@ -68,6 +70,7 @@ void registerPatchHandlers(Server& server) {
         {"key", key},
         {"name", def.name},
         {"item", def.item},
+        {"obstacle", def.obstacle},
         {"color", {{"r", def.color.r}, {"g", def.color.g}, 
                    {"b", def.color.b}, {"a", def.color.a}}}
       });
@@ -98,8 +101,12 @@ void registerPatchHandlers(Server& server) {
     
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<int> w_dis(def->generation.min_width, def->generation.max_width);
-    std::uniform_int_distribution<int> h_dis(def->generation.min_height, def->generation.max_height);
+    const int w0 = std::max(1, std::min(def->generation.min_width, def->generation.max_width));
+    const int w1 = std::max(w0, std::max(def->generation.min_width, def->generation.max_width));
+    const int h0 = std::max(1, std::min(def->generation.min_height, def->generation.max_height));
+    const int h1 = std::max(h0, std::max(def->generation.min_height, def->generation.max_height));
+    std::uniform_int_distribution<int> w_dis(w0, w1);
+    std::uniform_int_distribution<int> h_dis(h0, h1);
     
     int width = w_dis(gen);
     int height = h_dis(gen);
@@ -127,6 +134,7 @@ void registerPatchHandlers(Server& server) {
     ResourcePatch patch;
     patch.patch_type = type;
     patch.item_name = def->item;
+    patch.obstacle = def->obstacle;
     patch.cells = cells;
     patch.recalculateBounds();
     state.registry.emplace<ResourcePatch>(e, patch);

@@ -1,6 +1,7 @@
 #include <rpc/handlers/items_handler.hpp>
 
 #include <game/game_manager.hpp>
+#include <rpc/message.hpp>
 #include <utils/entt.hpp>
 
 #include <algorithm>
@@ -32,6 +33,38 @@ void registerItemsHandlers(Server& server) {
     }
 
     return {{"items", items}};
+  });
+
+  // recipes.list — recipe catalog for UI selectors
+  server.router().on("recipes.list", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    if (!gm.items || !gm.items->loader) {
+      return {{"recipes", nlohmann::json::array()}};
+    }
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& r : gm.items->loader->get_recipes()) {
+      nlohmann::json outs = nlohmann::json::array();
+      for (const auto& o : r.outputs) {
+        outs.push_back({{"name", o.item.name}, {"amount", o.amount}});
+      }
+      nlohmann::json ins = nlohmann::json::array();
+      for (const auto& i : r.inputs) {
+        ins.push_back({{"name", i.item.name}, {"amount", i.amount}});
+      }
+      nlohmann::json av = nlohmann::json::array();
+      for (const auto& a : r.availableOn) {
+        av.push_back(a);
+      }
+      arr.push_back({{"name", r.name},
+                     {"power_cost", r.powerCost},
+                     {"available", av},
+                     {"outputs", outs},
+                     {"inputs", ins}});
+    }
+    return {{"recipes", arr}};
   });
 }
 

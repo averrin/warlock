@@ -1,12 +1,16 @@
 #include <rpc/handlers/component_handler.hpp>
 #include <rpc/handlers/handler_utils.hpp>
 #include <rpc/dto.hpp>
+#include <game/modifier_resolve.hpp>
 #include <game/connection_cleanup.hpp>
+#include <game/components/items.hpp>
+#include <game/frame_deposit_query.hpp>
 #include <game/game_manager.hpp>
 #include <game/state.hpp>
 #include <game/components/frame.hpp>
 #include <utils/entt.hpp>
 #include <magic_enum.hpp>
+#include <algorithm>
 
 namespace rpc {
 
@@ -353,6 +357,40 @@ void registerComponentHandlers(Server& server) {
         throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Attribute not found: " + key};
       }
       auto& attr = *it->second;
+      if (key == "recipe" && attr.GetType() == AttributeType::STRING) {
+        if (!gm.items || !gm.items->loader) {
+          throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Items not loaded"};
+        }
+        const std::string new_recipe = value.get<std::string>();
+        const auto& all = gm.items->loader->get_recipes();
+        auto it_r = std::find_if(all.begin(), all.end(), [&](const RecipeDefinition& r) {
+          return r.name == new_recipe;
+        });
+        if (it_r == all.end()) {
+          throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown recipe: " + new_recipe};
+        }
+        const auto& cn = comp->data.name;
+        if (std::find(it_r->availableOn.begin(), it_r->availableOn.end(), cn) ==
+            it_r->availableOn.end()) {
+          throw rpc::RpcError{rpc::error::INVALID_PARAMS,
+                              "Recipe is not available on " + cn};
+        }
+        if (cn == "Miner") {
+          auto deposits = depositItemsUnderFrame(registry, frame_entity, frame);
+          bool ok = false;
+          for (const auto& out : it_r->outputs) {
+            if (deposits.count(out.item.name)) {
+              ok = true;
+              break;
+            }
+          }
+          if (!ok) {
+            throw rpc::RpcError{
+                rpc::error::INVALID_PARAMS,
+                "Miner recipe must produce an item from a deposit under this frame"};
+          }
+        }
+      }
       // Set value based on current attribute type
       switch (attr.GetType()) {
         case AttributeType::INT:
@@ -370,6 +408,66 @@ void registerComponentHandlers(Server& server) {
       }
       nlohmann::json result = {{"ok", true}};
       logWebAction(server, "component.set_attribute", "ok", {{"frame_id", frame_data_id}, {"component_id", component_id}, {"key", key}});
+      return result;
+    }
+    throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Component not found"};
+  });
+
+  // component.set_attribute_modifiers — {frame_id, component_id, key, modifiers: string[]}
+  server.router().on("component.set_attribute_modifiers", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    if (!params.contains("frame_id") || !params.contains("component_id") ||
+        !params.contains("key") || !params.contains("modifiers")) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS,
+                          "Missing required parameters: frame_id, component_id, key, modifiers"};
+    }
+    int frame_data_id = params["frame_id"].get<int>();
+    int component_id = params["component_id"].get<int>();
+    std::string key = params["key"].get<std::string>();
+    const auto& mods_json = params["modifiers"];
+    if (!mods_json.is_array()) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "modifiers must be an array"};
+    }
+    std::vector<std::string> names;
+    names.reserve(mods_json.size());
+    for (const auto& el : mods_json) {
+      names.push_back(el.get<std::string>());
+    }
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto& registry = state.registry;
+
+    entt::entity frame_entity = entt::null;
+    {
+      auto view = registry.view<Frame>();
+      for (auto e : view) {
+        if (view.get<Frame>(e).data.id == frame_data_id) { frame_entity = e; break; }
+      }
+    }
+    if (frame_entity == entt::null) {
+      throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Frame not found"};
+    }
+
+    auto& frame = registry.get<Frame>(frame_entity);
+    for (auto& comp : frame.components) {
+      if (!comp || comp->data.id != component_id) continue;
+
+      auto it = comp->data.attributes.find(key);
+      if (it == comp->data.attributes.end() || !it->second) {
+        throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Attribute not found: " + key};
+      }
+      auto& attr = *it->second;
+      if (auto err = game::ApplyAttributeModifierNames(attr, names, gm)) {
+        throw rpc::RpcError{rpc::error::INVALID_PARAMS, *err};
+      }
+      nlohmann::json result = {{"ok", true}};
+      logWebAction(server, "component.set_attribute_modifiers", "ok",
+                   {{"frame_id", frame_data_id}, {"component_id", component_id}, {"key", key}});
       return result;
     }
     throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Component not found"};
