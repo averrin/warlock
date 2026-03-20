@@ -16,7 +16,7 @@ public:
 
   sf::RenderWindow *window;
 
-  void init(LibLog::Logger parentLog);
+  void init(LibLog::Logger &parentLog);
   void processEvent(sf::Event event);
   void serve();
   void draw();

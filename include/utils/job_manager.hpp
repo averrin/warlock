@@ -18,7 +18,7 @@ public:
   JobManager();
   ~JobManager();
 
-  void init(LibLog::Logger parentLog);
+  void init(LibLog::Logger &parentLog);
 
   int add(std::shared_ptr<Job> job, bool start = true);
   bool restart(int id);

@@ -17,7 +17,7 @@ Gui::~Gui() { ImGui::SFML::Shutdown();
 
 static ImGuiDockNodeFlags opt_flags = ImGuiDockNodeFlags_PassthruCentralNode;
 
-void Gui::init(LibLog::Logger parentLog) {
+void Gui::init(LibLog::Logger &parentLog) {
   log.setParent(&parentLog);
   auto label = "Initializing GUI";
   log.start(label);

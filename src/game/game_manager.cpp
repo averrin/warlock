@@ -276,7 +276,7 @@ void GameManager::saveData() {
   log.setParent(p);
 }
 
-void GameManager::init(LibLog::Logger parentLog) {
+void GameManager::init(LibLog::Logger &parentLog) {
   log.setParent(&parentLog);
   auto label = "Initializing GameManager";
   log.start(label);

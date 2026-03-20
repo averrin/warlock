@@ -9,7 +9,7 @@ class DrawManager {
 public:
   std::map<std::string, std::shared_ptr<DrawEngine>> engines;
 
-  void init(LibLog::Logger parentLog);
+  void init(LibLog::Logger &parentLog);
   void start();
   void serve();
 

@@ -37,7 +37,7 @@ public:
                        (tileSet.size.second + tileSet.gap) * y,
                        tileSet.size.first, tileSet.size.second);
   }
-  void init(LibLog::Logger parentLog);
+  void init(LibLog::Logger &parentLog);
 
   void loadTileset(fs::path path);
   void saveTileset(fs::path path);

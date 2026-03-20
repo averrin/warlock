@@ -28,7 +28,7 @@ public:
   std::shared_ptr<ItemsSystem> items;
   std::shared_ptr<InputSystem> input;
 
-  void init(LibLog::Logger parentLog);
+  void init(LibLog::Logger &parentLog);
   void start();
   bool started = false;
   bool headless = false;   // skip PresentationSystem and InputSystem

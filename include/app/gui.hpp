@@ -12,7 +12,7 @@ public:
   Gui();
   ~Gui();
 
-  void init(LibLog::Logger parentLog);
+  void init(LibLog::Logger &parentLog);
   void serve();
 
   std::vector<std::shared_ptr<Editor>> editors = {};

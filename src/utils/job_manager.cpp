@@ -32,7 +32,7 @@ void bindJobEventToLua(std::string event_name) {
   });
 }*/
 
-void JobManager::init(LibLog::Logger parentLog) {
+void JobManager::init(LibLog::Logger &parentLog) {
   mutex = std::make_shared<std::mutex>();
   // log.setParent(&parentLog);
   log.setAsync(true);

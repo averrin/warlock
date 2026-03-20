@@ -1,6 +1,6 @@
 #include <game/draw_manager.hpp>
 
-void DrawManager::init(LibLog::Logger parentLog) {
+void DrawManager::init(LibLog::Logger &parentLog) {
   log.setParent(&parentLog);
   auto label = "Initializing GameManager";
   log.start(label);

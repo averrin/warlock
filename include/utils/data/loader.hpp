@@ -38,7 +38,7 @@ class Loader {
   }
 
 public:
-  void init(LibLog::Logger parentLog);
+  void init(LibLog::Logger &parentLog);
 
   template <typename ContainerType>
   bool load(ContainerType &container, std::vector<std::string> files) {

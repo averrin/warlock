@@ -14,7 +14,7 @@
 //   }
 // }
 
-void Loader::init(LibLog::Logger parentLog) {
+void Loader::init(LibLog::Logger &parentLog) {
   // log.setParent(&parentLog);
   log.is_debug = entt::monostate<"debug"_hs>{};
   log.setAsync(true);

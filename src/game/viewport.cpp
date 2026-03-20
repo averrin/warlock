@@ -65,7 +65,7 @@ void Viewport::start() {
   log.setParent(p);
 }
 
-void Viewport::init(LibLog::Logger parentLog) {
+void Viewport::init(LibLog::Logger &parentLog) {
   log.setParent(&parentLog);
 
   auto &emitter = entt::locator<event_emitter>::value();

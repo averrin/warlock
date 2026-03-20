@@ -5,7 +5,7 @@ Scene::Scene() {}
 
 Scene::~Scene() {}
 
-void Scene::init(LibLog::Logger parentLog) {
+void Scene::init(LibLog::Logger &parentLog) {
   log.setParent(&parentLog);
   auto label = "Initializing Scene";
   log.start(label);
