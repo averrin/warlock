@@ -13,10 +13,12 @@ Wireless and beam connections are **not** part of this check (they may still be 
 
 ## Geometry rule (must match the canvas)
 
+Group connections by undirected frame pair (same as `drawConnections`). For each pair, compute `presentTypes` = POWER/DATA/CONVEYOR that appear in **any** connection on that pair (any medium), because perpendicular **offset indices** depend on the full set of types drawn.
+
 For each **connection** `c` with `(c.medium ?? "WIRE") === "WIRE"`:
 
 1. Resolve `source` / `target` positions from the **candidate** move map when those frames are being dragged, otherwise `framePositionsRef` / `framesRef` fallbacks (same as overlap check).
-2. Compute segment endpoints **identically** to `drawConnections`: center points, `nx`/`ny` from the chord, offset per **type index** among present types on that pair (POWER, DATA, CONVEYOR order — only types that exist for that pair).
+2. Compute segment endpoints **identically** to `drawConnections`: center points, `nx`/`ny` from the chord, offset using the **index of `c.type` inside `presentTypes`** for that pair (not “WIRE-only types”), so a WIRE POWER line stays aligned when a DATA line on the same pair is WIRELESS.
 3. For each **other** frame `f` (`f` not equal to `source` or `target` of that segment): if the world-space rectangle of `f` (using candidate position when `f` is in the move) intersects that segment, the move is **invalid**.
 
 **Endpoint exclusion:** Segments always terminate at frame centers; endpoint frames must not be tested against their own segment (`f !== source && f !== target`), or every frame would trivially “hit” its incident wires.
@@ -34,7 +36,7 @@ For each **connection** `c` with `(c.medium ?? "WIRE") === "WIRE"`:
 ## Edge cases
 
 - **Group drag:** All candidate positions applied together; segments use candidate positions for all frames in the group.
-- **Multiple connections same pair:** Each WIRE connection contributes a segment with the correct type offset (same as drawing).
+- **Multiple connections same pair:** Offsets follow the **full** type set on that pair; only WIRE-medium connections get a segment tested against frames.
 - **Non-WIRE media:** Ignored for blocking; no change to drag behavior relative to them.
 
 ## Testing
