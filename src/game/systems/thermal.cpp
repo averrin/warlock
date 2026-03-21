@@ -2,11 +2,13 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <game/components/frame.hpp>
+#include <game/thermal_aoe.hpp>
 #include <game/well_known_entities.hpp>
 #include <game/state.hpp>
 #include <game/systems/thermal.hpp>
 #include <liblog/liblog.hpp>
 #include <ranges> // For ranges
+#include <unordered_map>
 #include <utils/entt.hpp>
 
 void ThermalSystem::fixedUpdate() {
@@ -22,6 +24,9 @@ void ThermalSystem::fixedUpdate() {
     environment->temperatures[-1].pop_front();
   }
 
+  std::unordered_map<entt::entity, float> aoe_bias;
+  warlock::thermal_aoe::computeFrameAoeBias(current_state.registry, environment, aoe_bias);
+
   for (auto &f : current_state.registry.view<Frame>()) {
     auto &frame = current_state.registry.get<Frame>(f);
     auto surfaceArea = surfaceAreas[frame.size];
@@ -33,6 +38,10 @@ void ThermalSystem::fixedUpdate() {
         acTemp += std::max(0.f, component->data.get_or<float>("heat", 0.0f));
       }
     }
+    float aoeExtra = 0.f;
+    if (const auto it = aoe_bias.find(f); it != aoe_bias.end()) {
+      aoeExtra = it->second;
+    }
     for (auto &component : frame.components) {
       float totalHeatTransfer = 0.0;
       auto volume = volumes[component->size];
@@ -41,7 +50,8 @@ void ThermalSystem::fixedUpdate() {
         temp = environment->temperature;
       }
 
-      if (component->data.get<std::string>("type") != "Temp Control") {
+      const std::string compType = component->data.get<std::string>("type");
+      if (!warlock::thermal_aoe::isInternallyThermalControlled(compType)) {
         if (component->state != ComponentState::DEACTIVATED &&
             component->state != ComponentState::BROKEN &&
             component->state != ComponentState::DESTROYED) {
@@ -50,6 +60,7 @@ void ThermalSystem::fixedUpdate() {
         }
         temp += acTemp;
       }
+      temp += aoeExtra;
 
       for (auto other : frame.components) {
         if (other != component) {

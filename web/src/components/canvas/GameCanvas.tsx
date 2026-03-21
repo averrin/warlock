@@ -42,6 +42,10 @@ type Props = {
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 3.0;
 const ZOOM_FACTOR = 0.1;
+/** Trackpad pinch zoom: scale multiplier per unit of wheel deltaY (pixel mode). */
+const PINCH_ZOOM_SENSITIVITY = 0.008;
+/** When wheel uses line mode with small deltas (common on some trackpads), treat as pan (px per line). */
+const WHEEL_LINE_PAN_PIXELS = 24;
 const GRID_LINE_COLOR = 0x1f2937;
 const GRID_LINE_ALPHA = 0.35;
 const GRID_DOT_COLOR = 0x374151;
@@ -501,6 +505,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
   const gridRef = useRef<Graphics | null>(null);
+  const thermalFieldLayerRef = useRef<Graphics | null>(null);
   const patchLayerRef = useRef<Container | null>(null);
   const overlayRef = useRef<FrameOverlayHandle | null>(null);
   const patches = usePatchStore((s) => s.patches);
@@ -511,6 +516,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   obstacleCellsRef.current = obstacleCells;
   const patchTypes = usePatchStore((s) => s.patchTypes);
   const frames = useGameStore((s) => s.frames);
+  const showThermalField = useGameStore((s) => s.showThermalField);
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
   const selectedFrameIds = useGameStore((s) => s.selectedFrameIds);
   const setFrameSelection = useGameStore((s) => s.setFrameSelection);
@@ -1306,6 +1312,92 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     overlayRef.current.syncTransform(world.scale.x, world.x, world.y);
   };
 
+  const redrawThermalField = useCallback(async () => {
+    const g = thermalFieldLayerRef.current;
+    const world = worldRef.current;
+    const app = appRef.current;
+    if (!g || !world || !app) return;
+    g.clear();
+    if (!useGameStore.getState().showThermalField) {
+      g.visible = false;
+      return;
+    }
+    g.visible = true;
+    const scale = world.scale.x;
+    const sw = app.screen.width;
+    const sh = app.screen.height;
+    const wx0 = -world.x / scale;
+    const wy0 = -world.y / scale;
+    const wx1 = wx0 + sw / scale;
+    const wy1 = wy0 + sh / scale;
+    let minGx = Math.floor(wx0 / CELL);
+    let minGy = Math.floor(wy0 / CELL);
+    const maxGx = Math.ceil(wx1 / CELL);
+    const maxGy = Math.ceil(wy1 / CELL);
+    let width = maxGx - minGx;
+    let height = maxGy - minGy;
+    if (width <= 0 || height <= 0) return;
+    const MAX = 256;
+    if (width > MAX) {
+      const excess = width - MAX;
+      minGx += Math.floor(excess / 2);
+      width = MAX;
+    }
+    if (height > MAX) {
+      const excess = height - MAX;
+      minGy += Math.floor(excess / 2);
+      height = MAX;
+    }
+    try {
+      const res = (await rpcClient.call("state.thermalField", {
+        minGx,
+        minGy,
+        width,
+        height,
+      })) as { values: number[] };
+      const values = res.values;
+      if (!values?.length) return;
+      let vmin = values[0]!;
+      let vmax = values[0]!;
+      for (const v of values) {
+        if (v < vmin) vmin = v;
+        if (v > vmax) vmax = v;
+      }
+      const span = vmax - vmin + 1e-9;
+      for (let iy = 0; iy < height; iy++) {
+        for (let ix = 0; ix < width; ix++) {
+          const v = values[iy * width + ix]!;
+          const t = (v - vmin) / span;
+          const r = Math.round(40 + t * 215);
+          const b = Math.round(220 - t * 200);
+          const color = (r << 16) | (80 << 8) | b;
+          const x = (minGx + ix) * CELL;
+          const y = (minGy + iy) * CELL;
+          g.rect(x, y, CELL, CELL);
+          g.fill({ color, alpha: 0.34 });
+        }
+      }
+    } catch {
+      /* RPC may be unavailable */
+    }
+  }, [rpcClient]);
+
+  useEffect(() => {
+    if (!showThermalField) {
+      const g = thermalFieldLayerRef.current;
+      if (g) {
+        g.clear();
+        g.visible = false;
+      }
+      return;
+    }
+    const id = window.setInterval(() => {
+      void redrawThermalField();
+    }, 450);
+    void redrawThermalField();
+    return () => clearInterval(id);
+  }, [showThermalField, redrawThermalField, zoom]);
+
   useEffect(() => {
     const host = hostRef.current;
     if (!host) {
@@ -1352,6 +1444,11 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         const patchLayer = new Container();
         patchLayer.label = "patches";
         worldContainer.addChild(patchLayer);
+
+        const thermalFieldG = new Graphics();
+        thermalFieldG.eventMode = "none";
+        thermalFieldLayerRef.current = thermalFieldG;
+        worldContainer.addChild(thermalFieldG);
 
         const mLayer = new Graphics();
         markerLayerRef.current = mLayer;
@@ -1401,7 +1498,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         });
         resizeObserver.observe(host);
 
-        // --- Wheel zoom ---
+        // --- Wheel: trackpad two-finger pan (pixel deltas), pinch / Ctrl+wheel zoom, mouse wheel zoom ---
         const onWheel = (e: WheelEvent) => {
           e.preventDefault();
           const rect = canvasEl!.getBoundingClientRect();
@@ -1409,8 +1506,35 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           const sy = e.clientY - rect.top;
 
           const oldScale = worldContainer.scale.x;
-          const direction = e.deltaY < 0 ? 1 : -1;
-          const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldScale * (1 + direction * ZOOM_FACTOR)));
+          const pinchZoom = e.ctrlKey || e.metaKey;
+          const smallLineDeltas =
+            e.deltaMode === WheelEvent.DOM_DELTA_LINE &&
+            Math.abs(e.deltaY) < 80 &&
+            Math.abs(e.deltaX) < 80;
+          const trackpadPan =
+            !pinchZoom &&
+            (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ||
+              Math.abs(e.deltaX) > 0.5 ||
+              smallLineDeltas);
+
+          if (trackpadPan) {
+            const px =
+              e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 1 : WHEEL_LINE_PAN_PIXELS;
+            worldContainer.x -= e.deltaX * px;
+            worldContainer.y -= e.deltaY * px;
+            redrawGrid(grid, worldContainer, app.screen.width, app.screen.height);
+            syncOverlayTransform();
+            return;
+          }
+
+          let newScale: number;
+          if (pinchZoom) {
+            const factor = Math.exp(-e.deltaY * PINCH_ZOOM_SENSITIVITY);
+            newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldScale * factor));
+          } else {
+            const direction = e.deltaY < 0 ? 1 : -1;
+            newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldScale * (1 + direction * ZOOM_FACTOR)));
+          }
 
           const worldX = (sx - worldContainer.x) / oldScale;
           const worldY = (sy - worldContainer.y) / oldScale;

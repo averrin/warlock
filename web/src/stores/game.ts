@@ -45,6 +45,9 @@ interface GameStore {
   markers: GameMarker[];
   indicators: Record<string, { label: string; value: string; color: string }>;
   environmentHistory: EnvironmentDTO["history"] | null;
+  /** Map overlay: server field snapshot (env temp + AoE). */
+  showThermalField: boolean;
+  setShowThermalField: (value: boolean) => void;
   init: (client: RpcClient) => void;
   applySnapshot: (snapshot: {
     started?: boolean;
@@ -164,6 +167,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   markers: [],
   indicators: {},
   environmentHistory: null,
+  showThermalField: (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem("warlock.showThermalField") === "1";
+    } catch {
+      return false;
+    }
+  })(),
 
   init: (client) => {
     client.onLifecycle("disconnected", () => {
@@ -659,5 +670,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setEnvironmentField: async (client, field, value) => {
     await client.call("env.set_field", { field, value });
+  },
+
+  setShowThermalField: (value) => {
+    try {
+      window.localStorage.setItem("warlock.showThermalField", value ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    set({ showThermalField: value });
   },
 }));

@@ -61,3 +61,22 @@ TEST_CASE("environment — game.tick returns day/time info") {
   CHECK(tick["days"].is_number());
   CHECK(tick["isDay"].is_boolean());
 }
+
+TEST_CASE("state.thermalField — returns rectangular grid") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+
+  h.tick(1);
+
+  auto r = client.call("state.thermalField", {{"minGx", 0}, {"minGy", 0}, {"width", 2}, {"height", 3}});
+  REQUIRE(r.contains("minGx"));
+  REQUIRE(r.contains("minGy"));
+  REQUIRE(r.contains("width"));
+  REQUIRE(r.contains("height"));
+  REQUIRE(r.contains("values"));
+  CHECK(r["width"] == 2);
+  CHECK(r["height"] == 3);
+  REQUIRE(r["values"].is_array());
+  CHECK(r["values"].size() == 6);
+}

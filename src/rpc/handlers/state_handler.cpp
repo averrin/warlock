@@ -3,10 +3,14 @@
 #include <rpc/dto.hpp>
 #include <game/game_manager.hpp>
 #include <game/state.hpp>
+#include <game/thermal_aoe.hpp>
 #include <game/well_known_entities.hpp>
 #include <game/systems/power.hpp>
 #include <game/components/resource_patch.hpp>
 #include <game/patch_loader.hpp>
+
+#include <mutex>
+#include <vector>
 
 namespace rpc {
 
@@ -278,6 +282,47 @@ void registerStateHandlers(Server& server) {
       result["last_saved_at"] = gm.lastSavedAt();
     }
     return result;
+  });
+
+  // state.thermalField — rectangular scalar field for map overlay (env.temperature + AoE sum)
+  server.router().on("state.thermalField", [](const Context& /*ctx*/, const nlohmann::json& params) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INVALID_REQUEST, "Game not started"};
+    }
+    const int minGx = params.value("minGx", 0);
+    const int minGy = params.value("minGy", 0);
+    int width = params.value("width", 0);
+    int height = params.value("height", 0);
+    if (width <= 0 || height <= 0) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "width and height must be positive"};
+    }
+    constexpr int kMaxDim = 256;
+    if (width > kMaxDim || height > kMaxDim) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "width and height must be <= 256"};
+    }
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto& registry = state.registry;
+    auto& wk = entt::locator<WellKnownEntities>::value();
+    Environment* env = nullptr;
+    if (wk.environment != entt::null && registry.valid(wk.environment) &&
+        registry.all_of<Environment>(wk.environment)) {
+      env = &registry.get<Environment>(wk.environment);
+    }
+    std::vector<float> values;
+    warlock::thermal_aoe::fillThermalFieldRect(registry, env, minGx, minGy, width, height, values);
+    nlohmann::json arr = nlohmann::json::array();
+    for (float v : values) {
+      arr.push_back(v);
+    }
+    return {
+        {"minGx", minGx},
+        {"minGy", minGy},
+        {"width", width},
+        {"height", height},
+        {"values", arr},
+    };
   });
 }
 

@@ -14,6 +14,7 @@ add_executable(warlock_unit
   unit/test_router.cpp
   unit/test_graph.cpp
   unit/test_spatial_hash.cpp
+  unit/test_thermal_grid.cpp
   ${PROJECT_SOURCE_DIR}/src/rpc/message.cpp
   ${PROJECT_SOURCE_DIR}/src/rpc/router.cpp
   ${PROJECT_SOURCE_DIR}/src/utils/graph.cpp

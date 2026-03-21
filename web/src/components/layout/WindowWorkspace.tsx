@@ -194,6 +194,8 @@ export function WindowWorkspace({ rpcClient }: Props) {
   const pinnedMiniInspectors = useWindowLayoutStore((s) => s.pinnedMiniInspectors);
   const frames = useGameStore((s) => s.frames);
   const env = useGameStore((s) => s.environment);
+  const showThermalField = useGameStore((s) => s.showThermalField);
+  const setShowThermalField = useGameStore((s) => s.setShowThermalField);
   const timeControl = useGameStore((s) => s.timeControl);
   const pauseGame = useGameStore((s) => s.pauseGame);
   const resumeGame = useGameStore((s) => s.resumeGame);
@@ -509,6 +511,24 @@ export function WindowWorkspace({ rpcClient }: Props) {
                 </span>
                 <span>Sun</span>
               </span>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: "pointer",
+                  color: "#e5e7eb",
+                  marginLeft: 4,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={showThermalField}
+                  onChange={(e) => setShowThermalField(e.target.checked)}
+                  aria-pressed={showThermalField}
+                />
+                <span>Temperature field</span>
+              </label>
             </div>
             <div style={{ display: "flex", gap: 4 }}>
               {SPEED_OPTIONS.map((opt) => (
