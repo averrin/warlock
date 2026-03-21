@@ -79,8 +79,10 @@ public:
                            std::string function_name);
 
   void invalidateScript(int component_id);
+  /** Clear all compiled scripts (e.g. after state.load replaces registry). */
+  void invalidateAllScripts();
   void cleanupFrame(int frame_id);
 };
 
-/** Rebind Nexus component `api` tables (not serialized); call after load and once exec exists. */
-void refresh_nexus_component_apis(CodeExecutionSystem& exec);
+/** Rebind component `api` tables from Lua specs (not serialized); call after load and once exec exists. */
+void refresh_component_apis(CodeExecutionSystem& exec);

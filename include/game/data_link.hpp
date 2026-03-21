@@ -1,8 +1,11 @@
 #pragma once
 
 #include <game/components/frame.hpp>
+#include <cstddef>
 #include <memory>
 #include <string>
+
+inline constexpr std::size_t kMaxDataQueue = 256;
 
 /// Recompute Data Connector counterpart pairing from DATA connections (stable ordering).
 void recompute_data_link_counterparts();

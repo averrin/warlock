@@ -1,7 +1,9 @@
 #include <rpc/handlers/code_handler.hpp>
 #include <rpc/handlers/handler_utils.hpp>
 #include <game/game_manager.hpp>
+#include <game/lua_completion.hpp>
 #include <game/state.hpp>
+#include <game/systems/code_execution.hpp>
 #include <game/components/frame.hpp>
 #include <utils/entt.hpp>
 
@@ -129,6 +131,36 @@ void registerCodeHandlers(Server& server) {
       {"frame_id", frameDataId},
       {"script", core->data.get_or<std::string>("code", "")}
     };
+  });
+
+  // code.completion — {frame_id: int, path?: string} -> {keys: string[]}
+  server.router().on("code.completion", [](const Context& /*ctx*/, const nlohmann::json& params) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    if (!params.contains("frame_id")) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Missing required parameter: frame_id"};
+    }
+    int frameDataId = params["frame_id"].get<int>();
+    std::string path = params.value("path", std::string(""));
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto frameEntity = findFrameEntityByDataId(state.registry, frameDataId);
+    if (frameEntity == entt::null) {
+      throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Frame not found"};
+    }
+    auto& frame = state.registry.get<Frame>(frameEntity);
+    syncFrameLuaEnvironment(*gm.exec, frameDataId, &frame);
+    refresh_component_apis(*gm.exec);
+
+    std::vector<std::string> keys = luaCompletionKeys(gm.exec->getState(frameDataId), path);
+    nlohmann::json arr = nlohmann::json::array();
+    for (const std::string& k : keys) {
+      arr.push_back(k);
+    }
+    return {{"keys", arr}};
   });
 
   // code.execute — {frame_id: int, function?: string} -> {status, error?}

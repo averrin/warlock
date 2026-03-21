@@ -79,6 +79,10 @@ void CodeExecutionSystem::invalidateScript(int component_id) {
   compiled_scripts_.erase(component_id);
 }
 
+void CodeExecutionSystem::invalidateAllScripts() {
+  compiled_scripts_.clear();
+}
+
 void CodeExecutionSystem::cleanupFrame(int frame_id) {
   states.erase(frame_id);
 }

@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import type { RpcClient } from "../../rpc/client";
-import type { ComponentDTO } from "../../rpc/types";
+import type { ComponentDTO, DataLinkBufferDTO } from "../../rpc/types";
 import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS } from "../ui";
 import { useGameStore } from "../../stores/game";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
@@ -52,6 +52,80 @@ function CardExpandControl({
       >
         {expanded ? "◂" : "▸"}
       </button>
+    </div>
+  );
+}
+
+const DATA_LINK_PREVIEW = 200;
+
+function truncateText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}…`;
+}
+
+function DataLinkBufferInspector({ buffer }: { buffer: DataLinkBufferDTO }) {
+  const raw = buffer.raw_queue ?? [];
+  const packets = buffer.packet_queue ?? [];
+  const total = raw.length + packets.length;
+  const box: CSSProperties = {
+    fontSize: 11,
+    fontFamily: "ui-monospace, monospace",
+    background: "#0f172a",
+    border: "1px solid #334155",
+    borderRadius: 4,
+    padding: 8,
+    display: "grid",
+    gap: 6,
+    color: "#cbd5e1",
+  };
+  const label: CSSProperties = { color: "#94a3b8", fontSize: 10, textTransform: "uppercase" as const, letterSpacing: "0.04em" };
+
+  return (
+    <div style={box}>
+      <div style={label}>Data buffer</div>
+      <div>
+        Counterparts: {buffer.counterpart_id}
+        {buffer.counterpart_id_alt >= 0 ? ` / ${buffer.counterpart_id_alt}` : ""}
+        {" · "}
+        queued {total} / {buffer.max_queue}
+      </div>
+      {raw.length === 0 && packets.length === 0 ? (
+        <div style={{ color: "#64748b" }}>Queues empty</div>
+      ) : (
+        <>
+          {raw.length > 0 && (
+            <div style={{ display: "grid", gap: 4 }}>
+              <div style={label}>Raw ({raw.length})</div>
+              {raw.map((line, i) => (
+                <div key={i} style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#e2e8f0" }}>
+                  [{i}] {truncateText(line, DATA_LINK_PREVIEW)}
+                </div>
+              ))}
+            </div>
+          )}
+          {packets.length > 0 && (
+            <div style={{ display: "grid", gap: 4 }}>
+              <div style={label}>Packets ({packets.length})</div>
+              {packets.map((p, i) => {
+                const hdr = Object.entries(p.headers ?? {})
+                  .map(([k, v]) => `${k}=${v}`)
+                  .join(", ");
+                return (
+                  <div key={i} style={{ display: "grid", gap: 2 }}>
+                    <div style={{ color: "#94a3b8" }}>
+                      [{i}] src {p.source} → dst {p.destination}
+                      {hdr ? ` · ${hdr}` : ""}
+                    </div>
+                    <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#e2e8f0" }}>
+                      {truncateText(p.body ?? "", DATA_LINK_PREVIEW)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -210,6 +284,9 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
             attributes={component.attributes as Record<string, unknown> | undefined}
             rpcClient={rpcClient}
           />
+          {component.type === "Data Connector" && component.data_link_buffer != null && (
+            <DataLinkBufferInspector buffer={component.data_link_buffer} />
+          )}
           {/* Code attribute editor button */}
           {hasCodeAttr && (
             <button

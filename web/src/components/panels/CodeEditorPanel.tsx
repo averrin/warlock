@@ -5,8 +5,14 @@ import { capabilityMethods, isFeatureSupported } from "../../capabilities";
 import { useGameStore } from "../../stores/game";
 import { Panel } from "./Panel";
 import { btnBase } from "../ui/styles";
+import {
+  clearLuaRunMarkersWithMonaco,
+  setLuaRunErrorMarkers,
+} from "../../utils/luaRunEditorErrors";
+import { registerLuaStateCompletionProvider } from "../../utils/luaMonacoCompletion";
 
 type MonacoEditor = Parameters<OnMount>[0];
+type MonacoNs = Parameters<OnMount>[1];
 
 const toolbarStyle: React.CSSProperties = {
   display: "flex",
@@ -56,6 +62,18 @@ export function CodeEditorPanel({ rpcClient }: Props) {
   const supported = isFeatureSupported(capabilityMethods.codeEditor);
   const executeSupported = isFeatureSupported(capabilityMethods.codeExecute);
   const editorRef = useRef<MonacoEditor | null>(null);
+  const monacoRef = useRef<MonacoNs | null>(null);
+  const completionFrameRef = useRef<number | null>(null);
+  completionFrameRef.current = selectedFrameId;
+  const luaCompletionDisposeRef = useRef<(() => void) | null>(null);
+
+  useEffect(
+    () => () => {
+      luaCompletionDisposeRef.current?.();
+      luaCompletionDisposeRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!supported) return;
@@ -99,26 +117,52 @@ export function CodeEditorPanel({ rpcClient }: Props) {
       });
   };
 
+  const clearRunErrors = () => {
+    const ed = editorRef.current;
+    const monaco = monacoRef.current;
+    if (ed && monaco) clearLuaRunMarkersWithMonaco(ed, monaco);
+    setRunConsole([]);
+    setStatus("");
+  };
+
   const handleRun = () => {
     if (selectedFrameId === null) return;
+    const ed0 = editorRef.current;
+    const monaco0 = monacoRef.current;
+    if (ed0 && monaco0) clearLuaRunMarkersWithMonaco(ed0, monaco0);
+    setRunConsole([]);
+    setStatus("");
     void executeCoreUpdate(rpcClient, selectedFrameId)
       .then((result) => {
+        const ed = editorRef.current;
+        const monaco = monacoRef.current;
         if (result.status === "ok") {
           setStatus("Run: ok ✓"); setStatusOk(true);
         } else {
           setStatus("Run: error ✗"); setStatusOk(false);
-          setRunConsole((current) => [...current.slice(-9), result.error ?? "unknown runtime error"]);
+          const err = result.error ?? "unknown runtime error";
+          setRunConsole((current) => [...current.slice(-9), err]);
+          if (ed && monaco) setLuaRunErrorMarkers(ed, monaco, err);
         }
       })
       .catch((error: unknown) => {
         setStatus("Run: error ✗"); setStatusOk(false);
         const message = error instanceof Error ? error.message : String(error);
         setRunConsole((current) => [...current.slice(-9), message]);
+        const ed = editorRef.current;
+        const monaco = monacoRef.current;
+        if (ed && monaco) setLuaRunErrorMarkers(ed, monaco, message);
       });
   };
 
-  const handleEditorMount = (ed: MonacoEditor) => {
+  const handleEditorMount = (ed: MonacoEditor, monaco: MonacoNs) => {
     editorRef.current = ed;
+    monacoRef.current = monaco;
+    luaCompletionDisposeRef.current?.();
+    if (supported) {
+      const { dispose } = registerLuaStateCompletionProvider(monaco, rpcClient, () => completionFrameRef.current);
+      luaCompletionDisposeRef.current = dispose;
+    }
     ed.addCommand(2097 /* KeyMod.CtrlCmd | KeyCode.KeyS */, () => {
       if (canSave) handleSave();
     });
@@ -156,6 +200,16 @@ export function CodeEditorPanel({ rpcClient }: Props) {
           >
             Run
           </button>
+          {runConsole.length > 0 && (
+            <button
+              type="button"
+              style={btnBase}
+              title="Clear error messages and editor markers"
+              onClick={clearRunErrors}
+            >
+              Clear errors
+            </button>
+          )}
           {selectedFrameId === null && (
             <span style={{ fontSize: 11, color: "#6b7280" }}>No frame selected</span>
           )}

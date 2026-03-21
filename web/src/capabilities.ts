@@ -2,7 +2,7 @@ export const capabilityMethods = {
   session: ["session.info", "session.claim", "session.release"],
   frameInspector: ["frame.list", "frame.get", "frame.move", "frame.activate", "frame.deactivate"],
   powerPanel: ["power.networks"],
-  codeEditor: ["code.sources", "code.update", "code.get_script"],
+  codeEditor: ["code.sources", "code.update", "code.get_script", "code.completion"],
   codeDefEditor: ["code.update_source"],
   codeExecute: ["code.execute"],
   environment: ["env.status"],

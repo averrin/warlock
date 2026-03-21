@@ -1,4 +1,5 @@
 #include <rpc/dto.hpp>
+#include <game/data_link.hpp>
 #include <game/systems/items.hpp>
 #include <magic_enum.hpp>
 #include <algorithm>
@@ -137,6 +138,29 @@ nlohmann::json serializeComponent(const Component& comp) {
       req.push_back(r);
     }
     json["require"] = req;
+  }
+
+  if (type_str == "Data Connector") {
+    nlohmann::json raw_items = nlohmann::json::array();
+    for (const auto& s : comp.data_raw_inbox) {
+      raw_items.push_back(s);
+    }
+    nlohmann::json packets = nlohmann::json::array();
+    for (const auto& p : comp.data_packet_inbox) {
+      nlohmann::json headers = nlohmann::json::object();
+      for (const auto& [hk, hv] : p.headers) {
+        headers[hk] = hv;
+      }
+      packets.push_back({{"source", p.source},
+                         {"destination", p.destination},
+                         {"headers", headers},
+                         {"body", p.body}});
+    }
+    json["data_link_buffer"] = {{"counterpart_id", comp.counterpart_id},
+                                {"counterpart_id_alt", comp.counterpart_id_alt},
+                                {"raw_queue", raw_items},
+                                {"packet_queue", packets},
+                                {"max_queue", kMaxDataQueue}};
   }
 
   return json;

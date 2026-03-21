@@ -1,11 +1,20 @@
-import { Suspense, lazy, useState, useEffect, useRef } from "react";
+import { Suspense, lazy, useState, useEffect, useRef, useMemo } from "react";
 import type { OnMount } from "@monaco-editor/react";
 import type { RpcClient } from "../../rpc/client";
+import type { ComponentDTO } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
+import { Badge } from "../ui";
 import { btnBase } from "../ui/styles";
+import {
+  clearLuaRunMarkersWithMonaco,
+  setLuaRunErrorMarkers,
+} from "../../utils/luaRunEditorErrors";
+import { registerLuaStateCompletionProvider } from "../../utils/luaMonacoCompletion";
+import { ComponentControls } from "../frame/ComponentControls";
 
 type MonacoEditor = Parameters<OnMount>[0];
+type MonacoNs = Parameters<OnMount>[1];
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 
@@ -22,6 +31,17 @@ export interface ComponentCodeEditorParams {
 }
 
 type Props = ComponentCodeEditorParams & { rpcClient: RpcClient };
+
+/** Logical component type from `type` field or `attributes.type` (matches server serializeComponent). */
+function getComponentLogicalType(c: ComponentDTO): string {
+  if (c.type) return c.type;
+  const raw = c.attributes?.type;
+  if (raw && typeof raw === "object" && "base_value" in raw) {
+    const bv = (raw as { base_value: unknown }).base_value;
+    if (typeof bv === "string") return bv;
+  }
+  return "";
+}
 
 const toolbarStyle: React.CSSProperties = {
   display: "flex",
@@ -67,6 +87,18 @@ export function ComponentCodeEditorPanel({
   const sourcesSupported = isFeatureSupported(capabilityMethods.codeEditor);
   const defEditorSupported = isFeatureSupported(capabilityMethods.codeDefEditor);
   const executeSupported = isFeatureSupported(capabilityMethods.codeExecute);
+  const selectedFrameId = useGameStore((s) => s.selectedFrameId);
+  const frames = useGameStore((s) => s.frames);
+
+  const coreCodeContext = useMemo(() => {
+    if (mode !== "attribute" || attrKey !== "code" || frameId == null || componentId == null) {
+      return null;
+    }
+    const frame = frames.find((f) => f.id === frameId);
+    const comp = frame?.components?.find((c) => c.id === componentId);
+    if (!comp || getComponentLogicalType(comp) !== "Core") return null;
+    return { frameId, componentId, state: comp.state };
+  }, [mode, attrKey, frameId, componentId, frames]);
 
   const [code, setCode] = useState(initialCode);
   const [status, setStatus] = useState("");
@@ -74,6 +106,19 @@ export function ComponentCodeEditorPanel({
   const [runConsole, setRunConsole] = useState<string[]>([]);
   const [loading, setLoading] = useState(mode === "source");
   const editorRef = useRef<MonacoEditor | null>(null);
+  const monacoRef = useRef<MonacoNs | null>(null);
+  const completionFrameRef = useRef<number | null>(null);
+  completionFrameRef.current =
+    mode === "attribute" ? (frameId ?? null) : (selectedFrameId ?? null);
+  const luaCompletionDisposeRef = useRef<(() => void) | null>(null);
+
+  useEffect(
+    () => () => {
+      luaCompletionDisposeRef.current?.();
+      luaCompletionDisposeRef.current = null;
+    },
+    [],
+  );
 
   const isReadOnly = mode === "source" && !(defEditorSupported && sourcesSupported);
   const canSave = mode === "attribute" && frameId != null && componentId != null;
@@ -129,26 +174,52 @@ export function ComponentCodeEditorPanel({
     }
   };
 
+  const clearRunErrors = () => {
+    const ed = editorRef.current;
+    const monaco = monacoRef.current;
+    if (ed && monaco) clearLuaRunMarkersWithMonaco(ed, monaco);
+    setRunConsole([]);
+    setStatus("");
+  };
+
   const handleRun = () => {
     if (frameId == null) return;
+    const ed0 = editorRef.current;
+    const monaco0 = monacoRef.current;
+    if (ed0 && monaco0) clearLuaRunMarkersWithMonaco(ed0, monaco0);
+    setRunConsole([]);
+    setStatus("");
     void executeCoreUpdate(rpcClient, frameId)
       .then((result) => {
+        const ed = editorRef.current;
+        const monaco = monacoRef.current;
         if (result.status === "ok") {
           setStatus("Run: ok ✓"); setStatusOk(true);
         } else {
           setStatus("Run: error ✗"); setStatusOk(false);
-          setRunConsole((cur) => [...cur.slice(-9), result.error ?? "unknown runtime error"]);
+          const err = result.error ?? "unknown runtime error";
+          setRunConsole((cur) => [...cur.slice(-9), err]);
+          if (ed && monaco) setLuaRunErrorMarkers(ed, monaco, err);
         }
       })
       .catch((error: unknown) => {
         setStatus("Run: error ✗"); setStatusOk(false);
         const message = error instanceof Error ? error.message : String(error);
         setRunConsole((cur) => [...cur.slice(-9), message]);
+        const ed = editorRef.current;
+        const monaco = monacoRef.current;
+        if (ed && monaco) setLuaRunErrorMarkers(ed, monaco, message);
       });
   };
 
-  const handleEditorMount = (ed: MonacoEditor) => {
+  const handleEditorMount = (ed: MonacoEditor, monaco: MonacoNs) => {
     editorRef.current = ed;
+    monacoRef.current = monaco;
+    luaCompletionDisposeRef.current?.();
+    if (sourcesSupported) {
+      const { dispose } = registerLuaStateCompletionProvider(monaco, rpcClient, () => completionFrameRef.current);
+      luaCompletionDisposeRef.current = dispose;
+    }
     if (mode === "attribute" && canSave) {
       ed.addCommand(2097 /* KeyMod.CtrlCmd | KeyCode.KeyS */, handleSave);
     } else if (mode === "source" && canSaveSource) {
@@ -180,6 +251,36 @@ export function ComponentCodeEditorPanel({
             >
               Run
             </button>
+            {runConsole.length > 0 && (
+              <button
+                type="button"
+                style={btnBase}
+                title="Clear error messages and editor markers"
+                onClick={clearRunErrors}
+              >
+                Clear errors
+              </button>
+            )}
+            {coreCodeContext && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  paddingLeft: 8,
+                  marginLeft: 4,
+                  borderLeft: "1px solid #334155",
+                }}
+              >
+                <Badge label={coreCodeContext.state} variant="state" />
+                <ComponentControls
+                  frameId={coreCodeContext.frameId}
+                  componentId={coreCodeContext.componentId}
+                  componentState={coreCodeContext.state}
+                  rpcClient={rpcClient}
+                />
+              </div>
+            )}
             {status && (
               <span style={{ fontSize: 11, marginLeft: "auto", color: statusOk ? "#4ade80" : "#f87171" }}>
                 {status}

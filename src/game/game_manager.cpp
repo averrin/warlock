@@ -230,10 +230,14 @@ void GameManager::loadData() {
 
   Metadata::reconcileGlobalIdCounter(current_state.registry);
 
+  if (exec) {
+    exec->invalidateAllScripts();
+  }
+
   started = true;
 
   if (exec) {
-    refresh_nexus_component_apis(*exec);
+    refresh_component_apis(*exec);
   }
 
   log.setAsync(false);
@@ -422,7 +426,7 @@ void GameManager::start() {
   systems.push_back(std::make_shared<ThermalSystem>());
   systems.push_back(std::make_shared<EnvironmentSystem>());
   exec = std::make_shared<CodeExecutionSystem>();
-  refresh_nexus_component_apis(*exec);
+  refresh_component_apis(*exec);
   systems.push_back(exec);
   items = std::make_shared<ItemsSystem>();
   systems.push_back(items);

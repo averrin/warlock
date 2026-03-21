@@ -8,8 +8,6 @@
 
 namespace {
 
-constexpr std::size_t kMaxDataQueue = 256;
-
 bool is_data_connector(const std::shared_ptr<Component> &c) {
   if (!c)
     return false;

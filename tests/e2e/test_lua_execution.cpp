@@ -69,6 +69,45 @@ TEST_CASE("lua exec: code.sources contains Core component") {
   CHECK(has_core);
 }
 
+// ─── code.completion ─────────────────────────────────────────────────────────
+
+TEST_CASE("lua exec: code.completion returns keys for frame path") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+
+  int fid = first_frame_data_id(client);
+
+  auto result = client.call("code.completion", {{"frame_id", fid}, {"path", "frame"}});
+  REQUIRE(result.contains("keys"));
+  REQUIRE(result["keys"].is_array());
+  bool has_data = false;
+  for (auto& k : result["keys"]) {
+    if (k.get<std::string>() == "data") {
+      has_data = true;
+    }
+  }
+  CHECK(has_data);
+}
+
+TEST_CASE("lua exec: code.completion globals include frame") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+
+  int fid = first_frame_data_id(client);
+
+  auto result = client.call("code.completion", {{"frame_id", fid}, {"path", ""}});
+  REQUIRE(result.contains("keys"));
+  bool has_frame = false;
+  for (auto& k : result["keys"]) {
+    if (k.get<std::string>() == "frame") {
+      has_frame = true;
+    }
+  }
+  CHECK(has_frame);
+}
+
 // ─── code.blueprints ─────────────────────────────────────────────────────────
 
 TEST_CASE("lua exec: code.blueprints returns non-empty blueprint map") {

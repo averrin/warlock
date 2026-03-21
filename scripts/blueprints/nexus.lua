@@ -2,7 +2,7 @@ return {
 	name = "Nexus",
 	size = FrameSize.M,
 	components = {
-		"Core",
+		"Main Core",
 		"Nexus",
 		"Power Wire Connector",
 		"Life Support",

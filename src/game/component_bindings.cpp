@@ -61,14 +61,28 @@ DataPacket parse_data_packet_table(sol::table t, int default_source) {
 
 } // namespace
 
-void refresh_nexus_component_apis(CodeExecutionSystem& exec) {
+void refresh_component_apis(CodeExecutionSystem& exec) {
   auto& st = entt::locator<State>::value();
   for (auto e : st.registry.view<Frame>()) {
     auto& frame = st.registry.get<Frame>(e);
     sol::state& L = exec.getState(frame.data.id);
     for (auto& c : frame.components) {
-      if (c && c->data.get_or<std::string>("type", "") == "Nexus") {
+      if (!c) continue;
+      const std::string type = c->data.get_or<std::string>("type", "");
+      if (type == "Nexus") {
         c->api = make_nexus_component_api_table(L);
+        continue;
+      }
+      auto it = exec.sources.find(c->data.name);
+      if (it == exec.sources.end()) continue;
+      try {
+        sol::table spec = L.load(it->second).call();
+        sol::object api = spec["api"];
+        if (api.valid() && api.get_type() == sol::type::table) {
+          c->api = api.as<sol::table>();
+        }
+      } catch (...) {
+        // Missing or invalid component script — leave api as default
       }
     }
   }

@@ -406,6 +406,9 @@ void registerComponentHandlers(Server& server) {
           attr.SetBaseValue(value.get<bool>());
           break;
       }
+      if (key == "code" && gm.exec) {
+        gm.exec->invalidateScript(component_id);
+      }
       nlohmann::json result = {{"ok", true}};
       logWebAction(server, "component.set_attribute", "ok", {{"frame_id", frame_data_id}, {"component_id", component_id}, {"key", key}});
       return result;
@@ -464,6 +467,9 @@ void registerComponentHandlers(Server& server) {
       auto& attr = *it->second;
       if (auto err = game::ApplyAttributeModifierNames(attr, names, gm)) {
         throw rpc::RpcError{rpc::error::INVALID_PARAMS, *err};
+      }
+      if (key == "code" && gm.exec) {
+        gm.exec->invalidateScript(component_id);
       }
       nlohmann::json result = {{"ok", true}};
       logWebAction(server, "component.set_attribute_modifiers", "ok",

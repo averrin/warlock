@@ -66,9 +66,26 @@ export interface MetadataDTO {
   attributes: Record<string, AttributeDTO>;
 }
 
+export interface DataPacketDTO {
+  source: number;
+  destination: number;
+  headers: Record<string, string>;
+  body: string;
+}
+
+export interface DataLinkBufferDTO {
+  counterpart_id: number;
+  counterpart_id_alt: number;
+  raw_queue: string[];
+  packet_queue: DataPacketDTO[];
+  max_queue: number;
+}
+
 export interface ComponentDTO {
   id: number;
   name: string;
+  /** Logical type from the `type` attribute (e.g. Data Connector). */
+  type?: string;
   description?: string;
   icon?: string;
   state: string;
@@ -80,6 +97,7 @@ export interface ComponentDTO {
   attributes?: Record<string, unknown>;
   metadata?: MetadataDTO;
   require?: string[];
+  data_link_buffer?: DataLinkBufferDTO | null;
 }
 
 export type CanvasBadgeHealth = "ok" | "warn" | "bad";
