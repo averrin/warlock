@@ -261,7 +261,9 @@ void register_bindings(sol::state &lua) {
       &RecipeDefinition::timeCost, "powerCost", &RecipeDefinition::powerCost);
 
   lua.new_usertype<Oracle>("Oracle", "getWirelessDataFrames", &Oracle::getWirelessDataFrames,
-                           "getWiredFrames", &Oracle::getWiredFrames);
+                           "getWiredFrames", &Oracle::getWiredFrames,
+                           "scanAdjacent", &Oracle::scanAdjacent,
+                           "moveFrame", &Oracle::moveFrame);
   lua.set("oracle", oracle);
 
   lua.new_usertype<NexusApi>(
