@@ -7,4 +7,6 @@ class Oracle {
 public:
   std::vector<Frame> getWirelessDataFrames(int id, float maxDistance);
   std::vector<Frame> getWiredFrames(int id);
+  sol::table scanAdjacent(int id, sol::this_state s);
+  bool moveFrame(int id, std::string direction);
 };
