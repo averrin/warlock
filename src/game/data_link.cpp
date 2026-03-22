@@ -11,7 +11,8 @@ namespace {
 bool is_data_connector(const std::shared_ptr<Component> &c) {
   if (!c)
     return false;
-  return c->data.get<std::string>("type") == "Data Connector";
+  auto type = c->data.get<std::string>("type");
+  return type == "Data Connector" || type == "Data Wireless Emitter" || type == "Data Wireless Receiver";
 }
 
 bool is_data_relay(const std::shared_ptr<Component> &c) {

@@ -8,12 +8,12 @@ type ConnectionMedium = "WIRE" | "WIRELESS" | "BEAM";
 function getConnectorComponentName(type: string, medium: ConnectionMedium): string | null {
   if (type === "POWER") {
     if (medium === "WIRE") return "Power Wire Connector";
-    if (medium === "WIRELESS") return "Power Wireless Connector";
+    if (medium === "WIRELESS") return "Power Wireless Emitter"; // Fallback
     return "Power Beam Connector";
   }
   if (type === "DATA") {
     if (medium === "WIRE") return "Data Wire Connector";
-    if (medium === "WIRELESS") return "Wireless Data Connector";
+    if (medium === "WIRELESS") return "Data Wireless Emitter"; // Fallback
     return "Data Beam Connector";
   }
   if (type === "CONVEYOR") return "Conveyor Connector";
@@ -22,6 +22,10 @@ function getConnectorComponentName(type: string, medium: ConnectionMedium): stri
 }
 
 function getConnectorNamesForFrame(type: string, medium: ConnectionMedium): string[] {
+  if (medium === "WIRELESS") {
+    if (type === "POWER") return ["Power Wireless Emitter", "Power Wireless Receiver"];
+    if (type === "DATA") return ["Data Wireless Emitter", "Data Wireless Receiver"];
+  }
   const primary = getConnectorComponentName(type, medium);
   if (!primary) return [];
   const names = [primary];

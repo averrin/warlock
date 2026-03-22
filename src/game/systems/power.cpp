@@ -39,8 +39,14 @@ void PowerSystem::fixedUpdate() {
     for (auto &f : frames_view) {
       auto &frame = current_state.registry.get<Frame>(f);
       if (frame.data.id == conn.source || frame.data.id == conn.target) {
-        if (frame.hasComponentType("Power Wire Connector")) {
-          n++;
+        if (conn.medium == ConnectionMedium::WIRELESS) {
+          if (frame.hasComponentType("Power Wireless Emitter") || frame.hasComponentType("Power Wireless Receiver")) {
+            n++;
+          }
+        } else {
+          if (frame.hasComponentType("Power Wire Connector")) {
+            n++;
+          }
         }
       }
     }

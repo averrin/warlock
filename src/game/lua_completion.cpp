@@ -107,7 +107,7 @@ void appendKeysForObject(sol::object obj, std::vector<std::string>& out) {
     return;
   }
   if (obj.is<Oracle*>()) {
-    static const char* keys[] = {"getWirelessDataFrames", "getWiredFrames"};
+    static const char* keys[] = {"getWiredFrames"};
     appendCStringKeys(keys, sizeof(keys) / sizeof(keys[0]), out);
     return;
   }

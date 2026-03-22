@@ -26,6 +26,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <game/systems/power.hpp>
 #include <game/systems/thermal.hpp>
 #include <game/systems/tweening.hpp>
+#include <game/systems/wireless_connection.hpp>
 #include <rpc/dto.hpp>
 #include <rpc/server.hpp>
 #include <ranges> // For ranges
@@ -425,6 +426,7 @@ void GameManager::start() {
   systems.push_back(std::make_shared<PowerSystem>());
   systems.push_back(std::make_shared<ThermalSystem>());
   systems.push_back(std::make_shared<EnvironmentSystem>());
+  systems.push_back(std::make_shared<WirelessConnectionSystem>());
   exec = std::make_shared<CodeExecutionSystem>();
   refresh_component_apis(*exec);
   systems.push_back(exec);

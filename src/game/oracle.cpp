@@ -5,68 +5,6 @@
 #include <algorithm>
 #include <cmath>
 
-std::vector<Frame> Oracle::getWirelessDataFrames(int id = 0, float maxDistance = 0.0f) {
-  auto &current_state = entt::locator<State>::value();
-
-  constexpr float CELL = 75.0f; // Must match the web canvas grid units.
-  constexpr const char* WIRELESS_DATA_TYPE = "Wireless Data Connector";
-
-  auto frameCells = [](FrameSize size) -> float {
-    switch (size) {
-      case FrameSize::XS: return 1.0f / 3.0f;
-      case FrameSize::S: return 1.0f;
-      case FrameSize::M: return 2.0f;
-      case FrameSize::L: return 3.0f;
-      case FrameSize::G: return 4.0f;
-    }
-    return 1.0f;
-  };
-
-  auto &registry = current_state.registry;
-  float sourceCenterX = 0.0f;
-  float sourceCenterY = 0.0f;
-  bool sourceOk = false;
-
-  // Find and validate source frame center.
-  for (auto entity : registry.view<Frame, wl::transform>()) {
-    auto &frame = registry.get<Frame>(entity);
-    if (frame.data.id != id) continue;
-    if (frame.size != FrameSize::M) return {};
-    if (!frame.hasComponentType(WIRELESS_DATA_TYPE, true)) return {};
-
-    const auto square = frameCells(frame.size) * CELL;
-    const auto &t = registry.get<wl::transform>(entity);
-    sourceCenterX = t.position.x + square / 2.0f;
-    sourceCenterY = t.position.y + square / 2.0f;
-    sourceOk = true;
-    break;
-  }
-  if (!sourceOk) return {};
-
-  if (maxDistance <= 0.0f) return {};
-
-  std::vector<Frame> frames = {};
-  for (auto entity : registry.view<Frame, wl::transform>()) {
-    auto &frame = registry.get<Frame>(entity);
-    if (frame.data.id == id) continue;
-    if (frame.size != FrameSize::M) continue;
-    if (!frame.hasComponentType(WIRELESS_DATA_TYPE, true)) continue;
-
-    const auto square = frameCells(frame.size) * CELL;
-    const auto &t = registry.get<wl::transform>(entity);
-    const float cx = t.position.x + square / 2.0f;
-    const float cy = t.position.y + square / 2.0f;
-
-    const float dx = cx - sourceCenterX;
-    const float dy = cy - sourceCenterY;
-    if (std::hypot(dx, dy) <= maxDistance) {
-      frames.push_back(frame);
-    }
-  }
-
-  return frames;
-}
-
 std::vector<std::vector<int>>
 findUnconnectedNets(const std::vector<Connection> &connections) {
   std::unordered_map<int, std::vector<int>> adj;

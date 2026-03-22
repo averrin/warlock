@@ -6,6 +6,9 @@
 #include <vector>
 
 static std::optional<std::string> expectedConnectorTypeAttr(const Connection &conn) {
+  if (conn.medium == ConnectionMedium::WIRELESS) {
+    return std::nullopt; // Wireless connections are handled by the auto-connection system
+  }
   switch (conn.type) {
   case ConnectionType::POWER:
     return std::string("Power Wire Connector");
