@@ -799,9 +799,18 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   }, [rpcClient, blueprintSupported]);
 
   const enterCreationMode = (blueprint: string) => {
-    creatingRef.current = blueprint;
+    creatingRef.current = { type: "blueprint", id: blueprint } as any;
     setCreationBlueprint(blueprint);
   };
+
+  useEffect(() => {
+    const handleSurfaceCreate = (e: any) => {
+      creatingRef.current = { type: "surface", ...e.detail };
+      setCreationBlueprint(null); // clears blueprint ghost, we draw custom
+    };
+    window.addEventListener("warlock:createSurface", handleSurfaceCreate);
+    return () => window.removeEventListener("warlock:createSurface", handleSurfaceCreate);
+  }, []);
 
   const exitCreationMode = () => {
     creatingRef.current = null;
