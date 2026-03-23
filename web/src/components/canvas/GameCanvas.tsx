@@ -4,13 +4,19 @@ import { Application, Container, Graphics } from "pixi.js";
 import type { FederatedPointerEvent } from "pixi.js";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
-import { usePatchStore, Patch, type PatchGeneration } from "../../stores/patches";
+import { usePatchStore, Patch, type PatchGeneration, type PatchType } from "../../stores/patches";
+import { resolveSurfacePatchTypeKey, startSurfacePaintMode } from "../../surfacePaint";
 import { placementModeRef, useCanvasPlacementStore } from "../../stores/canvasPlacement";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
 import type { ComponentDTO, ConnectionDTO } from "../../rpc/types";
 import { ComponentContextMenu } from "./ComponentContextMenu";
 import { PatchMiniInspector } from "./PatchMiniInspector";
-import { ComponentPicker, CanvasCreatePicker, type CanvasCreatePick } from "../picker";
+import {
+  ComponentPicker,
+  CanvasCreatePicker,
+  SurfacePatchPicker,
+  type CanvasCreatePick,
+} from "../picker";
 import { FrameOverlay, type FrameOverlayHandle } from "./FrameOverlay";
 import { useFrameDrag } from "./useFrameDrag";
 import type { PlacedFrame } from "./FrameCard";
@@ -57,6 +63,28 @@ const GRID_HIDE_THRESHOLD = 4;
 /** Dots at corners every N cells (S frame = 3 cells per side). */
 const GRID_DOT_STRIDE_CELLS = 3;
 
+/** World-space axis-aligned rectangle covering every grid cell touched by a drag between two world points. */
+function gridSnapSelectionRect(wx0: number, wy0: number, wx1: number, wy1: number) {
+  const minwx = Math.min(wx0, wx1);
+  const minwy = Math.min(wy0, wy1);
+  const maxwx = Math.max(wx0, wx1);
+  const maxwy = Math.max(wy0, wy1);
+  const gx0 = Math.floor(minwx / CELL);
+  const gy0 = Math.floor(minwy / CELL);
+  const gx1 = Math.floor(maxwx / CELL);
+  const gy1 = Math.floor(maxwy / CELL);
+  return {
+    x: gx0 * CELL,
+    y: gy0 * CELL,
+    w: (gx1 - gx0 + 1) * CELL,
+    h: (gy1 - gy0 + 1) * CELL,
+    gx0,
+    gy0,
+    gx1,
+    gy1,
+  };
+}
+
 const CONN_COLOR: Record<string, number> = {
   POWER: 0xeab308,
   DATA: 0x3b82f6,
@@ -90,7 +118,6 @@ function strokeDashedLine(
   const period = dash + gap;
   let t = phase % period;
   if (t < 0) t += period;
-  t = -t;
   while (t < len) {
     const t0 = Math.max(0, t);
     const t1 = Math.min(len, t + dash);
@@ -102,6 +129,39 @@ function strokeDashedLine(
     }
     t += period;
   }
+}
+
+/** Filled arrow at segment midpoint, pointing from (x1,y1) toward (x2,y2). */
+function fillWirelessDirectionArrow(
+  g: Graphics,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  color: number,
+  alpha: number,
+) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 16) return;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+  const cx = x1 + ux * (len * 0.5);
+  const cy = y1 + uy * (len * 0.5);
+  const ah = 5;
+  const aw = 3.2;
+  const tipX = cx + ux * (ah * 0.5);
+  const tipY = cy + uy * (ah * 0.5);
+  const bx = cx - ux * (ah * 0.5);
+  const by = cy - uy * (ah * 0.5);
+  g.moveTo(tipX, tipY);
+  g.lineTo(bx + px * aw, by + py * aw);
+  g.lineTo(bx - px * aw, by - py * aw);
+  g.lineTo(tipX, tipY);
+  g.fill({ color, alpha });
 }
 
 const DEFAULT_MARKER_COLOR = 0xff0000;
@@ -565,7 +625,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const framesRef = useRef(frames);
   framesRef.current = frames;
   const ghostRef = useRef<Graphics | null>(null);
-  type SurfacePaintConfig = { material: string; color: { r: number; g: number; b: number; a: number } };
+  type SurfacePaintConfig =
+    | { kind: "remove" }
+    | { kind: "paint"; material: string; color: { r: number; g: number; b: number; a: number } };
   const [surfacePaint, setSurfacePaint] = useState<SurfacePaintConfig | null>(null);
   const surfacePaintRef = useRef<SurfacePaintConfig | null>(null);
   surfacePaintRef.current = surfacePaint;
@@ -611,6 +673,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   } | null>(null);
   const [componentPickerOpen, setComponentPickerOpen] = useState<{ frameId: number } | null>(null);
   const [createEntityPickerOpen, setCreateEntityPickerOpen] = useState(false);
+  const [surfacePaintPickerOpen, setSurfacePaintPickerOpen] = useState(false);
+  const [surfacePaintTypesLoading, setSurfacePaintTypesLoading] = useState(false);
   const [patchInspector, setPatchInspector] = useState<{ patch: Patch; x: number; y: number } | null>(null);
   const drawConnectionsRef = useRef<() => void>(() => {});
   const drawRestrictedDropZonesRef = useRef<() => void>(() => {});
@@ -621,6 +685,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     wx0: number;
     wy0: number;
   } | null>(null);
+  const surfacePaintDraggingRef = useRef(false);
 
   // --- Frame positions map for connection drawing and drag ---
   const framePositionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -629,13 +694,18 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     const gridX = Math.floor(wx / CELL);
     const gridY = Math.floor(wy / CELL);
     const currentPatches = patchesRef.current;
-
+    const types = patchTypesRef.current;
+    let best: Patch | null = null;
+    let bestZ = -Infinity;
     for (const patch of currentPatches) {
-      if (patch.cells.some(([cx, cy]) => cx === gridX && cy === gridY)) {
-        return patch;
+      if (!patch.cells.some(([cx, cy]) => cx === gridX && cy === gridY)) continue;
+      const z = types.find((p) => p.key === patch.type)?.z_index ?? 0;
+      if (z > bestZ || (z === bestZ && best !== null && patch.id > best.id)) {
+        best = patch;
+        bestZ = z;
       }
     }
-    return null;
+    return best;
   };
 
   // Click-outside handler for all context menus
@@ -654,6 +724,22 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!surfacePaintPickerOpen) return;
+    if (patchTypes.length > 0) return;
+    setSurfacePaintTypesLoading(true);
+    void (async () => {
+      try {
+        const data = await rpcClient.call<{ types: PatchType[] }>("patches.types");
+        usePatchStore.getState().setPatchTypes(data.types ?? []);
+      } catch {
+        //
+      } finally {
+        setSurfacePaintTypesLoading(false);
+      }
+    })();
+  }, [surfacePaintPickerOpen, patchTypes.length, rpcClient]);
 
   // --- Connection drawing (reads from framePositionsRef) ---
   const drawConnections = () => {
@@ -736,6 +822,17 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             alpha,
             dashAnimPhase,
           );
+          if (wirelessDash) {
+            fillWirelessDirectionArrow(
+              connLayer,
+              x1,
+              y1,
+              x2,
+              y2,
+              color,
+              Math.min(1, alpha + 0.12),
+            );
+          }
         } else {
           connLayer.setStrokeStyle({ width, color, alpha });
           connLayer.moveTo(x1, y1);
@@ -793,7 +890,15 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     if (!layer) return;
     layer.removeChildren();
 
-    for (const patch of patches) {
+    const types = patchTypesRef.current;
+    const ordered = [...patches].sort((a, b) => {
+      const za = types.find((t) => t.key === a.type)?.z_index ?? 0;
+      const zb = types.find((t) => t.key === b.type)?.z_index ?? 0;
+      if (za !== zb) return za - zb;
+      return a.id - b.id;
+    });
+
+    for (const patch of ordered) {
       const gfx = new Graphics();
       const { r, g, b, a } = patch.color;
       const color = (r << 16) | (g << 8) | b;
@@ -806,7 +911,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
 
       layer.addChild(gfx);
     }
-  }, [patches]);
+  }, [patches, patchTypes]);
 
   useEffect(() => {
     renderPatches();
@@ -866,13 +971,19 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   useEffect(() => {
     const handleSurfaceCreate = (e: Event) => {
       const ce = e as CustomEvent<{
-        material: string;
-        color: { r: number; g: number; b: number; a: number };
+        kind?: "paint" | "remove";
+        material?: string;
+        color?: { r: number; g: number; b: number; a: number };
       }>;
       const d = ce.detail;
-      if (!d?.material || !d.color) return;
+      if (d?.kind === "remove") {
+        clearPlacementMode();
+        setSurfacePaint({ kind: "remove" });
+        return;
+      }
+      if (!d?.material || !d?.color) return;
       clearPlacementMode();
-      setSurfacePaint({ material: d.material, color: d.color });
+      setSurfacePaint({ kind: "paint", material: d.material, color: d.color });
     };
     window.addEventListener("warlock:createSurface", handleSurfaceCreate);
     return () => window.removeEventListener("warlock:createSurface", handleSurfaceCreate);
@@ -884,19 +995,40 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     return () => window.removeEventListener("warlock:clearSurfacePaint", onClearSurfacePaint);
   }, []);
 
-  const createPatch = async (patchType: string, wx: number, wy: number) => {
+  const createPatch = async (
+    patchType: string,
+    wx: number,
+    wy: number,
+    rect?: { width: number; height: number },
+  ) => {
     const gridX = Math.floor(wx / CELL);
     const gridY = Math.floor(wy / CELL);
     try {
-      await rpcClient.call("patches.create", {
+      const params: Record<string, unknown> = {
         type: patchType,
         x: gridX,
         y: gridY,
-      });
+      };
+      if (rect) {
+        params.width = rect.width;
+        params.height = rect.height;
+      }
+      await rpcClient.call("patches.create", params);
       const data = await rpcClient.call<{ patches: Patch[] }>("patches.list");
       usePatchStore.getState().setPatches(data.patches ?? []);
     } catch (e) {
       console.error("Failed to create patch:", e);
+    }
+    setContextMenu(null);
+  };
+
+  const removeSurfaceRect = async (gx: number, gy: number, width: number, height: number) => {
+    try {
+      await rpcClient.call("patches.remove_surface_rect", { x: gx, y: gy, width, height });
+      const data = await rpcClient.call<{ patches: Patch[] }>("patches.list");
+      usePatchStore.getState().setPatches(data.patches ?? []);
+    } catch (e) {
+      console.error("Failed to remove surface:", e);
     }
     setContextMenu(null);
   };
@@ -1245,12 +1377,146 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       if (wl) wl.visible = false;
       return;
     }
-    // Surface paint: pick patch type from material (fallback to first type), place one procedural patch
-    if (surfacePaintRef.current && worldRef.current) {
-      const types = usePatchStore.getState().patchTypes;
-      const patchType = types.find((t) => t.key === surfacePaintRef.current!.material)?.key ?? types[0]?.key;
+    // Surface paint / remove surface (see SurfacePalette / scripts/patches/*.lua)
+    const sp0 = surfacePaintRef.current;
+    if (sp0 && worldRef.current) {
+      if (sp0.kind === "remove") {
+        const app = appRef.current;
+        const canvasEl = app?.canvas ?? null;
+        const worldContainer = worldRef.current;
+        const boxGfx = selectionBoxRef.current;
+        if (!canvasEl || !worldContainer || !boxGfx) {
+          exitSurfacePaintMode();
+          return;
+        }
+        const local = event.getLocalPosition(worldContainer);
+        const wx0 = local.x;
+        const wy0 = local.y;
+        const scale = worldContainer.scale.x;
+        surfacePaintDraggingRef.current = true;
+        if (ghostRef.current) ghostRef.current.visible = false;
+        boxGfx.clear();
+        boxGfx.visible = true;
+
+        const cleanup = () => {
+          surfacePaintDraggingRef.current = false;
+          boxGfx.clear();
+          boxGfx.visible = false;
+          window.removeEventListener("pointermove", onMoveRm);
+          window.removeEventListener("pointerup", onUpRm);
+          window.removeEventListener("keydown", onKeyEscRm);
+        };
+
+        const onMoveRm = (pe: PointerEvent) => {
+          const r = canvasEl.getBoundingClientRect();
+          const csx = pe.clientX - r.left;
+          const csy = pe.clientY - r.top;
+          const curWx = (csx - worldContainer.x) / scale;
+          const curWy = (csy - worldContainer.y) / scale;
+          const snap = gridSnapSelectionRect(wx0, wy0, curWx, curWy);
+          boxGfx.clear();
+          boxGfx.rect(snap.x, snap.y, snap.w, snap.h);
+          boxGfx.fill({ color: 0xf97316, alpha: 0.18 });
+          boxGfx.stroke({ width: 1, color: 0xea580c, alpha: 0.95 });
+        };
+
+        const onUpRm = (pe: PointerEvent) => {
+          const r = canvasEl.getBoundingClientRect();
+          const csx = pe.clientX - r.left;
+          const csy = pe.clientY - r.top;
+          const curWx = (csx - worldContainer.x) / scale;
+          const curWy = (csy - worldContainer.y) / scale;
+          const snap = gridSnapSelectionRect(wx0, wy0, curWx, curWy);
+          const w = snap.gx1 - snap.gx0 + 1;
+          const h = snap.gy1 - snap.gy0 + 1;
+          cleanup();
+          exitSurfacePaintMode();
+          void removeSurfaceRect(snap.gx0, snap.gy0, w, h);
+        };
+
+        const onKeyEscRm = (ke: KeyboardEvent) => {
+          if (ke.key !== "Escape") return;
+          ke.preventDefault();
+          cleanup();
+          exitSurfacePaintMode();
+        };
+
+        window.addEventListener("pointermove", onMoveRm);
+        window.addEventListener("pointerup", onUpRm);
+        window.addEventListener("keydown", onKeyEscRm);
+        return;
+      }
+
+      const patchType = resolveSurfacePatchTypeKey(sp0.material);
       if (!patchType) {
         exitSurfacePaintMode();
+        return;
+      }
+      const pt = patchTypesRef.current.find((p) => p.key === patchType);
+      if (pt?.paint_surface) {
+        const app = appRef.current;
+        const canvasEl = app?.canvas ?? null;
+        const worldContainer = worldRef.current;
+        const boxGfx = selectionBoxRef.current;
+        if (!canvasEl || !worldContainer || !boxGfx) {
+          exitSurfacePaintMode();
+          return;
+        }
+        const local = event.getLocalPosition(worldContainer);
+        const wx0 = local.x;
+        const wy0 = local.y;
+        const scale = worldContainer.scale.x;
+        surfacePaintDraggingRef.current = true;
+        if (ghostRef.current) ghostRef.current.visible = false;
+        boxGfx.clear();
+        boxGfx.visible = true;
+
+        const cleanup = () => {
+          surfacePaintDraggingRef.current = false;
+          boxGfx.clear();
+          boxGfx.visible = false;
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          window.removeEventListener("keydown", onKeyEsc);
+        };
+
+        const onMove = (pe: PointerEvent) => {
+          const r = canvasEl.getBoundingClientRect();
+          const csx = pe.clientX - r.left;
+          const csy = pe.clientY - r.top;
+          const curWx = (csx - worldContainer.x) / scale;
+          const curWy = (csy - worldContainer.y) / scale;
+          const snap = gridSnapSelectionRect(wx0, wy0, curWx, curWy);
+          boxGfx.clear();
+          boxGfx.rect(snap.x, snap.y, snap.w, snap.h);
+          boxGfx.fill({ color: 0x22c55e, alpha: 0.14 });
+          boxGfx.stroke({ width: 1, color: 0x22c55e, alpha: 0.92 });
+        };
+
+        const onUp = (pe: PointerEvent) => {
+          const r = canvasEl.getBoundingClientRect();
+          const csx = pe.clientX - r.left;
+          const csy = pe.clientY - r.top;
+          const curWx = (csx - worldContainer.x) / scale;
+          const curWy = (csy - worldContainer.y) / scale;
+          const snap = gridSnapSelectionRect(wx0, wy0, curWx, curWy);
+          const w = snap.gx1 - snap.gx0 + 1;
+          const h = snap.gy1 - snap.gy0 + 1;
+          cleanup();
+          exitSurfacePaintMode();
+          void createPatch(patchType, snap.gx0 * CELL, snap.gy0 * CELL, { width: w, height: h });
+        };
+
+        const onKeyEsc = (ke: KeyboardEvent) => {
+          if (ke.key !== "Escape") return;
+          ke.preventDefault();
+          cleanup();
+          exitSurfacePaintMode();
+        };
+
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("keydown", onKeyEsc);
         return;
       }
       const local = event.getLocalPosition(worldRef.current);
@@ -1343,12 +1609,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       const csy = pe.clientY - r.top;
       const curWx = (csx - worldContainer.x) / scale;
       const curWy = (csy - worldContainer.y) / scale;
-      const x0 = Math.min(sess.wx0, curWx);
-      const y0 = Math.min(sess.wy0, curWy);
-      const x1 = Math.max(sess.wx0, curWx);
-      const y1 = Math.max(sess.wy0, curWy);
+      const snap = gridSnapSelectionRect(sess.wx0, sess.wy0, curWx, curWy);
       boxGfx.clear();
-      boxGfx.rect(x0, y0, x1 - x0, y1 - y0);
+      boxGfx.rect(snap.x, snap.y, snap.w, snap.h);
       boxGfx.fill({ color: 0x3b82f6, alpha: 0.12 });
       boxGfx.stroke({ width: 1, color: 0x3b82f6, alpha: 0.95 });
     };
@@ -1377,10 +1640,11 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         return;
       }
 
-      const bx0 = Math.min(sess.wx0, curWx);
-      const by0 = Math.min(sess.wy0, curWy);
-      const bx1 = Math.max(sess.wx0, curWx);
-      const by1 = Math.max(sess.wy0, curWy);
+      const snap = gridSnapSelectionRect(sess.wx0, sess.wy0, curWx, curWy);
+      const bx0 = snap.x;
+      const by0 = snap.y;
+      const bx1 = snap.x + snap.w;
+      const by1 = snap.y + snap.h;
 
       const hit: number[] = [];
       for (const f of placedFramesRef.current) {
@@ -1749,17 +2013,28 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           const cursorWy = (sy - worldContainer.y) / scale;
 
           if (surfacePaintRef.current) {
-            const wx = Math.round(cursorWx / CELL) * CELL;
-            const wy = Math.round(cursorWy / CELL) * CELL;
-            const { r, g, b, a } = surfacePaintRef.current.color;
-            const fill = (r << 16) | (g << 8) | b;
-            ghost.clear();
-            ghost.rect(0, 0, CELL, CELL);
-            ghost.fill({ color: fill, alpha: a / 255 });
-            ghost.x = wx;
-            ghost.y = wy;
-            ghost.alpha = 0.92;
-            ghost.visible = true;
+            const sp = surfacePaintRef.current;
+            if (sp.kind === "remove") {
+              if (ghost.visible) ghost.visible = false;
+            } else {
+            const mat = sp.material;
+            const spt = patchTypesRef.current.find((p) => p.key === mat);
+            if (spt?.paint_surface) {
+              if (ghost.visible) ghost.visible = false;
+            } else {
+              const wx = Math.round(cursorWx / CELL) * CELL;
+              const wy = Math.round(cursorWy / CELL) * CELL;
+              const { r, g, b, a } = sp.color;
+              const fill = (r << 16) | (g << 8) | b;
+              ghost.clear();
+              ghost.rect(0, 0, CELL, CELL);
+              ghost.fill({ color: fill, alpha: a / 255 });
+              ghost.x = wx;
+              ghost.y = wy;
+              ghost.alpha = 0.92;
+              ghost.visible = true;
+            }
+            }
           } else {
             const pm = placementModeRef.current;
             if (pm) {
@@ -2033,7 +2308,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             left: "50%",
             transform: "translateX(-50%)",
             background: "#1e293b",
-            border: "1px solid #22c55e",
+            border: surfacePaint.kind === "remove" ? "1px solid #ea580c" : "1px solid #22c55e",
             borderRadius: 6,
             padding: "4px 12px",
             fontSize: 12,
@@ -2043,7 +2318,21 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             userSelect: "none",
           }}
         >
-          Surface (<b>{surfacePaint.material}</b>) — click to place patch, Esc to cancel
+          {surfacePaint.kind === "remove" ? (
+            <>
+              <b>Remove surface</b> — drag a rectangle to erase painted surfaces, Esc to cancel
+            </>
+          ) : patchTypes.find((p) => p.key === surfacePaint.material)?.paint_surface ? (
+            <>
+              Surface (<b>{patchTypes.find((p) => p.key === surfacePaint.material)?.name ?? surfacePaint.material}</b>) —
+              drag to paint a rectangle, Esc to cancel
+            </>
+          ) : (
+            <>
+              Surface (<b>{patchTypes.find((p) => p.key === surfacePaint.material)?.name ?? surfacePaint.material}</b>) —
+              click to place, Esc to cancel
+            </>
+          )}
         </div>
       )}
       {wiringMode && (
@@ -2165,6 +2454,17 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             }}
           >
             Create entity…
+          </div>
+          <div
+            style={{ padding: "4px 10px", cursor: "pointer" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            onClick={() => {
+              setContextMenu(null);
+              setSurfacePaintPickerOpen(true);
+            }}
+          >
+            Surface paint…
           </div>
         </div>
       )}
@@ -2564,6 +2864,23 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           rpcClient={rpcClient}
         />
       )}
+      {surfacePaintPickerOpen && (
+        <SurfacePatchPicker
+          isOpen={true}
+          onClose={() => setSurfacePaintPickerOpen(false)}
+          patchTypes={patchTypes}
+          isLoading={surfacePaintTypesLoading && patchTypes.length === 0}
+          onSelect={(patchKey) => {
+            setSurfacePaintPickerOpen(false);
+            const pt = patchTypes.find((p) => p.key === patchKey);
+            startSurfacePaintMode({
+              material: patchKey,
+              color: pt?.color ?? { r: 34, g: 197, b: 94, a: 128 },
+              icon: patchKey,
+            });
+          }}
+        />
+      )}
       {createEntityPickerOpen && (
         <CanvasCreatePicker
           isOpen={true}
@@ -2577,7 +2894,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             } else if (pick.kind === "patch") {
               setSurfacePaint(null);
               useCanvasPlacementStore.getState().setMode({ kind: "patch", patchType: pick.patchType });
-            } else {
+            } else if (pick.kind === "surface") {
+              setSurfacePaintPickerOpen(true);
+            } else if (pick.kind === "marker") {
               const trimmed = window.prompt("Marker name", "Marker")?.trim();
               if (trimmed) {
                 setSurfacePaint(null);

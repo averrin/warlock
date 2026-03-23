@@ -38,6 +38,12 @@ return {
 			type = AttributeType.BOOL,
 			value = true,
 		},
+		target = {
+			title = "Target storage",
+			description = "Component id of storage that absorbs spendable items into the global pool",
+			type = AttributeType.INT,
+			value = -1,
+		},
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.L,

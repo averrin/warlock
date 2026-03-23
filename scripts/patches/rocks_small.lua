@@ -1,4 +1,5 @@
 return {
+  z_index = 3,
   name = "Rocks (small)",
   description = "Rock pile — blocks frames and wired connections",
   item = "",

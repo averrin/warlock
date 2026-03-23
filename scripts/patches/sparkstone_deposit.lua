@@ -1,4 +1,5 @@
 return {
+  z_index = 0,
   name = "Sparkstone Deposit",
   description = "A natural deposit of sparkstone ore",
   item = "Spark Ore",

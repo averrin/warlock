@@ -2,6 +2,7 @@
 #include <rpc/handlers/handler_utils.hpp>
 #include <utils/entt.hpp>
 #include <game/nexus_api.hpp>
+#include <nlohmann/json.hpp>
 
 namespace rpc {
 
@@ -116,6 +117,18 @@ void initEventBridge(Server& server) {
           {"value", event.value},
           {"color", event.color}
         });
+      }
+    )
+  );
+
+  emitter.connect<spendable_pool_changed_event>(
+    std::function<void(spendable_pool_changed_event&, const event_emitter&)>(
+      [&server](spendable_pool_changed_event& event, const event_emitter&) {
+        nlohmann::json amounts = nlohmann::json::object();
+        for (const auto& [k, v] : event.amounts) {
+          amounts[k] = v;
+        }
+        server.broadcast("spendable.pool", {{"amounts", amounts}});
       }
     )
   );

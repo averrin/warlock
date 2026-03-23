@@ -229,12 +229,18 @@ void registerStateHandlers(Server& server) {
       });
     }
 
+    nlohmann::json spendable = nlohmann::json::object();
+    for (const auto& [k, v] : gm.spendablePool()) {
+      spendable[k] = v;
+    }
+
     return {
       {"started", gm.started},
       {"tick", gm.tick_count()},
       {"frames", frames},
       {"connections", connections},
       {"environment", envJson},
+      {"spendable_pool", spendable},
       {"power_networks", serializePowerNetworks()},
       {"patches", patches},
       {"texts", nlohmann::json::array()},

@@ -2,9 +2,11 @@
 #include <rpc/handlers/handler_utils.hpp>
 #include <rpc/dto.hpp>
 #include <game/game_manager.hpp>
+#include <game/spendable.hpp>
 #include <game/state.hpp>
 #include <game/well_known_entities.hpp>
 #include <magic_enum.hpp>
+#include <utils/entt_lua.hpp>
 
 namespace rpc {
 
@@ -112,6 +114,15 @@ void registerFrameHandlers(Server& server) {
     // Check blueprint exists
     if (gm.exec->blueprints.count(bp) == 0) {
       throw rpc::RpcError{rpc::error::INVALID_COMPONENT, "Blueprint not found: " + bp};
+    }
+
+    auto &lua = entt::locator<sol::state>::value();
+    std::string bp_source = gm.exec->blueprints[bp];
+    sol::table bp_spec = lua.load(bp_source).call();
+    auto total = warlock::blueprint_spendable_total(lua, *gm.exec, bp_spec);
+    std::string err;
+    if (!gm.tryConsumeSpendable(total, err)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, err};
     }
 
     int frame_data_id = gm.addFrameFromBlueprint(bp);

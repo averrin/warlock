@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <fmt/core.h>
 #include <random>
+#include <vector>
 
 namespace rpc {
 
@@ -71,6 +72,8 @@ void registerPatchHandlers(Server& server) {
         {"name", def.name},
         {"item", def.item},
         {"obstacle", def.obstacle},
+        {"paint_surface", def.paint_surface},
+        {"z_index", def.z_index},
         {"color", {{"r", def.color.r}, {"g", def.color.g}, 
                    {"b", def.color.b}, {"a", def.color.a}}},
         {"generation", {
@@ -83,6 +86,61 @@ void registerPatchHandlers(Server& server) {
     }
     
     return {{"types", types}};
+  });
+
+  /** Remove grid cells from paint_surface patches inside [x,x+w) × [y,y+h) (grid coordinates, same as patches.create). */
+  server.router().on("patches.remove_surface_rect", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    int x = params.value("x", 0);
+    int y = params.value("y", 0);
+    int w = params.value("width", 1);
+    int h = params.value("height", 1);
+    w = std::clamp(w, 1, 256);
+    h = std::clamp(h, 1, 256);
+
+    auto& loader = entt::locator<PatchLoader>::value();
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+
+    std::vector<entt::entity> to_destroy;
+    for (auto e : state.registry.view<ResourcePatch>()) {
+      auto& patch = state.registry.get<ResourcePatch>(e);
+      auto* def = loader.get_patch_type(patch.patch_type);
+      if (!def || !def->paint_surface) {
+        continue;
+      }
+      auto& cells = patch.cells;
+      const auto it = std::remove_if(cells.begin(), cells.end(), [&](const std::pair<int, int>& p) {
+        const int cx = p.first;
+        const int cy = p.second;
+        return cx >= x && cx < x + w && cy >= y && cy < y + h;
+      });
+      if (it == cells.end()) {
+        continue;
+      }
+      cells.erase(it, cells.end());
+      if (cells.empty()) {
+        to_destroy.push_back(e);
+        continue;
+      }
+      patch.recalculateBounds();
+      state.registry.replace<ResourcePatch>(e, patch);
+      if (state.registry.all_of<wl::transform>(e)) {
+        auto& t = state.registry.get<wl::transform>(e);
+        t.position.x = static_cast<float>(patch.min_x * 25);
+        t.position.y = static_cast<float>(patch.min_y * 25);
+        state.registry.replace<wl::transform>(e, t);
+      }
+    }
+    for (auto e : to_destroy) {
+      state.registry.destroy(e);
+    }
+    logWebAction(server, "patches.remove_surface_rect", "ok", {{"x", x}, {"y", y}, {"width", w}, {"height", h}});
+    return {{"ok", true}, {"removed_entities", static_cast<int>(to_destroy.size())}};
   });
 
   server.router().on("patches.create", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
@@ -104,7 +162,20 @@ void registerPatchHandlers(Server& server) {
     
     std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
     auto& state = entt::locator<State>::value();
-    
+
+    std::vector<std::pair<int, int>> cells;
+    if (def->paint_surface) {
+      int pw = params.value("width", 1);
+      int ph = params.value("height", 1);
+      pw = std::clamp(pw, 1, 256);
+      ph = std::clamp(ph, 1, 256);
+      cells.reserve(static_cast<size_t>(pw) * static_cast<size_t>(ph));
+      for (int cy = 0; cy < ph; ++cy) {
+        for (int cx = 0; cx < pw; ++cx) {
+          cells.emplace_back(x + cx, y + cy);
+        }
+      }
+    } else {
     std::random_device rd;
     std::mt19937 gen(rd());
     const int w0 = std::max(1, std::min(def->generation.min_width, def->generation.max_width));
@@ -117,12 +188,13 @@ void registerPatchHandlers(Server& server) {
     int width = w_dis(gen);
     int height = h_dis(gen);
     
-    auto cells = generateBlob(width, height, def->generation.fill_probability, 
+    cells = generateBlob(width, height, def->generation.fill_probability, 
                               def->generation.smoothing_rounds);
     
     for (auto& [cx, cy] : cells) {
       cx += x;
       cy += y;
+    }
     }
     
     auto e = state.registry.create();

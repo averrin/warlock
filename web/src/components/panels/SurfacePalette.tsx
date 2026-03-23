@@ -1,5 +1,13 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { RpcClient } from "../../rpc/client";
+import type { PatchType } from "../../stores/patches";
+import { startSurfacePaintMode, startSurfaceRemoveMode } from "../../surfacePaint";
+import { usePatchStore } from "../../stores/patches";
 import { Panel } from "./Panel";
+
+type Props = {
+  rpcClient: RpcClient;
+};
 
 const toCssHex = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
 
@@ -15,24 +23,53 @@ const COLORS = [
   { r: 100, g: 116, b: 139, a: 128 },
 ];
 
-export function SurfacePalette() {
+export function SurfacePalette({ rpcClient }: Props) {
+  const patchTypes = usePatchStore((s) => s.patchTypes);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await rpcClient.call<{ types: PatchType[] }>("patches.types");
+        usePatchStore.getState().setPatchTypes(data.types ?? []);
+      } catch {
+        // Keep existing store; panel stays usable if types already loaded from App.
+      }
+    })();
+  }, [rpcClient]);
+  const sortedTypes = useMemo(
+    () => [...patchTypes].sort((a, b) => a.name.localeCompare(b.name)),
+    [patchTypes],
+  );
   const [selectedColor, setSelectedColor] = useState(COLORS[3]!);
-  const [material, setMaterial] = useState("concrete");
+  const [material, setMaterial] = useState("");
+
+  useEffect(() => {
+    if (sortedTypes.length === 0) {
+      setMaterial("");
+      return;
+    }
+    setMaterial((m) => {
+      if (m && sortedTypes.some((p) => p.key === m)) return m;
+      return sortedTypes.find((p) => p.key === "sparkstone_deposit")?.key ?? sortedTypes[0]!.key;
+    });
+  }, [sortedTypes]);
 
   return (
     <Panel title="Surface Palette">
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
-          <label style={{ display: "block", marginBottom: 4, fontSize: 12, color: "#9ca3af" }}>Material</label>
+          <label style={{ display: "block", marginBottom: 4, fontSize: 12, color: "#9ca3af" }}>Patch type</label>
           <select
             value={material}
             onChange={(e) => setMaterial(e.target.value)}
+            disabled={sortedTypes.length === 0}
             style={{ width: "100%", padding: 4, background: "#1e293b", border: "1px solid #334155", color: "white" }}
           >
-            <option value="concrete">Concrete</option>
-            <option value="metal">Metal</option>
-            <option value="danger">Danger Zone</option>
-            <option value="safe">Safe Zone</option>
+            {sortedTypes.map((pt) => (
+              <option key={pt.key} value={pt.key}>
+                {pt.name}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -63,15 +100,22 @@ export function SurfacePalette() {
         </div>
 
         <button
+          disabled={sortedTypes.length === 0 || !material}
           onClick={() => {
-            const ev = new CustomEvent("warlock:createSurface", {
-              detail: { material, color: selectedColor, icon: material }
-            });
-            window.dispatchEvent(ev);
+            const pt = sortedTypes.find((p) => p.key === material);
+            const color = pt?.color ?? selectedColor;
+            startSurfacePaintMode({ material, color, icon: material });
           }}
           style={{ width: "100%", padding: "8px 0", marginTop: 8 }}
         >
           Draw Surface
+        </button>
+        <button
+          type="button"
+          onClick={() => startSurfaceRemoveMode()}
+          style={{ width: "100%", padding: "8px 0", background: "#450a0a", border: "1px solid #7f1d1d", color: "#fecaca" }}
+        >
+          Remove Surface
         </button>
       </div>
     </Panel>

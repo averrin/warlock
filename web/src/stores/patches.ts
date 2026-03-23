@@ -31,6 +31,10 @@ export interface PatchType {
   name: string;
   item: string;
   obstacle?: boolean;
+  /** Server: filled rectangle via patches.create width/height instead of random blob */
+  paint_surface?: boolean;
+  /** Draw order: lower first; higher appears on top when cells overlap. */
+  z_index?: number;
   color: { r: number; g: number; b: number; a: number };
   generation?: PatchGeneration;
 }

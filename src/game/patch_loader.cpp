@@ -49,15 +49,29 @@ void PatchLoader::load_patches(const std::string& path, sol::state& lua) {
         }
       }
     }
-    
-    if (sol::table color = t["color"]; color.valid()) {
-      def.color.r = color.get_or<uint8_t>("r", 255);
-      def.color.g = color.get_or<uint8_t>("g", 200);
-      def.color.b = color.get_or<uint8_t>("b", 50);
-      def.color.a = color.get_or<uint8_t>("a", 100);
+    {
+      const sol::object o = t["paint_surface"];
+      if (o.valid() && o.get_type() == sol::type::boolean) {
+        def.paint_surface = o.as<bool>();
+      }
     }
-    
-    if (sol::table gen = t["generation"]; gen.valid()) {
+    def.z_index = luaInt(t, "z_index", 0);
+
+    {
+      const sol::object colorObj = t["color"];
+      if (colorObj.valid() && colorObj.get_type() == sol::type::table) {
+        sol::table color = colorObj;
+        def.color.r = color.get_or<uint8_t>("r", 255);
+        def.color.g = color.get_or<uint8_t>("g", 200);
+        def.color.b = color.get_or<uint8_t>("b", 50);
+        def.color.a = color.get_or<uint8_t>("a", 100);
+      }
+    }
+
+    {
+      const sol::object genObj = t["generation"];
+      if (genObj.valid() && genObj.get_type() == sol::type::table) {
+        sol::table gen = genObj;
       def.generation.min_width = luaInt(gen, "min_width", 3);
       def.generation.max_width = luaInt(gen, "max_width", 8);
       def.generation.min_height = luaInt(gen, "min_height", 3);
@@ -79,8 +93,9 @@ void PatchLoader::load_patches(const std::string& path, sol::state& lua) {
         def.generation.min_height = h.first;
         def.generation.max_height = h.second;
       }
+      }
     }
-    
+
     patch_types_[key] = def;
   }
 }

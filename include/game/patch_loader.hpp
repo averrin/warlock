@@ -21,6 +21,10 @@ struct PatchTypeDefinition {
   std::string description;
   std::string item;
   bool obstacle = false;
+  /** When true, patches.create uses a filled axis-aligned rectangle (params width/height in cells) instead of a random blob. */
+  bool paint_surface = false;
+  /** Draw order: lower drawn first; higher appears on top when cells overlap. */
+  int z_index = 0;
   PatchColor color;
   PatchGeneration generation;
 };

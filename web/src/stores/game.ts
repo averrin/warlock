@@ -37,6 +37,8 @@ interface GameStore {
   frames: FrameDTO[];
   connections: ConnectionDTO[];
   environment: EnvironmentDTO | null;
+  /** Global spendable currency amounts (server: state save + Nexus delivery). */
+  spendablePool: Record<string, number>;
   powerNetworks: PowerNetworkDTO[];
   selectedFrameId: number | null;
   /** Multi-select (RTS-style); primary for inspector is `selectedFrameId`. */
@@ -54,6 +56,7 @@ interface GameStore {
     frames?: FrameDTO[];
     connections?: ConnectionDTO[];
     environment?: EnvironmentDTO | null;
+    spendable_pool?: Record<string, number>;
     power_networks?: PowerNetworkDTO[];
     powerNetworks?: PowerNetworkDTO[];
   }) => void;
@@ -160,6 +163,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   frames: [],
   connections: [],
   environment: null,
+  spendablePool: {},
   powerNetworks: [],
   selectedFrameId: null,
   selectedFrameIds: [],
@@ -246,6 +250,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
         },
       }));
     });
+
+    client.on("spendable.pool", (payload: unknown) => {
+      const p = payload as { amounts?: Record<string, number> };
+      if (p?.amounts && typeof p.amounts === "object") {
+        set({ spendablePool: { ...p.amounts } });
+      }
+    });
   },
 
   applySnapshot: (snapshot) => {
@@ -266,6 +277,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         connections: snapshot.connections ?? [],
         environment: nextEnv,
         environmentHistory: nextEnv?.history ?? null,
+        spendablePool: snapshot.spendable_pool ?? state.spendablePool,
         powerNetworks: nextPower,
         selectedFrameIds: nextSel,
         selectedFrameId: primary,
@@ -279,6 +291,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       frames?: FrameDTO[];
       connections?: ConnectionDTO[];
       environment?: EnvironmentDTO | null;
+      spendable_pool?: Record<string, number>;
       power_networks?: PowerNetworkDTO[];
       patches?: Patch[];
     };

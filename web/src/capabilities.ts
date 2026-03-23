@@ -9,7 +9,6 @@ export const capabilityMethods = {
   speedControl: ["game.speed.set", "game.speed.get"],
   blueprintPalette: ["code.blueprints", "frame.create_from_blueprint"],
   componentPalette: ["code.sources", "component.add"],
-  connectionEditor: ["connection.list", "connection.create", "connection.remove"],
 } as const;
 
 const unsupportedMethods = new Set<string>();

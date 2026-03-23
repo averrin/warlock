@@ -9,6 +9,8 @@ ItemDefinition ItemLoader::parse_item(const sol::table &t) {
   item.name = t["name"];
   item.description = t["description"];
   item.stack = t["stack"];
+  item.spendable = t.get_or("spendable", false);
+  item.tier = t.get_or("tier", 0);
   return item;
 }
 

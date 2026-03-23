@@ -1,4 +1,5 @@
 return {
+  z_index = 3,
   name = "Rocks (large)",
   description = "Large rock formation — blocks frames and wired connections",
   item = "",

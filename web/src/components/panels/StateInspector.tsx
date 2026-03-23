@@ -11,7 +11,8 @@ type Props = {
   rpcClient: RpcClient;
 };
 
-const CONNECTION_TYPES = ["POWER", "DATA", "CONVEYOR"] as const;
+const CONNECTION_TYPES = ["POWER", "DATA", "CONVEYOR", "POE"] as const;
+const CONNECTION_MEDIA = ["WIRE", "WIRELESS", "BEAM"] as const;
 
 // ─── Environment ─────────────────────────────────────────────────────────────
 
@@ -168,18 +169,41 @@ function ConnectionRow({
   frames: FrameDTO[];
 }) {
   const removeConnection = useGameStore((s) => s.removeConnection);
-  const sourceName = frames.find((f) => f.id === conn.source)?.name ?? String(conn.source);
-  const targetName = frames.find((f) => f.id === conn.target)?.name ?? String(conn.target);
+  const sourceName = frames.find((f) => f.id === conn.source)?.name;
+  const targetName = frames.find((f) => f.id === conn.target)?.name;
+  const medium = conn.medium?.trim() ? conn.medium : "—";
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
-      <span style={{ color: "#e5e7eb" }}>
-        #{conn.id} {sourceName} → {targetName}
-      </span>
-      <span style={{ color: "#9ca3af", fontSize: 10 }}>[{conn.type}]</span>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: "4px 8px",
+        padding: "6px 0",
+        borderBottom: "1px solid #1f2937",
+        fontSize: 11,
+        alignItems: "start",
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: "#e5e7eb", fontWeight: 500 }}>
+          #{conn.id}{" "}
+          <span style={{ color: "#9ca3af", fontWeight: 400 }}>{conn.type}</span>
+          {" · "}
+          <span style={{ color: "#a78bfa" }}>medium {medium}</span>
+        </div>
+        <div style={{ color: "#e5e7eb", marginTop: 2, fontFamily: "ui-monospace, monospace" }}>
+          frames {conn.source} → {conn.target}
+        </div>
+        {(sourceName || targetName) && (
+          <div style={{ color: "#6b7280", marginTop: 2 }}>
+            {sourceName ?? `frame ${conn.source}`} → {targetName ?? `frame ${conn.target}`}
+          </div>
+        )}
+      </div>
       <button
         type="button"
-        style={{ ...smallBtnStyle, color: "#ef4444" }}
+        style={{ ...smallBtnStyle, color: "#ef4444", alignSelf: "start" }}
         onClick={() => removeConnection(rpcClient, conn.id)}
       >
         Remove
@@ -195,7 +219,8 @@ function ConnectionsSection({ rpcClient, filter }: { rpcClient: RpcClient; filte
   const [creating, setCreating] = useState(false);
   const [newSource, setNewSource] = useState("");
   const [newTarget, setNewTarget] = useState("");
-  const [newType, setNewType] = useState<"POWER" | "DATA" | "CONVEYOR">("POWER");
+  const [newType, setNewType] = useState<"POWER" | "DATA" | "CONVEYOR" | "POE">("POWER");
+  const [newMedium, setNewMedium] = useState<(typeof CONNECTION_MEDIA)[number]>("WIRE");
 
   const filtered = useMemo(() => {
     if (!filter) return connections;
@@ -205,7 +230,8 @@ function ConnectionsSection({ rpcClient, filter }: { rpcClient: RpcClient; filte
         String(c.id).includes(lower) ||
         String(c.source).includes(lower) ||
         String(c.target).includes(lower) ||
-        c.type.toLowerCase().includes(lower),
+        c.type.toLowerCase().includes(lower) ||
+        (c.medium?.toLowerCase().includes(lower) ?? false),
     );
   }, [connections, filter]);
 
@@ -248,6 +274,25 @@ function ConnectionsSection({ rpcClient, filter }: { rpcClient: RpcClient; filte
               </option>
             ))}
           </select>
+          <select
+            value={newMedium}
+            onChange={(e) => setNewMedium(e.target.value as (typeof CONNECTION_MEDIA)[number])}
+            style={{
+              fontSize: 11,
+              borderRadius: 3,
+              border: "1px solid #374151",
+              background: "#0b1220",
+              color: "#e5e7eb",
+              padding: "1px 4px",
+            }}
+            title="Medium"
+          >
+            {CONNECTION_MEDIA.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             style={smallBtnStyle}
@@ -255,7 +300,7 @@ function ConnectionsSection({ rpcClient, filter }: { rpcClient: RpcClient; filte
               const s = parseInt(newSource, 10);
               const t = parseInt(newTarget, 10);
               if (!Number.isNaN(s) && !Number.isNaN(t)) {
-                createConnection(rpcClient, s, t, newType);
+                void createConnection(rpcClient, s, t, newType, newMedium);
                 setCreating(false);
                 setNewSource("");
                 setNewTarget("");

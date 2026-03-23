@@ -28,8 +28,11 @@ void registerItemsHandlers(Server& server) {
 
     nlohmann::json items = nlohmann::json::array();
     for (const auto& name : names) {
-      // v1: stable id = name (future-proof if numeric ids are added later)
-      items.push_back({{"id", name}, {"name", name}});
+      const auto& def = item_map.at(name);
+      nlohmann::json row = {{"id", name}, {"name", name}};
+      row["spendable"] = def.spendable;
+      row["tier"] = def.tier;
+      items.push_back(row);
     }
 
     return {{"items", items}};

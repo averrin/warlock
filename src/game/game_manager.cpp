@@ -32,7 +32,11 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <ranges> // For ranges
 #include <utils/entt_tools.hpp>
 
+#include <cstdint>
+#include <fstream>
 #include <iostream>
+#include <map>
+#include <nlohmann/json.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -141,6 +145,36 @@ nlohmann::json serializePowerNetworks() {
 
 } // namespace
 
+namespace {
+
+fs::path legacy_spendables_json_path() {
+  fs::path PATH = entt::monostate<"path"_hs>{};
+  return PATH / "data" / "spendables.json";
+}
+
+void mergeLegacySpendablesJsonInto(std::map<std::string, int64_t> &pool) {
+  auto path = legacy_spendables_json_path();
+  if (!fs::exists(path)) {
+    return;
+  }
+  std::ifstream ifs(path.string());
+  if (!ifs) {
+    return;
+  }
+  try {
+    nlohmann::json j;
+    ifs >> j;
+    if (j.contains("amounts") && j["amounts"].is_object()) {
+      for (auto it = j["amounts"].begin(); it != j["amounts"].end(); ++it) {
+        pool[it.key()] = it.value().get<int64_t>();
+      }
+    }
+  } catch (...) {
+  }
+}
+
+} // namespace
+
 GameManager::GameManager() {
   log.is_debug = entt::monostate<"debug"_hs>{};
   startJob = std::make_shared<Job>("GameManager start",
@@ -206,6 +240,13 @@ void GameManager::loadData() {
     loader.load<State>(current_state, {state_path.string()});
     log.var("Current State", current_state.registry.storage<hf::meta>().size());
   }
+  if (!current_state.stores.empty()) {
+    auto &st = current_state.stores.front();
+    spendable_pool_ = st->spendable_pool;
+    if (st->file_version < 3) {
+      mergeLegacySpendablesJsonInto(spendable_pool_);
+    }
+  }
   log.stop("Loading State");
   startJob->progress += 5;
 
@@ -261,7 +302,8 @@ void GameManager::saveData() {
   auto &state = entt::locator<State>::value();
   if (!state.stores.empty()) {
     // Use saveStateToFile to write the live registry (not stale store data)
-    loader.saveStateToFile(state, state.stores.front()->path.string());
+    loader.saveStateToFile(state, state.stores.front()->path.string(),
+                          spendable_pool_);
   }
   log.stop(label);
 
@@ -276,6 +318,51 @@ void GameManager::saveData() {
 
   log.setAsync(false);
   log.setParent(p);
+}
+
+void GameManager::ensureSpendableKeysFromItems() {
+  if (!items || !items->loader) {
+    return;
+  }
+  for (const auto &[name, def] : items->loader->get_items()) {
+    if (def.spendable && spendable_pool_.count(name) == 0) {
+      spendable_pool_[name] = 0;
+    }
+  }
+}
+
+void GameManager::emitSpendablePool() {
+  auto &emitter = entt::locator<event_emitter>::value();
+  spendable_pool_changed_event ev;
+  ev.amounts = spendable_pool_;
+  emitter.publish(ev);
+}
+
+void GameManager::addSpendable(const std::string &name, int64_t delta) {
+  spendable_pool_[name] += delta;
+  emitSpendablePool();
+}
+
+bool GameManager::tryConsumeSpendable(const std::map<std::string, int> &cost,
+                                      std::string &err) {
+  for (const auto &[k, v] : cost) {
+    if (v <= 0)
+      continue;
+    if (spendable_pool_[k] < v) {
+      err = "Not enough " + k;
+      return false;
+    }
+  }
+  bool changed = false;
+  for (const auto &[k, v] : cost) {
+    if (v > 0) {
+      spendable_pool_[k] -= v;
+      changed = true;
+    }
+  }
+  if (changed)
+    emitSpendablePool();
+  return true;
 }
 
 void GameManager::init(LibLog::Logger &parentLog) {
@@ -432,6 +519,9 @@ void GameManager::start() {
   systems.push_back(exec);
   items = std::make_shared<ItemsSystem>();
   systems.push_back(items);
+
+  ensureSpendableKeysFromItems();
+  emitSpendablePool();
 
   for (auto &c : exec->sources) {
     components.push_back(c.first);

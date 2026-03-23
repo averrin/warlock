@@ -6,7 +6,6 @@ import { EnvironmentPanel } from "../panels/EnvironmentPanel";
 import { BlueprintPalette } from "../panels/BlueprintPalette";
 import { SurfacePalette } from "../panels/SurfacePalette";
 import { ComponentPalette } from "../panels/ComponentPalette";
-import { ConnectionEditor } from "../panels/ConnectionEditor";
 
 type Props = {
   rpcClient: RpcClient;
@@ -26,11 +25,10 @@ export function Sidebar({ rpcClient }: Props) {
       }}
     >
       <FrameInspector rpcClient={rpcClient} />
-      <ConnectionEditor rpcClient={rpcClient} />
       <PowerPanel rpcClient={rpcClient} />
       <EnvironmentPanel />
       <BlueprintPalette rpcClient={rpcClient} />
-      <SurfacePalette />
+      <SurfacePalette rpcClient={rpcClient} />
       <ComponentPalette rpcClient={rpcClient} />
       <CodeEditorPanel rpcClient={rpcClient} />
     </div>

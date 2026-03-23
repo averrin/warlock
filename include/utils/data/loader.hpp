@@ -17,9 +17,11 @@
 namespace fs = std::filesystem;
 
 #include <chrono>
+#include <cstdint>
 #include <ctime>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 
@@ -73,11 +75,13 @@ public:
     return container.stores.size() > 0;
   }
 
-  void saveStateToFile(RegistryContainer &container,
-                               std::string path) {
+  void saveStateToFile(
+      RegistryContainer &container, std::string path,
+      const std::map<std::string, int64_t> &spendable_pool) {
     std::shared_ptr<RegistryStore> store = container.create("state", path);
     store->initEmpty();
     RegistryContainer::copyRegistry(container.registry, store->registry);
+    store->spendable_pool = spendable_pool;
     store->attributes["saved_at"] = getCurrentDateTime();
     auto file =
         fs::relative(store->path, entt::monostate<"path"_hs>{}).string();

@@ -244,7 +244,8 @@ void register_bindings(sol::state &lua) {
 
   lua.new_usertype<ItemDefinition>(
       "ItemDefinition", "name", &ItemDefinition::name, "description",
-      &ItemDefinition::description, "stack", &ItemDefinition::stack);
+      &ItemDefinition::description, "stack", &ItemDefinition::stack,
+      "spendable", &ItemDefinition::spendable, "tier", &ItemDefinition::tier);
 
   lua.new_usertype<ItemStack>("ItemStack", "item", &ItemStack::item, "amount",
                               &ItemStack::amount);

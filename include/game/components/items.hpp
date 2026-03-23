@@ -7,6 +7,8 @@ struct ItemDefinition {
   std::string name;
   std::string description;
   int stack;
+  bool spendable = false;
+  int tier = 0;
 };
 
 struct ItemStack {

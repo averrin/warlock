@@ -4,6 +4,7 @@
 #include <fmt/ranges.h>
 #include <game/frame_deposit_query.hpp>
 #include <game/components/resource_patch.hpp>
+#include <game/game_manager.hpp>
 #include <game/state.hpp>
 #include <game/systems/items.hpp>
 #include <liblog/liblog.hpp>
@@ -53,6 +54,19 @@ void eraseRelayLegPair(std::unordered_map<int, double> &progress,
     }
     progress.erase(c2.data.id);
   }
+}
+
+bool frame_has_nexus_spendable_sink(Frame *f, int storage_component_id) {
+  if (!f)
+    return false;
+  for (auto &c : f->components) {
+    if (c->data.get_or<std::string>("type", "") != "Nexus")
+      continue;
+    int tid = c->data.get_or<int>("target", -1);
+    if (tid >= 0 && tid == storage_component_id)
+      return true;
+  }
+  return false;
 }
 } // namespace
 
@@ -355,8 +369,26 @@ void ItemsSystem::fixedUpdate() {
       }
 
       if (itemToMove && itemToMove->amount > 0) {
+        const auto &item_map = loader->get_items();
+        auto def_it = item_map.find(itemToMove->item.name);
+        const bool is_spendable =
+            def_it != item_map.end() && def_it->second.spendable;
+        const bool nexus_sink = is_spendable && frame_has_nexus_spendable_sink(
+                                                     rf, receiverStorage->data.id);
+
         ItemStack singleItem(itemToMove->item, 1);
-        if (receiverStorage->storage->canAdd(singleItem)) {
+        if (nexus_sink) {
+          if (senderStorage->storage->canRemove(singleItem)) {
+            senderStorage->storage->remove(singleItem);
+            auto &gm = entt::locator<GameManager>::value();
+            gm.addSpendable(itemToMove->item.name, 1);
+            conveyorExecutionTime[entity] -= timecost;
+            applyEdgeProgress();
+          } else {
+            conveyorExecutionTime[entity] = timecost;
+            applyEdgeProgress();
+          }
+        } else if (receiverStorage->storage->canAdd(singleItem)) {
           senderStorage->storage->remove(singleItem);
           // remove() mutates `singleItem.amount` to 0; add must use a fresh stack
           ItemStack toReceive(itemToMove->item, 1);

@@ -1,6 +1,7 @@
 #pragma once
 #include <entt/entt.hpp>
 using namespace entt::literals;
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -78,6 +79,10 @@ struct component_state_changed {
   int prev_state;
   int new_state;
   std::string reason;   // e.g. "activation_timer", "deactivation_timer", "lua_start", "lua_stop"
+};
+
+struct spendable_pool_changed_event {
+  std::map<std::string, int64_t> amounts;
 };
 
 namespace wl {

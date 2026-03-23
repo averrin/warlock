@@ -24,7 +24,6 @@ import { GameCanvas } from "../canvas/GameCanvas";
 import { BlueprintPalette } from "../panels/BlueprintPalette";
 import { CodeEditorPanel } from "../panels/CodeEditorPanel";
 import { ComponentPalette } from "../panels/ComponentPalette";
-import { ConnectionEditor } from "../panels/ConnectionEditor";
 import { EnvironmentPanel } from "../panels/EnvironmentPanel";
 import { LogPanel } from "../panels/LogPanel";
 import { FrameInspector } from "../panels/FrameInspector";
@@ -178,7 +177,6 @@ function seedDefaultPanels(api: DockviewApi) {
     });
   };
 
-  registerTab("connection-editor", "connectionEditor", "Connection Editor");
   registerTab("power-panel", "powerPanel", "Power Networks");
   const environment = api.addPanel({
     id: "environment",
@@ -201,7 +199,6 @@ function seedDefaultPanels(api: DockviewApi) {
 
 const TOP_BAR_BUTTONS: { id: string; component: string; title: string; label: string }[] = [
   { id: "frame-inspector", component: "frameInspector", title: "Frame Inspector", label: "Frame" },
-  { id: "connection-editor", component: "connectionEditor", title: "Connection Editor", label: "Connections" },
   { id: "power-panel", component: "powerPanel", title: "Power Networks", label: "Power" },
   { id: "environment", component: "environmentPanel", title: "Environment", label: "Environment" },
   { id: "log", component: "logPanel", title: "Log", label: "Log" },
@@ -318,7 +315,6 @@ export function WindowWorkspace({ rpcClient }: Props) {
       world: (() => <GameCanvas rpcClient={rpcClient} onFrameMiniInspect={openFrameMiniInspectorAt} />) as FunctionComponent<IDockviewPanelProps>,
       frameInspector: (() => <FrameInspector rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       frameMiniInspector: ((props: IDockviewPanelProps) => <FrameMiniInspector rpcClient={rpcClient} panelApi={props.api} />) as FunctionComponent<IDockviewPanelProps>,
-      connectionEditor: (() => <ConnectionEditor rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       powerPanel: (() => <PowerPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       environmentPanel: (() => <EnvironmentPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       logPanel: (() => <LogPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,

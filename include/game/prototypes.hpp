@@ -14,7 +14,7 @@ class Prototypes : public RegistryContainer {
   int8_t getType() override { return type; }
 
 public:
-  int8_t version = 2;
+  int8_t version = 3;
   int8_t type = 2;
 
   using RegistryContainer::RegistryContainer;

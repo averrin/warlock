@@ -6,9 +6,11 @@
 #include <game/components/items.hpp>
 #include <game/frame_deposit_query.hpp>
 #include <game/game_manager.hpp>
+#include <game/spendable.hpp>
 #include <game/state.hpp>
 #include <game/components/frame.hpp>
 #include <utils/entt.hpp>
+#include <utils/entt_lua.hpp>
 #include <magic_enum.hpp>
 #include <algorithm>
 
@@ -47,6 +49,13 @@ void registerComponentHandlers(Server& server) {
     // Check component source exists
     if (gm.exec->sources.count(component_name) == 0) {
       throw rpc::RpcError{rpc::error::INVALID_COMPONENT, "Component source not found: " + component_name};
+    }
+
+    auto &lua = entt::locator<sol::state>::value();
+    auto cost = warlock::component_script_spendable_cost(lua, gm.exec->getScript(component_name));
+    std::string err;
+    if (!gm.tryConsumeSpendable(cost, err)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, err};
     }
 
     auto& frame = registry.get<Frame>(frame_entity);

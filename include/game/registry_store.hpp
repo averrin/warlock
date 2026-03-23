@@ -5,6 +5,7 @@
 #include <cereal/types/memory.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
+#include <cstdint>
 #include <filesystem>
 #include <game/components.hpp>
 #include <map>
@@ -240,15 +241,23 @@ class RegistryStore : public Store {
     } else {
       load_v2(ar);
     }
+    if (file_version >= 3) {
+      ar(spendable_pool);
+    } else {
+      spendable_pool.clear();
+    }
   }
 
   template <class Archive> void save(Archive &ar) const {
     ar(cereal::base_class<Store>(this));
     save_v2(ar);
+    ar(spendable_pool);
   }
 
 public:
   entt::registry registry;
+  /** Global spendable currency amounts (serialized with state; format v3+). */
+  std::map<std::string, int64_t> spendable_pool;
 
   using Store::Store;
 };

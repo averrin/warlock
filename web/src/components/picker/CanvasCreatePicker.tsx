@@ -6,6 +6,7 @@ import type { PatchType } from "../../stores/patches";
 export type CanvasCreatePick =
   | { kind: "frame"; blueprint: string; frameSizeKey: string }
   | { kind: "patch"; patchType: string }
+  | { kind: "surface" }
   | { kind: "marker" };
 
 type BlueprintRow = { name: string; size: string };
@@ -60,6 +61,11 @@ export function CanvasCreatePicker({
       }));
       out.push({ id: "frames", heading: "Frames", items: frameItems });
     }
+    out.push({
+      id: "surface",
+      heading: "Surface",
+      items: [{ id: "surface", label: "Surface paint…", data: { kind: "surface" as const } }],
+    });
     out.push({
       id: "markers",
       heading: "Markers",
