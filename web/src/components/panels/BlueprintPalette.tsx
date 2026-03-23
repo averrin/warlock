@@ -27,6 +27,7 @@ export function BlueprintPalette({ rpcClient }: Props) {
         onClose={() => setPickerOpen(false)}
         rpcClient={rpcClient}
         onSelect={(data) => {
+          window.dispatchEvent(new CustomEvent("warlock:clearSurfacePaint"));
           useCanvasPlacementStore.getState().setMode({
             kind: "frame",
             blueprint: data.name,

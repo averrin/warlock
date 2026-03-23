@@ -565,6 +565,10 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const framesRef = useRef(frames);
   framesRef.current = frames;
   const ghostRef = useRef<Graphics | null>(null);
+  type SurfacePaintConfig = { material: string; color: { r: number; g: number; b: number; a: number } };
+  const [surfacePaint, setSurfacePaint] = useState<SurfacePaintConfig | null>(null);
+  const surfacePaintRef = useRef<SurfacePaintConfig | null>(null);
+  surfacePaintRef.current = surfacePaint;
   const [zoom, setZoom] = useState(1);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; wx: number; wy: number } | null>(null);
@@ -836,6 +840,13 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     })();
   }, [rpcClient, blueprintSupported]);
 
+  const exitSurfacePaintMode = () => {
+    setSurfacePaint(null);
+    if (ghostRef.current) {
+      ghostRef.current.visible = false;
+    }
+  };
+
   const clearPlacementMode = () => {
     useCanvasPlacementStore.getState().setMode(null);
     if (ghostRef.current) {
@@ -844,12 +855,34 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   };
 
   const enterFramePlacementMode = (blueprint: string, frameSizeKey?: string) => {
+    setSurfacePaint(null);
     useCanvasPlacementStore.getState().setMode({
       kind: "frame",
       blueprint,
       ...(frameSizeKey ? { frameSizeKey } : {}),
     });
   };
+
+  useEffect(() => {
+    const handleSurfaceCreate = (e: Event) => {
+      const ce = e as CustomEvent<{
+        material: string;
+        color: { r: number; g: number; b: number; a: number };
+      }>;
+      const d = ce.detail;
+      if (!d?.material || !d.color) return;
+      clearPlacementMode();
+      setSurfacePaint({ material: d.material, color: d.color });
+    };
+    window.addEventListener("warlock:createSurface", handleSurfaceCreate);
+    return () => window.removeEventListener("warlock:createSurface", handleSurfaceCreate);
+  }, []);
+
+  useEffect(() => {
+    const onClearSurfacePaint = () => setSurfacePaint(null);
+    window.addEventListener("warlock:clearSurfacePaint", onClearSurfacePaint);
+    return () => window.removeEventListener("warlock:clearSurfacePaint", onClearSurfacePaint);
+  }, []);
 
   const createPatch = async (patchType: string, wx: number, wy: number) => {
     const gridX = Math.floor(wx / CELL);
@@ -1210,6 +1243,21 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       setWiringMode(null);
       const wl = wiringLineRef.current;
       if (wl) wl.visible = false;
+      return;
+    }
+    // Surface paint: pick patch type from material (fallback to first type), place one procedural patch
+    if (surfacePaintRef.current && worldRef.current) {
+      const types = usePatchStore.getState().patchTypes;
+      const patchType = types.find((t) => t.key === surfacePaintRef.current!.material)?.key ?? types[0]?.key;
+      if (!patchType) {
+        exitSurfacePaintMode();
+        return;
+      }
+      const local = event.getLocalPosition(worldRef.current);
+      const wx = Math.round(local.x / CELL) * CELL;
+      const wy = Math.round(local.y / CELL) * CELL;
+      exitSurfacePaintMode();
+      void createPatch(patchType, wx, wy);
       return;
     }
     const pm = useCanvasPlacementStore.getState().mode;
@@ -1700,8 +1748,21 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           const cursorWx = (sx - worldContainer.x) / scale;
           const cursorWy = (sy - worldContainer.y) / scale;
 
-          const pm = placementModeRef.current;
-          if (pm) {
+          if (surfacePaintRef.current) {
+            const wx = Math.round(cursorWx / CELL) * CELL;
+            const wy = Math.round(cursorWy / CELL) * CELL;
+            const { r, g, b, a } = surfacePaintRef.current.color;
+            const fill = (r << 16) | (g << 8) | b;
+            ghost.clear();
+            ghost.rect(0, 0, CELL, CELL);
+            ghost.fill({ color: fill, alpha: a / 255 });
+            ghost.x = wx;
+            ghost.y = wy;
+            ghost.alpha = 0.92;
+            ghost.visible = true;
+          } else {
+            const pm = placementModeRef.current;
+            if (pm) {
             const wx = Math.round(cursorWx / CELL) * CELL;
             const wy = Math.round(cursorWy / CELL) * CELL;
             ghost.clear();
@@ -1754,10 +1815,11 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               ghost.x = wx;
               ghost.y = wy;
             }
-            ghost.visible = true;
-          } else if (ghost.visible) {
-            ghost.alpha = 0.4;
-            ghost.visible = false;
+              ghost.visible = true;
+            } else if (ghost.visible) {
+              ghost.alpha = 0.4;
+              ghost.visible = false;
+            }
           }
 
           // Update wiring preview: max-distance circle + line to cursor
@@ -1800,6 +1862,10 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
 
         const onCreationKeydown = (e: KeyboardEvent) => {
           if (e.key === "Escape") {
+            if (surfacePaintRef.current) {
+              setSurfacePaint(null);
+              ghost.visible = false;
+            }
             if (placementModeRef.current) {
               useCanvasPlacementStore.getState().setMode(null);
               ghost.visible = false;
@@ -1957,6 +2023,27 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               Placing marker <b>{placementMode.label}</b> — click to place, Esc to cancel
             </>
           )}
+        </div>
+      )}
+      {surfacePaint && (
+        <div
+          style={{
+            position: "absolute",
+            top: 6,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#1e293b",
+            border: "1px solid #22c55e",
+            borderRadius: 6,
+            padding: "4px 12px",
+            fontSize: 12,
+            color: "#e5e7eb",
+            zIndex: 20,
+            pointerEvents: "none",
+            userSelect: "none",
+          }}
+        >
+          Surface (<b>{surfacePaint.material}</b>) — click to place patch, Esc to cancel
         </div>
       )}
       {wiringMode && (
@@ -2488,10 +2575,12 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             if (pick.kind === "frame") {
               enterFramePlacementMode(pick.blueprint, pick.frameSizeKey);
             } else if (pick.kind === "patch") {
+              setSurfacePaint(null);
               useCanvasPlacementStore.getState().setMode({ kind: "patch", patchType: pick.patchType });
             } else {
               const trimmed = window.prompt("Marker name", "Marker")?.trim();
               if (trimmed) {
+                setSurfacePaint(null);
                 useCanvasPlacementStore.getState().setMode({
                   kind: "marker",
                   label: trimmed,
