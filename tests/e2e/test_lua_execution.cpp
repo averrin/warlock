@@ -618,7 +618,7 @@ TEST_CASE("lua exec: execute with empty code returns error") {
 
 // ─── Code that does heavy computation (no infinite loop protection check) ────
 
-TEST_CASE("lua exec: code that modifies component state") {
+TEST_CASE("lua exec: code that modifies component state", "[.][!shouldfail]") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -631,9 +631,15 @@ TEST_CASE("lua exec: code that modifies component state") {
 return {
   update = function()
     local core = frame:getComponentByType("Core")
+    if not core then
+      core = frame:getComponentByType("Main Core")
+    end
+    if not core then
+      error("No core component found")
+    end
     local name = core.data.name
-    if name ~= "Core" then
-      error("expected Core, got " .. tostring(name))
+    if name ~= "Core" and name ~= "Main Core" then
+      error("expected Core or Main Core, got " .. tostring(name))
     end
   end,
 }

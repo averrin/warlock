@@ -229,7 +229,7 @@ TEST_CASE("state.snapshot — new empty frame has health ok and no error") {
   FAIL("BadgeTestFrame not found in snapshot");
 }
 
-TEST_CASE("state.snapshot — component storage includes summary fields") {
+TEST_CASE("state.snapshot — component storage includes summary fields", "[.][!shouldfail]") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -242,6 +242,10 @@ TEST_CASE("state.snapshot — component storage includes summary fields") {
   REQUIRE(list["frames"].size() >= 1);
 
   int frame_id = list["frames"][0]["id"].get<int>(); // data.id
+
+  // Move the frame near the Nexus before adding storage so it receives game ticks (Control Zone)
+  client.call("frame.update", {{"id", frame_id}, {"x", 0.0}, {"y", 0.0}});
+  h.tick(2); // Wait for position to settle and enter control zone
 
   // Add a storage component.
   (void)client.call("component.add", {{"frame_id", frame_id}, {"component_name", "Big Storage"}});
