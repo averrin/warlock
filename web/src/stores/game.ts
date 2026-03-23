@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { RpcClient } from "../rpc/client";
-import type { ConnectionDTO, EnvironmentDTO, FrameDTO, PowerNetworkDTO } from "../rpc/types";
+import type { ConnectionDTO, EcsEntityDTO, EnvironmentDTO, FrameDTO, PowerNetworkDTO } from "../rpc/types";
 import { usePatchStore, Patch } from "./patches";
 
 interface TimeControl {
@@ -46,6 +46,7 @@ interface GameStore {
   timeControl: TimeControl;
   markers: GameMarker[];
   indicators: Record<string, { label: string; value: string; color: string }>;
+  ecsEntities: EcsEntityDTO[];
   environmentHistory: EnvironmentDTO["history"] | null;
   /** Map overlay: server field snapshot (env temp + AoE). */
   showThermalField: boolean;
@@ -162,6 +163,14 @@ interface GameStore {
   updateCoreCode: (client: RpcClient, frameId: number, code: string) => Promise<void>;
   removeFrame: (client: RpcClient, frameId: number) => Promise<void>;
   setEnvironmentField: (client: RpcClient, field: string, value: number) => Promise<void>;
+  fetchEntities: (client: RpcClient) => Promise<void>;
+  setEntityField: (
+    client: RpcClient,
+    entityId: number,
+    component: string,
+    field: string,
+    value: unknown,
+  ) => Promise<void>;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -177,6 +186,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   timeControl: { paused: false, multiplier: 1 },
   markers: [],
   indicators: {},
+  ecsEntities: [],
   environmentHistory: null,
   showThermalField: (() => {
     if (typeof window === "undefined") return false;
@@ -712,5 +722,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
       /* ignore */
     }
     set({ showThermalField: value });
+  },
+
+  fetchEntities: async (client) => {
+    try {
+      const result = await client.call<{ entities: EcsEntityDTO[] }>("entities.list");
+      set({ ecsEntities: result.entities ?? [] });
+    } catch {
+      // entities.list may not be available yet
+    }
+  },
+
+  setEntityField: async (client, entityId, component, field, value) => {
+    await client.call("entities.set_field", {
+      entity_id: entityId,
+      component,
+      field,
+      value,
+    });
+    // Optimistic update
+    set((current) => ({
+      ecsEntities: current.ecsEntities.map((e) => {
+        if (e.entity_id !== entityId) return e;
+        const comp = e.components[component];
+        if (typeof comp !== "object" || comp === null) return e;
+        return {
+          ...e,
+          components: {
+            ...e.components,
+            [component]: { ...(comp as Record<string, unknown>), [field]: value },
+          },
+        };
+      }),
+    }));
   },
 }));

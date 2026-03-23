@@ -6,6 +6,7 @@ import type { ConnectionDTO, FrameDTO, PowerNetworkDTO } from "../../rpc/types";
 import { CollapsibleSection, NumberField, TransformEditor, inputStyle, smallBtnStyle } from "../ui";
 import { FramePanel } from "../frame";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
+import { EntitiesSection } from "./EcsEntityInspector";
 
 type Props = {
   rpcClient: RpcClient;
@@ -477,6 +478,7 @@ export function StateInspector({ rpcClient }: Props) {
       <ConnectionsSection rpcClient={rpcClient} filter={filter} />
       <PowerNetworksSection />
       <PatchesSection rpcClient={rpcClient} filter={filter} />
+      <EntitiesSection rpcClient={rpcClient} filter={filter} />
     </div>
   );
 }

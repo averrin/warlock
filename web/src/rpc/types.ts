@@ -153,6 +153,13 @@ export interface EnvironmentDTO {
   [k: string]: unknown;
 }
 
+/** An ECS entity with all its component data as returned by entities.list */
+export interface EcsEntityDTO {
+  entity_id: number;
+  label: string;
+  components: Record<string, Record<string, unknown> | boolean>;
+}
+
 export interface PowerNetworkDTO {
   name?: string;
   frames: number[];
