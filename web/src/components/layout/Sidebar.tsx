@@ -30,7 +30,7 @@ export function Sidebar({ rpcClient }: Props) {
       <PowerPanel rpcClient={rpcClient} />
       <EnvironmentPanel />
       <BlueprintPalette rpcClient={rpcClient} />
-      <SurfacePalette rpcClient={rpcClient} />
+      <SurfacePalette />
       <ComponentPalette rpcClient={rpcClient} />
       <CodeEditorPanel rpcClient={rpcClient} />
     </div>

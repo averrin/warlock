@@ -1,13 +1,7 @@
 import { useState } from "react";
-import type { RpcClient } from "../../rpc/client";
 import { Panel } from "./Panel";
-import { useGameStore } from "../../stores/game";
 
 const toCssHex = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
-
-type Props = {
-  rpcClient: RpcClient;
-};
 
 const COLORS = [
   { r: 239, g: 68, b: 68, a: 128 },
@@ -21,7 +15,7 @@ const COLORS = [
   { r: 100, g: 116, b: 139, a: 128 },
 ];
 
-export function SurfacePalette({ rpcClient }: Props) {
+export function SurfacePalette() {
   const [selectedColor, setSelectedColor] = useState(COLORS[3]!);
   const [material, setMaterial] = useState("concrete");
 
