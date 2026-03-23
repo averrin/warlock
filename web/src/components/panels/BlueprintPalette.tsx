@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { RpcClient } from "../../rpc/client";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
-import { useGameStore } from "../../stores/game";
+import { useCanvasPlacementStore } from "../../stores/canvasPlacement";
 import { Panel } from "./Panel";
 import { BlueprintPicker } from "../picker";
 
@@ -11,7 +11,6 @@ type Props = {
 
 export function BlueprintPalette({ rpcClient }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const createFromBlueprint = useGameStore((s) => s.createFromBlueprint);
   const supported = isFeatureSupported(capabilityMethods.blueprintPalette);
 
   return (
@@ -27,8 +26,12 @@ export function BlueprintPalette({ rpcClient }: Props) {
         isOpen={pickerOpen}
         onClose={() => setPickerOpen(false)}
         rpcClient={rpcClient}
-        onSelect={(blueprint) => {
-          void createFromBlueprint(rpcClient, blueprint);
+        onSelect={(data) => {
+          useCanvasPlacementStore.getState().setMode({
+            kind: "frame",
+            blueprint: data.name,
+            frameSizeKey: data.size,
+          });
           setPickerOpen(false);
         }}
       />

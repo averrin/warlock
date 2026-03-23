@@ -1,4 +1,14 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FunctionComponent, type MouseEvent } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FunctionComponent,
+  type MouseEvent,
+} from "react";
 import {
   DockviewReact,
   type DockviewApi,
@@ -30,6 +40,19 @@ type Props = {
 
 const ROLLUP_GROUP_HEIGHT = 32;
 
+const TITLE_ACTION_BTN: CSSProperties = {
+  width: 18,
+  height: 18,
+  borderRadius: 3,
+  border: "1px solid #374151",
+  background: "#020617",
+  color: "#e5e7eb",
+  fontSize: 10,
+  lineHeight: "16px",
+  padding: 0,
+  cursor: "pointer",
+};
+
 function formatTime(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -60,10 +83,20 @@ function GroupHeaderActions({ api, group }: IDockviewHeaderActionsProps) {
   const panelId = miniInspectorPanel?.id ?? null;
   const isPinned = panelId ? panelId in pinnedMiniInspectors : false;
 
-  const handleClick = () => {
+  const handleRollToggle = () => {
     const next = !collapsed;
     toggleGroupCollapsed(groupId);
     api.setSize({ height: next ? ROLLUP_GROUP_HEIGHT : 260 });
+  };
+
+  const handleCloseAll = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    for (const p of group.panels) {
+      if (p.id === "frame-mini-inspector" || p.id.startsWith("frame-mini-inspector-")) {
+        unpinMiniInspector(p.id);
+      }
+    }
+    group.model.closeAllPanels();
   };
 
   const rootProps =
@@ -76,28 +109,6 @@ function GroupHeaderActions({ api, group }: IDockviewHeaderActionsProps) {
       style={{ display: "flex", alignItems: "center", paddingRight: 4, gap: 4 }}
       {...rootProps}
     >
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          handleClick();
-        }}
-        title={collapsed ? "Expand window" : "Roll up window"}
-        style={{
-          width: 18,
-          height: 18,
-          borderRadius: 3,
-          border: "1px solid #374151",
-          background: collapsed ? "#111827" : "#020617",
-          color: "#e5e7eb",
-          fontSize: 10,
-          lineHeight: "16px",
-          padding: 0,
-          cursor: "pointer",
-        }}
-      >
-        {collapsed ? "▢" : "▁"}
-      </button>
       {containsMiniInspector && panelId ? (
         <button
           type="button"
@@ -111,21 +122,35 @@ function GroupHeaderActions({ api, group }: IDockviewHeaderActionsProps) {
           }}
           title={isPinned ? "Unpin mini inspector" : "Pin mini inspector to current frame"}
           style={{
-            width: 18,
-            height: 18,
-            borderRadius: 3,
-            border: "1px solid #374151",
-            background: isPinned ? "#1d283a" : "#020617",
-            color: "#e5e7eb",
-            fontSize: 10,
-            lineHeight: "16px",
-            padding: 0,
-            cursor: "pointer",
+            ...TITLE_ACTION_BTN,
+            background: isPinned ? "#1d283a" : TITLE_ACTION_BTN.background,
           }}
         >
-          📌
+          {isPinned ? "◆" : "◇"}
         </button>
       ) : null}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleRollToggle();
+        }}
+        title={collapsed ? "Expand window" : "Roll up window"}
+        style={{
+          ...TITLE_ACTION_BTN,
+          background: collapsed ? "#111827" : TITLE_ACTION_BTN.background,
+        }}
+      >
+        {collapsed ? "▢" : "▁"}
+      </button>
+      <button
+        type="button"
+        onClick={handleCloseAll}
+        title="Close all tabs in this group"
+        style={TITLE_ACTION_BTN}
+      >
+        ×
+      </button>
     </div>
   );
 }

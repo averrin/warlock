@@ -18,12 +18,21 @@ export interface Patch {
   color: { r: number; g: number; b: number; a: number };
 }
 
+/** Matches server patch generation ranges (grid cells). */
+export interface PatchGeneration {
+  min_width: number;
+  max_width: number;
+  min_height: number;
+  max_height: number;
+}
+
 export interface PatchType {
   key: string;
   name: string;
   item: string;
   obstacle?: boolean;
   color: { r: number; g: number; b: number; a: number };
+  generation?: PatchGeneration;
 }
 
 interface PatchStore {

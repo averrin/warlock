@@ -72,7 +72,13 @@ void registerPatchHandlers(Server& server) {
         {"item", def.item},
         {"obstacle", def.obstacle},
         {"color", {{"r", def.color.r}, {"g", def.color.g}, 
-                   {"b", def.color.b}, {"a", def.color.a}}}
+                   {"b", def.color.b}, {"a", def.color.a}}},
+        {"generation", {
+          {"min_width", def.generation.min_width},
+          {"max_width", def.generation.max_width},
+          {"min_height", def.generation.min_height},
+          {"max_height", def.generation.max_height},
+        }},
       });
     }
     

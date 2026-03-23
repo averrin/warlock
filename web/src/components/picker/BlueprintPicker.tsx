@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { RpcClient } from "../../rpc/client";
 import { Picker, type PickerItem } from "./Picker";
 
-type BlueprintData = {
+export type BlueprintData = {
   name: string;
   size: string;
 };
@@ -11,7 +11,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   rpcClient: RpcClient;
-  onSelect: (blueprint: string) => void;
+  onSelect: (data: BlueprintData) => void;
 };
 
 export function BlueprintPicker({ isOpen, onClose, rpcClient, onSelect }: Props) {
@@ -43,7 +43,7 @@ export function BlueprintPicker({ isOpen, onClose, rpcClient, onSelect }: Props)
   }, [rpcClient, isOpen]);
 
   const handleSelect = (data: BlueprintData) => {
-    onSelect(data.name);
+    onSelect(data);
     onClose();
   };
 

@@ -131,6 +131,40 @@ describe("isHypotheticalFramePlacementValid", () => {
     expect(isHypotheticalFramePlacementValid({ x: 200, y: 0 }, "S", existing, [], positions)).toBe(true);
     expect(isHypotheticalFramePlacementValid({ x: 0, y: 0 }, "S", existing, [], positions)).toBe(false);
   });
+
+  it("does not reject placement just because an existing WIRE crosses terrain (endpoints not moved)", () => {
+    const existing = [
+      { id: 1, size: "S", position: { x: 0, y: 0 } },
+      { id: 2, size: "S", position: { x: 300, y: 0 } },
+    ];
+    const positions = new Map<number, { x: number; y: number }>([
+      [1, { x: 0, y: 0 }],
+      [2, { x: 300, y: 0 }],
+    ]);
+    const rocks = new Set(["6,1"]);
+    const conns = [{ source: 1, target: 2, type: "POWER" as const, medium: "WIRE" }];
+    expect(
+      isHypotheticalFramePlacementValid({ x: 0, y: 300 }, "S", existing, conns, positions, rocks),
+    ).toBe(true);
+  });
+
+  it("does not reject new frame placement because a WIRE already passes through a third frame (static violation)", () => {
+    const existing = [
+      { id: 1, size: "S", position: { x: 0, y: 0 } },
+      { id: 2, size: "S", position: { x: 300, y: 0 } },
+      // Sits on the WIRE segment between 1 and 2 (horizontal edge path).
+      { id: 3, size: "S", position: { x: 150, y: 0 } },
+    ];
+    const positions = new Map<number, { x: number; y: number }>([
+      [1, { x: 0, y: 0 }],
+      [2, { x: 300, y: 0 }],
+      [3, { x: 150, y: 0 }],
+    ]);
+    const conns = [{ source: 1, target: 2, type: "POWER" as const, medium: "WIRE" }];
+    expect(
+      isHypotheticalFramePlacementValid({ x: 0, y: 200 }, "S", existing, conns, positions),
+    ).toBe(true);
+  });
 });
 
 describe("snappedTopLeftsOverlappingCell", () => {

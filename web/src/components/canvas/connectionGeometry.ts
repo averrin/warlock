@@ -480,8 +480,11 @@ export function groupMoveAvoidsWireIntersections(
     });
   }
 
+  // Only wires whose endpoints are being moved can change path; otherwise this would reject
+  // unrelated moves (e.g. placing a new frame) whenever any existing WIRE crosses terrain.
   if (obstacleCells && obstacleCells.size > 0) {
     for (const seg of wireSegments) {
+      if (!moves.has(seg.source) && !moves.has(seg.target)) continue;
       for (const key of obstacleCells) {
         const [ix, iy] = key.split(",").map(Number);
         if (
@@ -502,8 +505,9 @@ export function groupMoveAvoidsWireIntersections(
     }
   }
 
-  // Every frame is a potential obstacle (including ones not being dragged): moving an endpoint
-  // can sweep a WIRE through a third frame that stays put.
+  // WIRE vs third frame: only when something in this move can change the outcome — either the
+  // wire's endpoints move (path updates) or this frame moves / is newly placed. Otherwise a
+  // pre-existing wire-through-frame state would block every placement and unrelated drags.
   for (const f of frames) {
     const fid = f.id;
     const pos = getPosition(fid);
@@ -513,6 +517,7 @@ export function groupMoveAvoidsWireIntersections(
 
     for (const seg of wireSegments) {
       if (fid === seg.source || fid === seg.target) continue;
+      if (!moves.has(fid) && !moves.has(seg.source) && !moves.has(seg.target)) continue;
       if (
         segmentIntersectsAxisAlignedRect(
           seg.x1,

@@ -4,12 +4,13 @@ import { Application, Container, Graphics } from "pixi.js";
 import type { FederatedPointerEvent } from "pixi.js";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
-import { usePatchStore, Patch } from "../../stores/patches";
+import { usePatchStore, Patch, type PatchGeneration } from "../../stores/patches";
+import { placementModeRef, useCanvasPlacementStore } from "../../stores/canvasPlacement";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
 import type { ComponentDTO, ConnectionDTO } from "../../rpc/types";
 import { ComponentContextMenu } from "./ComponentContextMenu";
 import { PatchMiniInspector } from "./PatchMiniInspector";
-import { ComponentPicker, BlueprintPicker } from "../picker";
+import { ComponentPicker, CanvasCreatePicker, type CanvasCreatePick } from "../picker";
 import { FrameOverlay, type FrameOverlayHandle } from "./FrameOverlay";
 import { useFrameDrag } from "./useFrameDrag";
 import type { PlacedFrame } from "./FrameCard";
@@ -215,6 +216,29 @@ function getConnectorNamesForFrame(type: string, medium: ConnectionMedium): stri
 
 function toCssHex(n: number): string {
   return `#${n.toString(16).padStart(6, "0")}`;
+}
+
+function patchDefColorToPixi(c: { r: number; g: number; b: number; a?: number }): { color: number; alpha: number } {
+  const color = ((c.r & 255) << 16) | ((c.g & 255) << 8) | (c.b & 255);
+  const alpha = (c.a ?? 255) / 255;
+  return { color, alpha: Math.min(1, Math.max(0, alpha)) };
+}
+
+/** Same cell bounds the server uses before random width/height (min…max inclusive). */
+function patchGenerationCellBounds(g: PatchGeneration | undefined): {
+  minW: number;
+  maxW: number;
+  minH: number;
+  maxH: number;
+} {
+  if (!g) {
+    return { minW: 1, maxW: 1, minH: 1, maxH: 1 };
+  }
+  const minW = Math.max(1, Math.min(g.min_width, g.max_width));
+  const maxW = Math.max(minW, Math.max(g.min_width, g.max_width));
+  const minH = Math.max(1, Math.min(g.min_height, g.max_height));
+  const maxH = Math.max(minH, Math.max(g.min_height, g.max_height));
+  return { minW, maxW, minH, maxH };
 }
 
 function frameHasComponentByName(
@@ -519,6 +543,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const obstacleCellsRef = useRef(obstacleCells);
   obstacleCellsRef.current = obstacleCells;
   const patchTypes = usePatchStore((s) => s.patchTypes);
+  const patchTypesRef = useRef(patchTypes);
+  patchTypesRef.current = patchTypes;
+  const placementMode = useCanvasPlacementStore((s) => s.mode);
   const frames = useGameStore((s) => s.frames);
   const showThermalField = useGameStore((s) => s.showThermalField);
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
@@ -538,11 +565,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const framesRef = useRef(frames);
   framesRef.current = frames;
   const ghostRef = useRef<Graphics | null>(null);
-  const creatingRef = useRef<string | null>(null);
   const [zoom, setZoom] = useState(1);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; wx: number; wy: number } | null>(null);
-  const [creationBlueprint, setCreationBlueprint] = useState<string | null>(null);
   const [blueprintMap, setBlueprintMap] = useState<Record<string, string>>({});
   const blueprintMapRef = useRef<Record<string, string>>({});
   const blueprintSupported = isFeatureSupported(capabilityMethods.blueprintPalette);
@@ -581,7 +606,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     x: number; y: number; frameId: number; componentId: number;
   } | null>(null);
   const [componentPickerOpen, setComponentPickerOpen] = useState<{ frameId: number } | null>(null);
-  const [blueprintPickerOpen, setBlueprintPickerOpen] = useState<{ wx: number; wy: number } | null>(null);
+  const [createEntityPickerOpen, setCreateEntityPickerOpen] = useState(false);
   const [patchInspector, setPatchInspector] = useState<{ patch: Patch; x: number; y: number } | null>(null);
   const drawConnectionsRef = useRef<() => void>(() => {});
   const drawRestrictedDropZonesRef = useRef<() => void>(() => {});
@@ -788,6 +813,15 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     return match?.[1] ?? "M";
   };
 
+  /** Prefer size from picker (`FrameSize.X` parsed); else blueprint source; avoids wrong ghost when map ref is empty. */
+  const resolveFrameSizeKey = (blueprintName: string, explicit?: string): string => {
+    if (explicit && FRAME_CELL_SIZES[explicit] !== undefined) return explicit;
+    const src = blueprintMapRef.current[blueprintName] ?? "";
+    const parsed = parseBlueprintSize(src);
+    if (FRAME_CELL_SIZES[parsed] !== undefined) return parsed;
+    return "M";
+  };
+
   useEffect(() => {
     if (!blueprintSupported) return;
     void (async () => {
@@ -802,17 +836,19 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     })();
   }, [rpcClient, blueprintSupported]);
 
-  const enterCreationMode = (blueprint: string) => {
-    creatingRef.current = blueprint;
-    setCreationBlueprint(blueprint);
-  };
-
-  const exitCreationMode = () => {
-    creatingRef.current = null;
-    setCreationBlueprint(null);
+  const clearPlacementMode = () => {
+    useCanvasPlacementStore.getState().setMode(null);
     if (ghostRef.current) {
       ghostRef.current.visible = false;
     }
+  };
+
+  const enterFramePlacementMode = (blueprint: string, frameSizeKey?: string) => {
+    useCanvasPlacementStore.getState().setMode({
+      kind: "frame",
+      blueprint,
+      ...(frameSizeKey ? { frameSizeKey } : {}),
+    });
   };
 
   const createPatch = async (patchType: string, wx: number, wy: number) => {
@@ -1176,29 +1212,45 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       if (wl) wl.visible = false;
       return;
     }
-    // If in creation mode, place the frame
-    if (creatingRef.current && worldRef.current) {
-      const bp = creatingRef.current;
+    const pm = useCanvasPlacementStore.getState().mode;
+    if (pm && worldRef.current) {
       const local = event.getLocalPosition(worldRef.current);
       const x = Math.round(local.x / CELL) * CELL;
       const y = Math.round(local.y / CELL) * CELL;
-      const src = blueprintMapRef.current[bp] ?? "";
-      const sizeKey = parseBlueprintSize(src);
-      if (
-        !isHypotheticalFramePlacementValid(
-          { x, y },
-          sizeKey,
-          framesRef.current,
-          connectionsRef.current,
-          framePositionsRef.current,
-          obstacleCellsRef.current,
-        )
-      ) {
+      if (pm.kind === "frame") {
+        const bp = pm.blueprint;
+        const sizeKey = resolveFrameSizeKey(bp, pm.frameSizeKey);
+        if (
+          !isHypotheticalFramePlacementValid(
+            { x, y },
+            sizeKey,
+            framesRef.current,
+            connectionsRef.current,
+            framePositionsRef.current,
+            obstacleCellsRef.current,
+          )
+        ) {
+          return;
+        }
+        clearPlacementMode();
+        void createFromBlueprint(rpcClient, bp, { x, y });
         return;
       }
-      exitCreationMode();
-      void createFromBlueprint(rpcClient, bp, { x, y });
-      return;
+      if (pm.kind === "patch") {
+        clearPlacementMode();
+        void createPatch(pm.patchType, x, y);
+        return;
+      }
+      if (pm.kind === "marker") {
+        clearPlacementMode();
+        void rpcClient.call("input.marker_set", {
+          x,
+          y,
+          label: pm.label,
+          color: pm.color,
+        });
+        return;
+      }
     }
     // Check for patch click
     const world = worldRef.current;
@@ -1648,29 +1700,63 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           const cursorWx = (sx - worldContainer.x) / scale;
           const cursorWy = (sy - worldContainer.y) / scale;
 
-          if (creatingRef.current) {
+          const pm = placementModeRef.current;
+          if (pm) {
             const wx = Math.round(cursorWx / CELL) * CELL;
             const wy = Math.round(cursorWy / CELL) * CELL;
-            const src = blueprintMapRef.current[creatingRef.current] ?? "";
-            const sizeKey = parseBlueprintSize(src);
-            const cells = FRAME_CELL_SIZES[sizeKey] ?? 2;
-            const boxSize = cells * CELL;
-            const valid = isHypotheticalFramePlacementValid(
-              { x: wx, y: wy },
-              sizeKey,
-              framesRef.current,
-              connectionsRef.current,
-              framePositionsRef.current,
-              obstacleCellsRef.current,
-            );
             ghost.clear();
-            ghost.beginFill(valid ? 0x3b82f6 : 0xff3355);
-            ghost.roundRect(0, 0, boxSize, boxSize, 10);
-            ghost.fill();
-            ghost.x = wx;
-            ghost.y = wy;
+            ghost.x = 0;
+            ghost.y = 0;
+            ghost.alpha = 0.92;
+            if (pm.kind === "frame") {
+              const sizeKey = resolveFrameSizeKey(pm.blueprint, pm.frameSizeKey);
+              const cells = FRAME_CELL_SIZES[sizeKey] ?? 2;
+              const boxSize = cells * CELL;
+              const valid = isHypotheticalFramePlacementValid(
+                { x: wx, y: wy },
+                sizeKey,
+                framesRef.current,
+                connectionsRef.current,
+                framePositionsRef.current,
+                obstacleCellsRef.current,
+              );
+              ghost.beginFill(valid ? 0x3b82f6 : 0xff3355);
+              ghost.roundRect(0, 0, boxSize, boxSize, 10);
+              ghost.fill();
+              ghost.x = wx;
+              ghost.y = wy;
+            } else if (pm.kind === "patch") {
+              const pt = patchTypesRef.current.find((p) => p.key === pm.patchType);
+              const { color, alpha: baseA } = patchDefColorToPixi(pt?.color ?? { r: 100, g: 200, b: 50, a: 180 });
+              const { minW, maxW, minH, maxH } = patchGenerationCellBounds(pt?.generation);
+              const outerW = maxW * CELL;
+              const outerH = maxH * CELL;
+              const innerW = minW * CELL;
+              const innerH = minH * CELL;
+              ghost.roundRect(0, 0, outerW, outerH, 8);
+              ghost.fill({ color, alpha: baseA * 0.2 });
+              if (innerW < outerW || innerH < outerH) {
+                ghost.roundRect(0, 0, innerW, innerH, 6);
+                ghost.fill({ color, alpha: baseA * 0.42 });
+              }
+              ghost.roundRect(0, 0, outerW, outerH, 8);
+              ghost.stroke({ width: 1, color, alpha: Math.min(1, baseA * 0.85) });
+              ghost.x = wx;
+              ghost.y = wy;
+            } else {
+              const col = markerColorToPixi(pm.color);
+              ghost.roundRect(0, 0, CELL, CELL, 4);
+              ghost.fill({ color: col, alpha: 0.14 });
+              ghost.circle(CELL / 2, CELL / 2, 8);
+              ghost.fill({ color: col, alpha: 0.88 });
+              ghost.roundRect(0, 0, CELL, CELL, 4);
+              ghost.stroke({ width: 1, color: col, alpha: 0.55 });
+              ghost.x = wx;
+              ghost.y = wy;
+            }
             ghost.visible = true;
           } else if (ghost.visible) {
+            ghost.alpha = 0.4;
             ghost.visible = false;
           }
 
@@ -1714,9 +1800,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
 
         const onCreationKeydown = (e: KeyboardEvent) => {
           if (e.key === "Escape") {
-            if (creatingRef.current) {
-              setCreationBlueprint(null);
-              creatingRef.current = null;
+            if (placementModeRef.current) {
+              useCanvasPlacementStore.getState().setMode(null);
               ghost.visible = false;
             }
             if (wiringRef.current) {
@@ -1832,7 +1917,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         onFrameContextMenu={handleFrameContextMenu}
       />
 
-      {creationBlueprint && (
+      {placementMode && (
         <div
           style={{
             position: "absolute",
@@ -1840,7 +1925,12 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             left: "50%",
             transform: "translateX(-50%)",
             background: "#1e293b",
-            border: "1px solid #3b82f6",
+            border:
+              placementMode.kind === "patch"
+                ? "1px solid #22c55e"
+                : placementMode.kind === "marker"
+                  ? "1px solid #f87171"
+                  : "1px solid #3b82f6",
             borderRadius: 6,
             padding: "4px 12px",
             fontSize: 12,
@@ -1850,7 +1940,23 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             userSelect: "none",
           }}
         >
-          Placing <b>{creationBlueprint}</b> — click to place, Esc to cancel
+          {placementMode.kind === "frame" && (
+            <>
+              Placing frame <b>{placementMode.blueprint}</b> — click to place, Esc to cancel
+            </>
+          )}
+          {placementMode.kind === "patch" && (
+            <>
+              Placing{" "}
+              <b>{patchTypes.find((p) => p.key === placementMode.patchType)?.name ?? placementMode.patchType}</b> — click
+              to place, Esc to cancel
+            </>
+          )}
+          {placementMode.kind === "marker" && (
+            <>
+              Placing marker <b>{placementMode.label}</b> — click to place, Esc to cancel
+            </>
+          )}
         </div>
       )}
       {wiringMode && (
@@ -1967,60 +2073,12 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             onClick={() => {
-              setBlueprintPickerOpen({ wx: contextMenu.wx, wy: contextMenu.wy });
               setContextMenu(null);
+              setCreateEntityPickerOpen(true);
             }}
           >
-            Create Frame...
+            Create entity…
           </div>
-          <div
-            style={{ padding: "4px 10px", cursor: "pointer" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            onClick={() => {
-              const { wx, wy } = contextMenu;
-              setContextMenu(null);
-              const def = `Marker ${Math.round(wx)}, ${Math.round(wy)}`;
-              const label = window.prompt("Marker name", def);
-              const trimmed = label?.trim();
-              if (trimmed) {
-                void rpcClient.call("input.marker_set", {
-                  x: wx,
-                  y: wy,
-                  label: trimmed,
-                  color: "#ff0000",
-                });
-              }
-            }}
-          >
-            Add marker...
-          </div>
-          {patchTypes.length > 0 && (
-            <>
-              <div style={{ borderTop: "1px solid #374151", margin: "4px 0" }} />
-              <div style={{ padding: "4px 8px", color: "#9ca3af", fontSize: "11px" }}>Resource Patches</div>
-              {patchTypes.map((pt) => (
-                <button
-                  key={pt.key}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    padding: "6px 12px",
-                    background: "none",
-                    border: "none",
-                    color: "#d1d5db",
-                    textAlign: "left",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                  onClick={() => createPatch(pt.key, contextMenu.wx, contextMenu.wy)}
-                >
-                  Create {pt.name}
-                </button>
-              ))}
-            </>
-          )}
         </div>
       )}
       {bulkFrameContextMenu &&
@@ -2419,14 +2477,28 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           rpcClient={rpcClient}
         />
       )}
-      {blueprintPickerOpen && (
-        <BlueprintPicker
+      {createEntityPickerOpen && (
+        <CanvasCreatePicker
           isOpen={true}
-          onClose={() => setBlueprintPickerOpen(null)}
+          onClose={() => setCreateEntityPickerOpen(false)}
           rpcClient={rpcClient}
-          onSelect={(blueprint) => {
-            enterCreationMode(blueprint);
-            setBlueprintPickerOpen(null);
+          patchTypes={patchTypes}
+          framesEnabled={blueprintSupported}
+          onSelect={(pick: CanvasCreatePick) => {
+            if (pick.kind === "frame") {
+              enterFramePlacementMode(pick.blueprint, pick.frameSizeKey);
+            } else if (pick.kind === "patch") {
+              useCanvasPlacementStore.getState().setMode({ kind: "patch", patchType: pick.patchType });
+            } else {
+              const trimmed = window.prompt("Marker name", "Marker")?.trim();
+              if (trimmed) {
+                useCanvasPlacementStore.getState().setMode({
+                  kind: "marker",
+                  label: trimmed,
+                  color: "#ff0000",
+                });
+              }
+            }
           }}
         />
       )}
