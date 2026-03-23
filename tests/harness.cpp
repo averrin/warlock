@@ -34,6 +34,7 @@
 #include <game/meta_data.hpp>
 #include <game/prototypes.hpp>
 #include <game/state.hpp>
+#include <game/frame_world.hpp>
 #include <game/oracle.hpp>
 #include <game/well_known_entities.hpp>
 
@@ -165,6 +166,7 @@ struct TestHarness::Impl {
     entt::locator<Prototypes>::reset();
     entt::locator<MetaData>::reset();
     entt::locator<Oracle>::reset();
+    entt::locator<FrameWorld>::reset();
     entt::locator<std::mutex *>::reset();
     entt::locator<entt::registry>::reset();
     entt::locator<GameManager>::reset();

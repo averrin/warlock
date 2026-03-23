@@ -5,6 +5,7 @@ import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATER
 import { useGameStore } from "../../stores/game";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { ComponentControls } from "./ComponentControls";
+import { PropulsionMoveControls } from "./PropulsionMoveControls";
 import { ComponentAttributes } from "./ComponentAttributes";
 import { StoragePanelWithSubscription } from "../storage/StoragePanel";
 
@@ -159,6 +160,7 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
 
   const codeAttrRaw = component.attributes?.["code"];
   const hasCodeAttr = codeAttrRaw !== undefined;
+  const isPropulsion = component.name === "Propulsion" || component.type === "Propulsion";
 
   const openLuaDef = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -284,6 +286,9 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
             attributes={component.attributes as Record<string, unknown> | undefined}
             rpcClient={rpcClient}
           />
+          {isPropulsion && (
+            <PropulsionMoveControls frameId={frameId} componentId={component.id} rpcClient={rpcClient} />
+          )}
           {component.type === "Data Connector" && component.data_link_buffer != null && (
             <DataLinkBufferInspector buffer={component.data_link_buffer} />
           )}

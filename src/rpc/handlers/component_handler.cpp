@@ -6,8 +6,10 @@
 #include <game/components/items.hpp>
 #include <game/frame_deposit_query.hpp>
 #include <game/game_manager.hpp>
+#include <game/lua_completion.hpp>
 #include <game/spendable.hpp>
 #include <game/state.hpp>
+#include <sol/sol.hpp>
 #include <game/components/frame.hpp>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
@@ -15,6 +17,19 @@
 #include <algorithm>
 
 namespace rpc {
+
+namespace {
+
+sol::object jsonArgToSol(sol::state& L, const nlohmann::json& j) {
+  if (j.is_string()) return sol::make_object(L, j.get<std::string>());
+  if (j.is_boolean()) return sol::make_object(L, j.get<bool>());
+  if (j.is_number_integer()) return sol::make_object(L, j.get<int>());
+  if (j.is_number_float()) return sol::make_object(L, j.get<double>());
+  if (j.is_null()) return sol::make_object(L, sol::nil);
+  return sol::make_object(L, sol::nil);
+}
+
+} // namespace
 
 void registerComponentHandlers(Server& server) {
   // component.add — {frame_id: int, component_name: string}
@@ -486,6 +501,90 @@ void registerComponentHandlers(Server& server) {
       return result;
     }
     throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Component not found"};
+  });
+
+  // component.call_api — {frame_id, component_id, method: string, args?: json array} -> {ok, error?}
+  server.router().on("component.call_api", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started || !gm.exec) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    if (!params.contains("frame_id") || !params.contains("component_id") || !params.contains("method")) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Missing frame_id, component_id, or method"};
+    }
+    int frame_data_id = params["frame_id"].get<int>();
+    int component_id = params["component_id"].get<int>();
+    std::string method = params["method"].get<std::string>();
+    nlohmann::json args = params.value("args", nlohmann::json::array());
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    Frame* frame_ptr = nullptr;
+    for (auto e : state.registry.view<Frame>()) {
+      auto& f = state.registry.get<Frame>(e);
+      if (f.data.id == frame_data_id) {
+        frame_ptr = &f;
+        break;
+      }
+    }
+    if (!frame_ptr) {
+      throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Frame not found"};
+    }
+    std::shared_ptr<Component> comp;
+    for (auto& c : frame_ptr->components) {
+      if (c && c->data.id == component_id) {
+        comp = c;
+        break;
+      }
+    }
+    if (!comp) {
+      throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Component not found"};
+    }
+
+    syncFrameLuaEnvironment(*gm.exec, frame_data_id, frame_ptr);
+    refresh_component_apis(*gm.exec);
+
+    sol::state& L = gm.exec->getState(frame_data_id);
+    if (!comp->api.valid() || comp->api.get_type() != sol::type::table) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Component has no API table"};
+    }
+    sol::table api = comp->api;
+    sol::object fn_obj = api[method];
+    if (!fn_obj.valid() || !fn_obj.is<sol::function>()) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "API method not found: " + method};
+    }
+    sol::protected_function pfn(fn_obj.as<sol::function>());
+    sol::protected_function_result pr;
+    if (!args.is_array()) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "args must be a JSON array"};
+    }
+    const size_t n = args.size();
+    if (n == 0) {
+      pr = pfn(frame_ptr);
+    } else if (n == 1) {
+      pr = pfn(frame_ptr, jsonArgToSol(L, args[0]));
+    } else if (n == 2) {
+      pr = pfn(frame_ptr, jsonArgToSol(L, args[0]), jsonArgToSol(L, args[1]));
+    } else if (n == 3) {
+      pr = pfn(frame_ptr, jsonArgToSol(L, args[0]), jsonArgToSol(L, args[1]), jsonArgToSol(L, args[2]));
+    } else if (n == 4) {
+      pr = pfn(frame_ptr, jsonArgToSol(L, args[0]), jsonArgToSol(L, args[1]), jsonArgToSol(L, args[2]),
+               jsonArgToSol(L, args[3]));
+    } else {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "At most 4 API arguments supported"};
+    }
+
+    if (!pr.valid()) {
+      sol::error err = pr;
+      nlohmann::json result = {{"ok", false}, {"error", err.what()}};
+      logWebAction(server, "component.call_api", "error",
+                   {{"frame_id", frame_data_id}, {"component_id", component_id}, {"method", method}, {"error", err.what()}});
+      return result;
+    }
+    logWebAction(server, "component.call_api", "ok",
+                 {{"frame_id", frame_data_id}, {"component_id", component_id}, {"method", method}});
+    return {{"ok", true}};
   });
 }
 

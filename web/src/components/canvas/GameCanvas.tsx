@@ -49,8 +49,11 @@ type Props = {
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 3.0;
 const ZOOM_FACTOR = 0.1;
-/** Trackpad pinch zoom: scale multiplier per unit of wheel deltaY (pixel mode). */
+/** Trackpad pinch / Ctrl+wheel zoom: scale multiplier per unit of effective wheel deltaY. */
 const PINCH_ZOOM_SENSITIVITY = 0.008;
+/** Mouse wheels send large pixel deltas; scale them down so each notch is a small step (trackpad keeps small raw deltas). */
+const PINCH_ZOOM_COARSE_DELTA_PX = 32;
+const PINCH_ZOOM_WHEEL_DAMPING = 0.14;
 /** When wheel uses line mode with small deltas (common on some trackpads), treat as pan (px per line). */
 const WHEEL_LINE_PAN_PIXELS = 24;
 const GRID_LINE_COLOR = 0x1f2937;
@@ -62,6 +65,20 @@ const GRID_DOT_RADIUS = 1.5;
 const GRID_HIDE_THRESHOLD = 4;
 /** Dots at corners every N cells (S frame = 3 cells per side). */
 const GRID_DOT_STRIDE_CELLS = 3;
+
+/** Normalize wheel deltaY to ~pixels, then dampen coarse steps (Ctrl+wheel on mouse) for gradual zoom. */
+function pinchZoomEffectiveDeltaY(e: WheelEvent): number {
+  let dy = e.deltaY;
+  if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+    dy *= 16;
+  } else if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+    dy *= 400;
+  }
+  if (Math.abs(dy) >= PINCH_ZOOM_COARSE_DELTA_PX) {
+    dy *= PINCH_ZOOM_WHEEL_DAMPING;
+  }
+  return dy;
+}
 
 /** World-space axis-aligned rectangle covering every grid cell touched by a drag between two world points. */
 function gridSnapSelectionRect(wx0: number, wy0: number, wx1: number, wy1: number) {
@@ -426,6 +443,25 @@ function parseFinalNumber(v: any): number | null {
   return null;
 }
 
+const WIRELESS_EMITTER_NAMES = new Set(["Power Wireless Emitter", "Data Wireless Emitter"]);
+
+function componentStateIsActive(state: string | undefined): boolean {
+  const s = (state ?? "").toLowerCase();
+  return s === "active";
+}
+
+/** World-space radius in px (grid cells × CELL), matching server wireless_connection. */
+function wirelessEmitterRadiusPx(c: ComponentDTO): { power: boolean; rPx: number } | null {
+  const name = c.name ?? "";
+  if (!WIRELESS_EMITTER_NAMES.has(name)) return null;
+  if (!componentStateIsActive(c.state)) return null;
+  const attr =
+    c.metadata?.attributes?.radius ?? (c.attributes as Record<string, unknown> | undefined)?.radius;
+  const n = parseFinalNumber(attr as any);
+  const cells = n != null && n > 0 ? n : 10.0;
+  return { power: name === "Power Wireless Emitter", rPx: cells * CELL };
+}
+
 function getFrameSquareSide(frame: { size: string }): number {
   const cells = FRAME_CELL_SIZES[frame.size] ?? 1;
   return cells * CELL;
@@ -643,6 +679,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const removeConnection = useGameStore((s) => s.removeConnection);
   const removeFrame = useGameStore((s) => s.removeFrame);
   const connectionLayerRef = useRef<Graphics | null>(null);
+  const emitterRadiusLayerRef = useRef<Graphics | null>(null);
   const wiringLineRef = useRef<Graphics | null>(null);
   const connectionsRef = useRef(connections);
   connectionsRef.current = connections;
@@ -866,7 +903,39 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     }
     drawRestrictedDropZonesRef.current();
   };
-  drawConnectionsRef.current = drawConnections;
+
+  const drawEmitterRadii = () => {
+    const g = emitterRadiusLayerRef.current;
+    if (!g) return;
+    g.clear();
+    const ids = selectedFrameIdsRef.current;
+    if (!ids.length) return;
+    for (const frameId of ids) {
+      const frame = framesRef.current.find((f) => f.id === frameId);
+      const pos = framePositionsRef.current.get(frameId);
+      if (!frame || !pos) continue;
+      const side = getFrameSquareSide(frame);
+      const cx = pos.x + side / 2;
+      const cy = pos.y + side / 2;
+      const seenR = new Set<number>();
+      for (const c of frame.components ?? []) {
+        const disc = wirelessEmitterRadiusPx(c);
+        if (!disc) continue;
+        if (seenR.has(disc.rPx)) continue;
+        seenR.add(disc.rPx);
+        const color = disc.power ? CONN_COLOR.POWER : CONN_COLOR.DATA;
+        g.setStrokeStyle({ width: 1, color, alpha: 0.4 });
+        g.circle(cx, cy, disc.rPx);
+        g.stroke();
+      }
+    }
+  };
+
+  const redrawConnectionLayers = () => {
+    drawConnections();
+    drawEmitterRadii();
+  };
+  drawConnectionsRef.current = redrawConnectionLayers;
 
   const updateMarkers = useCallback(() => {
     const layer = markerLayerRef.current;
@@ -1078,7 +1147,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     framesRef,
     framePositionsRef,
     obstacleCellsRef,
-    drawConnections,
+    drawConnections: redrawConnectionLayers,
     connectionsRef,
     moveFrame,
     selectFrame,
@@ -1823,6 +1892,11 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         worldContainer.addChild(mLayer);
         patchLayerRef.current = patchLayer;
 
+        const emitterRadiusG = new Graphics();
+        emitterRadiusG.eventMode = "none";
+        emitterRadiusLayerRef.current = emitterRadiusG;
+        worldContainer.addChild(emitterRadiusG);
+
         const connectionLayer = new Graphics();
         connectionLayerRef.current = connectionLayer;
         worldContainer.addChild(connectionLayer);
@@ -1897,7 +1971,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
 
           let newScale: number;
           if (pinchZoom) {
-            const factor = Math.exp(-e.deltaY * PINCH_ZOOM_SENSITIVITY);
+            const factor = Math.exp(-pinchZoomEffectiveDeltaY(e) * PINCH_ZOOM_SENSITIVITY);
             newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, oldScale * factor));
           } else {
             const direction = e.deltaY < 0 ? 1 : -1;
@@ -2179,6 +2253,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       patchLayerRef.current = null;
       markerLayerRef.current = null;
       connectionLayerRef.current = null;
+      emitterRadiusLayerRef.current = null;
       selectionBoxRef.current = null;
       wiringLineRef.current = null;
       panningRef.current = false;
@@ -2194,8 +2269,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   }, []);
 
   useEffect(() => {
-    drawConnections();
-  }, [connections, powerNetworks]); // eslint-disable-line react-hooks/exhaustive-deps
+    drawConnectionsRef.current();
+  }, [connections, powerNetworks, selectedFrameIds, frames]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Re-sync frame positions and redraw connections when frames change ---
   useEffect(() => {

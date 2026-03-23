@@ -21,7 +21,6 @@ import { useGameStore } from "../../stores/game";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
 import { GameCanvas } from "../canvas/GameCanvas";
-import { BlueprintPalette } from "../panels/BlueprintPalette";
 import { CodeEditorPanel } from "../panels/CodeEditorPanel";
 import { ComponentPalette } from "../panels/ComponentPalette";
 import { EnvironmentPanel } from "../panels/EnvironmentPanel";
@@ -105,7 +104,14 @@ function GroupHeaderActions({ api, group }: IDockviewHeaderActionsProps) {
 
   return (
     <div
-      style={{ display: "flex", alignItems: "center", paddingRight: 4, gap: 4 }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        height: "100%",
+        boxSizing: "border-box",
+        paddingRight: 10,
+        gap: 4,
+      }}
       {...rootProps}
     >
       {containsMiniInspector && panelId ? (
@@ -184,7 +190,6 @@ function seedDefaultPanels(api: DockviewApi) {
     title: "Environment",
     position: { referencePanel: frameInspector, direction: "within" },
   });
-  registerTab("blueprint-palette", "blueprintPalette", "Blueprints");
   registerTab("component-palette", "componentPalette", "Components");
   registerTab("code-editor", "codeEditor", "Code Editor");
   registerTab("global-indicators", "globalIndicatorsPanel", "Global Indicators");
@@ -202,7 +207,6 @@ const TOP_BAR_BUTTONS: { id: string; component: string; title: string; label: st
   { id: "power-panel", component: "powerPanel", title: "Power Networks", label: "Power" },
   { id: "environment", component: "environmentPanel", title: "Environment", label: "Environment" },
   { id: "log", component: "logPanel", title: "Log", label: "Log" },
-  { id: "blueprint-palette", component: "blueprintPalette", title: "Blueprints", label: "Blueprints" },
   { id: "component-palette", component: "componentPalette", title: "Components", label: "Components" },
   { id: "code-editor", component: "codeEditor", title: "Code Editor", label: "Code" },
   { id: "state-inspector", component: "stateInspector", title: "State Inspector", label: "State" },
@@ -318,7 +322,6 @@ export function WindowWorkspace({ rpcClient }: Props) {
       powerPanel: (() => <PowerPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       environmentPanel: (() => <EnvironmentPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       logPanel: (() => <LogPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
-      blueprintPalette: (() => <BlueprintPalette rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       componentPalette: (() => <ComponentPalette rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       codeEditor: (() => codeEditorNode) as FunctionComponent<IDockviewPanelProps>,
       stateInspector: (() => <StateInspector rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,

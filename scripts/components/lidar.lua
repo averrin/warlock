@@ -21,7 +21,7 @@ return {
 	size = ComponentSize.S,
 	api = {
 		scan = function(frame)
-			return oracle:scanAdjacent(frame.data.id)
+			return frameWorld:scanAdjacent(frame.data.id)
 		end,
 	},
 }

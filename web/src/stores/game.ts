@@ -103,6 +103,13 @@ interface GameStore {
     state: "active" | "inactive",
   ) => Promise<void>;
   repairComponent: (client: RpcClient, frameId: number, componentId: number) => Promise<void>;
+  callComponentApi: (
+    client: RpcClient,
+    frameId: number,
+    componentId: number,
+    method: string,
+    args: (string | number | boolean)[],
+  ) => Promise<{ ok: boolean; error?: string }>;
   updateComponentAttribute: (
     client: RpcClient,
     frameId: number,
@@ -509,6 +516,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
             },
       ),
     }));
+  },
+
+  callComponentApi: async (client, frameId, componentId, method, args) => {
+    const result = await client.call<{ ok: boolean; error?: string }>("component.call_api", {
+      frame_id: frameId,
+      component_id: componentId,
+      method,
+      args,
+    });
+    if (result.ok) {
+      await get().fetchInitialState(client);
+    }
+    return result;
   },
 
   updateComponentAttribute: async (client, frameId, componentId, key, value) => {

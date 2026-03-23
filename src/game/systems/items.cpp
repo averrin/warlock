@@ -9,6 +9,7 @@
 #include <game/systems/items.hpp>
 #include <liblog/liblog.hpp>
 #include <ranges> // For ranges
+#include <unordered_map>
 #include <utils/entt.hpp>
 
 namespace {
@@ -63,10 +64,46 @@ bool frame_has_nexus_spendable_sink(Frame *f, int storage_component_id) {
     if (c->data.get_or<std::string>("type", "") != "Nexus")
       continue;
     int tid = c->data.get_or<int>("target", -1);
-    if (tid >= 0 && tid == storage_component_id)
+    if (tid < 0)
+      tid = c->data.id;
+    if (tid == storage_component_id)
       return true;
   }
   return false;
+}
+
+void drain_nexus_linked_spendable_storage(
+    Frame &frame,
+    const std::unordered_map<std::string, ItemDefinition> &item_map) {
+  auto &gm = entt::locator<GameManager>::value();
+  for (auto &nexus : frame.components) {
+    if (nexus->data.get_or<std::string>("type", "") != "Nexus")
+      continue;
+    int tid = nexus->data.get_or<int>("target", -1);
+    if (tid < 0)
+      tid = nexus->data.id;
+    std::shared_ptr<Component> storage_comp = nullptr;
+    for (auto &c : frame.components) {
+      if (c->data.id == tid && c->storage) {
+        storage_comp = c;
+        break;
+      }
+    }
+    if (!storage_comp)
+      continue;
+    for (auto &slot : storage_comp->storage->slots) {
+      if (!slot.stack || slot.stack->amount <= 0)
+        continue;
+      auto def_it = item_map.find(slot.stack->item.name);
+      if (def_it == item_map.end() || !def_it->second.spendable)
+        continue;
+      const std::string name = slot.stack->item.name;
+      const int amt = slot.stack->amount;
+      ItemStack rm(slot.stack->item, amt);
+      if (storage_comp->storage->remove(rm))
+        gm.addSpendable(name, amt);
+    }
+  }
 }
 } // namespace
 
@@ -423,6 +460,7 @@ void ItemsSystem::fixedUpdate() {
         }
       }
     }
+    drain_nexus_linked_spendable_storage(frame, loader->get_items());
     for (auto &c : frame.components) {
       if (c->data.get_or<std::string>("recipe", "") != "" &&
           c->state == ComponentState::ACTIVE) {

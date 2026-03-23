@@ -2,6 +2,7 @@
 #include <game/components/frame.hpp>
 #include <game/components/items.hpp>
 #include <game/data_link.hpp>
+#include <game/frame_world.hpp>
 #include <game/oracle.hpp>
 #include <game/systems/power.hpp>
 #include <game/nexus_api.hpp>
@@ -150,6 +151,7 @@ void register_bindings(sol::state &lua) {
       &Metadata::description, "attributes", &Metadata::attributes);
 
   auto oracle = entt::locator<Oracle>::value();
+  auto frameWorld = entt::locator<FrameWorld>::value();
   lua.new_usertype<Component>(
       "Component", "data", &Component::data, "api", &Component::api, "state",
       &Component::state, "size", &Component::size, "require",
@@ -261,10 +263,19 @@ void register_bindings(sol::state &lua) {
       "inputs", &RecipeDefinition::inputs, "timeCost",
       &RecipeDefinition::timeCost, "powerCost", &RecipeDefinition::powerCost);
 
-  lua.new_usertype<Oracle>("Oracle", "getWiredFrames", &Oracle::getWiredFrames,
-                           "scanAdjacent", &Oracle::scanAdjacent,
-                           "moveFrame", &Oracle::moveFrame);
+  lua.new_usertype<Oracle>("Oracle");
   lua.set("oracle", oracle);
+
+  lua.new_usertype<FrameWorld>(
+      "FrameWorld", "scanAdjacent", &FrameWorld::scanAdjacent, "moveFrame",
+      sol::overload(
+          [](FrameWorld& fw, int id, std::string d) { return fw.moveFrame(id, std::move(d)); },
+          [](FrameWorld& fw, int id, std::string d, float step, float speed) {
+            return fw.moveFrame(id, std::move(d), step, speed);
+          }),
+      "subcellStep", []() { return FrameWorld::subcellStep(); },
+      "cellStep", []() { return FrameWorld::cellStep(); }, "nfcFrames", &FrameWorld::nfcFrames);
+  lua.set("frameWorld", frameWorld);
 
   lua.new_usertype<NexusApi>(
       "NexusApi",

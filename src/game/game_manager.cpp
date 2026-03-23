@@ -1,6 +1,7 @@
 #include <chrono>
 #include <filesystem>
 #include <game/game_manager.hpp>
+#include <game/frame_world.hpp>
 #include <game/oracle.hpp>
 #include <magic_enum.hpp>
 #include <mutex>
@@ -181,6 +182,7 @@ GameManager::GameManager() {
                                    std::bind(&GameManager::start, this));
   entt::locator<std::mutex *>::emplace();
   entt::locator<Oracle>::emplace();
+  entt::locator<FrameWorld>::emplace();
 }
 
 GameManager::~GameManager() {}

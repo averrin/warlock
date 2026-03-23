@@ -45,8 +45,7 @@ return {
 	require = { "Core" },
 	api = {
 		getConnectedFrames = function()
-			frames = oracle:getWiredFrames(frame.data.id)
-			return frames
+			return {}
 		end,
 	},
 }

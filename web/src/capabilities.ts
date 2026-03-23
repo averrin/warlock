@@ -1,6 +1,13 @@
 export const capabilityMethods = {
   session: ["session.info", "session.claim", "session.release"],
-  frameInspector: ["frame.list", "frame.get", "frame.move", "frame.activate", "frame.deactivate"],
+  frameInspector: [
+    "frame.list",
+    "frame.get",
+    "frame.move",
+    "frame.activate",
+    "frame.deactivate",
+    "component.call_api",
+  ],
   powerPanel: ["power.networks"],
   codeEditor: ["code.sources", "code.update", "code.get_script", "code.completion"],
   codeDefEditor: ["code.update_source"],

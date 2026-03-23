@@ -3,6 +3,7 @@
 #include <game/components/frame.hpp>
 #include <game/lua_completion.hpp>
 #include <game/nexus_api.hpp>
+#include <game/frame_world.hpp>
 #include <game/oracle.hpp>
 #include <game/systems/code_execution.hpp>
 #include <game/systems/power.hpp>
@@ -107,7 +108,10 @@ void appendKeysForObject(sol::object obj, std::vector<std::string>& out) {
     return;
   }
   if (obj.is<Oracle*>()) {
-    static const char* keys[] = {"getWiredFrames"};
+    return;
+  }
+  if (obj.is<FrameWorld*>()) {
+    static const char* keys[] = {"scanAdjacent", "moveFrame", "subcellStep", "cellStep", "nfcFrames"};
     appendCStringKeys(keys, sizeof(keys) / sizeof(keys[0]), out);
     return;
   }

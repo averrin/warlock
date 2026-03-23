@@ -12,6 +12,24 @@
 void TweeningSystem::fixedUpdate() {
   auto &current_state = entt::locator<State>::value();
   const std::chrono::duration<double, std::milli> delta(targetInterval);
+  const float dt_sec = static_cast<float>(targetInterval) / 1000.f;
+
+  for (auto e : current_state.registry.view<Frame, wl::transform>()) {
+    auto &frame = current_state.registry.get<Frame>(e);
+    if (!frame.move_tween_active) continue;
+    auto &t = current_state.registry.get<wl::transform>(e);
+    frame.move_tween_elapsed += dt_sec;
+    float u = frame.move_tween_elapsed / frame.move_tween_duration;
+    if (u >= 1.f) {
+      t.position.x = frame.move_tween_ex;
+      t.position.y = frame.move_tween_ey;
+      frame.move_tween_active = false;
+    } else {
+      t.position.x = frame.move_tween_sx + (frame.move_tween_ex - frame.move_tween_sx) * u;
+      t.position.y = frame.move_tween_sy + (frame.move_tween_ey - frame.move_tween_sy) * u;
+    }
+    current_state.registry.patch<wl::transform>(e);
+  }
 
   for (auto &f : current_state.registry.view<Frame>()) {
     auto &frame = current_state.registry.get<Frame>(f);

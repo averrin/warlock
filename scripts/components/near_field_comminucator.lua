@@ -27,8 +27,7 @@ return {
 	size = ComponentSize.S,
 	api = {
 		getConnectedFrames = function()
-			frames = oracle:getNFCFrames(frame.data.id, 1.0)
-			return frames
+			return frameWorld:nfcFrames(frame.data.id, 0)
 		end,
 	},
 }

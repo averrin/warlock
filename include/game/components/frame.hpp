@@ -405,6 +405,15 @@ struct Frame {
       {FrameSize::G,
        {{ComponentSize::S, 32}, {ComponentSize::M, 8}, {ComponentSize::L, 4}}}};
 
+  /// Runtime only — not serialized; used for propulsion subcell movement interpolation.
+  bool move_tween_active = false;
+  float move_tween_elapsed = 0.f;
+  float move_tween_duration = 0.f;
+  float move_tween_sx = 0.f;
+  float move_tween_sy = 0.f;
+  float move_tween_ex = 0.f;
+  float move_tween_ey = 0.f;
+
   Frame() {}
 
   Frame(const Frame &other) {
@@ -414,6 +423,7 @@ struct Frame {
     }
     size = other.size;
     material = other.material;
+    move_tween_active = false;
   }
 
   bool hasComponentType(std::string type, bool needActive = false) {
