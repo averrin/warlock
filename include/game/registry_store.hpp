@@ -16,7 +16,6 @@ namespace fs = std::filesystem;
 
 #include <game/component_registry.hpp>
 #include <game/components/frame.hpp>
-#include <game/specs/light.hpp>
 #include <liblog/liblog.hpp>
 #include <utils/data/field_archive.hpp>
 #include <utils/data/store.hpp>
@@ -205,29 +204,10 @@ class RegistryStore : public Store {
   // will upgrade them to v2 format automatically.
   // -------------------------------------------------------------------------
   template <class Archive> void load_v1(Archive &ar) {
-    entt::snapshot_loader{registry}
-        .get<entt::entity>(ar)
-        .template get<hf::meta>(ar)
-        .template get<hf::visible>(ar)
-        .template get<hf::ineditor>(ar)
-        .template get<hf::glow>(ar)
-        .template get<hf::renderable>(ar)
-        .template get<hf::wall>(ar)
-        .template get<hf::tags>(ar)
-        .template get<hf::player>(ar)
-        .template get<hf::vision>(ar)
-        .template get<hf::obstacle>(ar)
-        .template get<hf::creature>(ar)
-        .template get<hf::script>(ar)
-        .template get<Frame>(ar)
-        .template get<Connection>(ar)
-        .template get<Environment>(ar)
-        .template get<wl::transform>(ar)
-        .template get<wl::sprite>(ar)
-        .template get<wl::relation>(ar)
-        .template get<wl::text>(ar)
-        .template get<entt::tag<"proto"_hs>>(ar)
-        .orphans();
+    // NOTE: v1 format is no longer loadable after component removal.
+    // Kept as a stub so the code compiles; v2 is the active format.
+    (void)ar;
+    log.warn("v1 save format is no longer supported — skipping load");
   }
 
   // -------------------------------------------------------------------------

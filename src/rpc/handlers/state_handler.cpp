@@ -316,29 +316,10 @@ void registerStateHandlers(Server& server) {
         auto& c = registry.get<hf::meta>(ent);
         comps["meta"] = {{"name", c.name}, {"description", c.description}, {"id", c.id}};
       }
-      // visible
-      if (registry.all_of<hf::visible>(ent)) {
-        auto& c = registry.get<hf::visible>(ent);
-        comps["visible"] = {{"type", c.type}, {"sign", c.sign}, {"hidden", c.hidden}, {"seeThrough", c.seeThrough}, {"passThrough", c.passThrough}};
-      }
       // ineditor
       if (registry.all_of<hf::ineditor>(ent)) {
         auto& c = registry.get<hf::ineditor>(ent);
-        comps["ineditor"] = {{"icon", c.icon}};
-      }
-      // glow
-      if (registry.all_of<hf::glow>(ent)) {
-        auto& c = registry.get<hf::glow>(ent);
-        comps["glow"] = {{"distance", c.distance}, {"type", static_cast<int>(c.type)}, {"bright", c.bright}, {"flick", c.flick}, {"passive", c.passive}, {"pulse", c.pulse}};
-      }
-      // renderable
-      if (registry.all_of<hf::renderable>(ent)) {
-        auto& c = registry.get<hf::renderable>(ent);
-        comps["renderable"] = {{"spriteKey", c.spriteKey}, {"fgColor", c.fgColor}, {"hasBg", c.hasBg}, {"bgColor", c.bgColor}, {"hasBorder", c.hasBorder}, {"borderColor", c.borderColor}, {"hidden", c.hidden}, {"zIndex", c.zIndex}, {"fgLayer", c.fgLayer}, {"bgLayer", c.bgLayer}, {"brdLayer", c.brdLayer}};
-      }
-      // wall
-      if (registry.all_of<hf::wall>(ent)) {
-        comps["wall"] = nlohmann::json::object();
+        comps["ineditor"] = {{"icon", c.icon}, {"color", c.color}};
       }
       // tags
       if (registry.all_of<hf::tags>(ent)) {
@@ -350,11 +331,6 @@ void registerStateHandlers(Server& server) {
       // player
       if (registry.all_of<hf::player>(ent)) {
         comps["player"] = nlohmann::json::object();
-      }
-      // vision
-      if (registry.all_of<hf::vision>(ent)) {
-        auto& c = registry.get<hf::vision>(ent);
-        comps["vision"] = {{"distance", c.distance}};
       }
       // obstacle
       if (registry.all_of<hf::obstacle>(ent)) {
@@ -390,11 +366,6 @@ void registerStateHandlers(Server& server) {
         auto& c = registry.get<wl::transform>(ent);
         comps["transform"] = {{"x", c.position.x}, {"y", c.position.y}, {"scale", c.scale}, {"rotation", c.rotation}, {"relative", c.relative}, {"layer", c.layer}};
       }
-      // sprite
-      if (registry.all_of<wl::sprite>(ent)) {
-        auto& c = registry.get<wl::sprite>(ent);
-        comps["sprite"] = {{"key", c.key}, {"width", c.rect.width}, {"height", c.rect.height}};
-      }
       // relation
       if (registry.all_of<wl::relation>(ent)) {
         auto& c = registry.get<wl::relation>(ent);
@@ -402,22 +373,14 @@ void registerStateHandlers(Server& server) {
         for (auto ch : c.children) children.push_back(static_cast<int>(ch));
         comps["relation"] = {{"parent", c.parent == entt::null ? -1 : static_cast<int>(c.parent)}, {"children", children}};
       }
-      // text
-      if (registry.all_of<wl::text>(ent)) {
-        auto& c = registry.get<wl::text>(ent);
-        comps["text"] = {{"content", c.content}, {"size", c.size}};
-      }
       // ResourcePatch
       if (registry.all_of<ResourcePatch>(ent)) {
         auto& c = registry.get<ResourcePatch>(ent);
         comps["ResourcePatch"] = {{"patch_type", c.patch_type}, {"item_name", c.item_name}, {"obstacle", c.obstacle}, {"cell_count", static_cast<int>(c.cells.size())}};
       }
-      // tags: proto, item
+      // proto tag
       if (registry.all_of<entt::tag<"proto"_hs>>(ent)) {
         comps["proto"] = true;
-      }
-      if (registry.all_of<entt::tag<"item"_hs>>(ent)) {
-        comps["item"] = true;
       }
 
       // Determine a label for the entity
@@ -438,6 +401,13 @@ void registerStateHandlers(Server& server) {
       if (label.empty() && registry.all_of<ResourcePatch>(ent)) {
         label = "Patch: " + registry.get<ResourcePatch>(ent).patch_type;
       }
+
+      // Resolve ineditor color for UI styling
+      std::string ineditor_color;
+      if (registry.all_of<hf::ineditor>(ent)) {
+        ineditor_color = registry.get<hf::ineditor>(ent).color;
+      }
+      ent_json["color"] = ineditor_color;
 
       ent_json["label"] = label;
       ent_json["components"] = comps;
@@ -476,39 +446,10 @@ void registerStateHandlers(Server& server) {
       else if (field == "description") c.description = value.get<std::string>();
       else if (field == "id") c.id = value.get<std::string>();
       else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "visible" && registry.all_of<hf::visible>(ent)) {
-      auto& c = registry.get<hf::visible>(ent);
-      if (field == "type") c.type = value.get<std::string>();
-      else if (field == "sign") c.sign = value.get<std::string>();
-      else if (field == "hidden") c.hidden = value.get<bool>();
-      else if (field == "seeThrough") c.seeThrough = value.get<bool>();
-      else if (field == "passThrough") c.passThrough = value.get<bool>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
     } else if (component == "ineditor" && registry.all_of<hf::ineditor>(ent)) {
       auto& c = registry.get<hf::ineditor>(ent);
       if (field == "icon") c.icon = value.get<std::string>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "glow" && registry.all_of<hf::glow>(ent)) {
-      auto& c = registry.get<hf::glow>(ent);
-      if (field == "distance") c.distance = value.get<float>();
-      else if (field == "bright") c.bright = value.get<int>();
-      else if (field == "flick") c.flick = value.get<int>();
-      else if (field == "passive") c.passive = value.get<bool>();
-      else if (field == "pulse") c.pulse = value.get<int>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "renderable" && registry.all_of<hf::renderable>(ent)) {
-      auto& c = registry.get<hf::renderable>(ent);
-      if (field == "spriteKey") c.spriteKey = value.get<std::string>();
-      else if (field == "fgColor") c.fgColor = value.get<std::string>();
-      else if (field == "hasBg") c.hasBg = value.get<bool>();
-      else if (field == "bgColor") c.bgColor = value.get<std::string>();
-      else if (field == "hasBorder") c.hasBorder = value.get<bool>();
-      else if (field == "borderColor") c.borderColor = value.get<std::string>();
-      else if (field == "hidden") c.hidden = value.get<bool>();
-      else if (field == "zIndex") c.zIndex = value.get<int>();
-      else if (field == "fgLayer") c.fgLayer = value.get<std::string>();
-      else if (field == "bgLayer") c.bgLayer = value.get<std::string>();
-      else if (field == "brdLayer") c.brdLayer = value.get<std::string>();
+      else if (field == "color") c.color = value.get<std::string>();
       else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
     } else if (component == "tags" && registry.all_of<hf::tags>(ent)) {
       auto& c = registry.get<hf::tags>(ent);
@@ -516,10 +457,6 @@ void registerStateHandlers(Server& server) {
         c.tags.clear();
         for (const auto& t : value) c.tags.push_back(t.get<std::string>());
       } else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "vision" && registry.all_of<hf::vision>(ent)) {
-      auto& c = registry.get<hf::vision>(ent);
-      if (field == "distance") c.distance = value.get<float>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
     } else if (component == "obstacle" && registry.all_of<hf::obstacle>(ent)) {
       auto& c = registry.get<hf::obstacle>(ent);
       if (field == "passThrough") c.passThrough = value.get<bool>();
@@ -550,17 +487,6 @@ void registerStateHandlers(Server& server) {
       else if (field == "rotation") c.rotation = value.get<float>();
       else if (field == "relative") c.relative = value.get<bool>();
       else if (field == "layer") c.layer = value.get<std::string>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "sprite" && registry.all_of<wl::sprite>(ent)) {
-      auto& c = registry.get<wl::sprite>(ent);
-      if (field == "key") c.key = value.get<std::string>();
-      else if (field == "width") c.rect.width = value.get<float>();
-      else if (field == "height") c.rect.height = value.get<float>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "text" && registry.all_of<wl::text>(ent)) {
-      auto& c = registry.get<wl::text>(ent);
-      if (field == "content") c.content = value.get<std::string>();
-      else if (field == "size") c.size = value.get<int>();
       else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
     } else if (component == "ResourcePatch" && registry.all_of<ResourcePatch>(ent)) {
       auto& c = registry.get<ResourcePatch>(ent);

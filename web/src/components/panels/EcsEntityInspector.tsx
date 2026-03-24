@@ -123,6 +123,8 @@ function EntityRow({
   const [expanded, setExpanded] = useState(false);
   const componentNames = Object.keys(entity.components);
 
+  const entityColor = entity.color || undefined;
+
   return (
     <div style={{ borderBottom: "1px solid #1f2937" }}>
       <div
@@ -130,17 +132,30 @@ function EntityRow({
           display: "flex",
           alignItems: "center",
           gap: 8,
-          padding: "4px 0",
+          padding: "4px 4px",
           cursor: "pointer",
           fontSize: 11,
+          borderLeft: entityColor ? `3px solid ${entityColor}` : "3px solid transparent",
+          background: expanded && entityColor ? `${entityColor}10` : undefined,
         }}
         onClick={() => setExpanded((v) => !v)}
       >
         <span style={{ color: "#6b7280", fontSize: 10 }}>{expanded ? "\u25BC" : "\u25B6"}</span>
+        {entityColor && (
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: entityColor,
+              flexShrink: 0,
+            }}
+          />
+        )}
         <span style={{ color: "#60a5fa", fontFamily: "ui-monospace, monospace" }}>
           {entity.entity_id}
         </span>
-        <span style={{ color: "#e5e7eb", fontWeight: 500 }}>
+        <span style={{ color: entityColor || "#e5e7eb", fontWeight: 500 }}>
           {entity.label || "(unnamed)"}
         </span>
         <span style={{ color: "#6b7280", fontSize: 10 }}>

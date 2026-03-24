@@ -157,6 +157,8 @@ export interface EnvironmentDTO {
 export interface EcsEntityDTO {
   entity_id: number;
   label: string;
+  /** ineditor.color — used to tint entity rows in the inspector */
+  color?: string;
   components: Record<string, Record<string, unknown> | boolean>;
 }
 

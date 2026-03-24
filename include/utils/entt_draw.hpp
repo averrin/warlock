@@ -67,39 +67,6 @@ struct transform {
   }
 };
 
-struct text {
-  std::string content = "";
-  wl::color color;
-  int size = 12;
-  friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const { ar(content, size); };
-  template <class Archive> void load(Archive &ar) { ar(content, size); };
-  void field_save(FieldOutputArchive &ar) const {
-    FIELD(ar, content);
-    FIELD(ar, size);
-  }
-  void field_load(FieldInputArchive &ar) {
-    FIELD(ar, content);
-    FIELD(ar, size);
-  }
-};
-struct sprite {
-  std::string key = "";
-  wl::color color;
-  wl::rect rect;
-  friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const { ar(key, rect); };
-  template <class Archive> void load(Archive &ar) { ar(key, rect); };
-  void field_save(FieldOutputArchive &ar) const {
-    FIELD(ar, key);
-    FIELD(ar, rect);
-  }
-  void field_load(FieldInputArchive &ar) {
-    FIELD(ar, key);
-    FIELD(ar, rect);
-  }
-};
-
 struct line {
   wl::position position1;
   wl::position position2;
