@@ -17,14 +17,9 @@
 // clang-format off
 #define COMPONENT_LIST(X)                              \
   X(hf::meta,                  "meta")                \
-  X(hf::visible,               "visible")             \
   X(hf::ineditor,              "ineditor")            \
-  X(hf::glow,                  "glow")                \
-  X(hf::renderable,            "renderable")          \
-  X(hf::wall,                  "wall")                \
   X(hf::tags,                  "tags")                \
   X(hf::player,                "player")              \
-  X(hf::vision,                "vision")              \
   X(hf::obstacle,              "obstacle")            \
   X(hf::creature,              "creature")            \
   X(hf::script,                "script")              \
@@ -32,10 +27,7 @@
   X(Connection,                "Connection")          \
   X(Environment,               "Environment")         \
   X(wl::transform,             "transform")           \
-  X(wl::sprite,                "sprite")              \
   X(wl::relation,              "relation")            \
-  X(wl::text,                  "text")                \
   X(ResourcePatch,             "ResourcePatch")       \
-  X(entt::tag<"proto"_hs>,     "proto")               \
-  X(entt::tag<"item"_hs>,      "item")
+  X(entt::tag<"proto"_hs>,     "proto")
 // clang-format on

@@ -3,7 +3,6 @@
 using namespace entt::literals;
 #include <game/components/frame.hpp>
 #include <game/components/resource_patch.hpp>
-#include <game/specs/light.hpp>
 #include <iostream>
 #include <utils/entt_draw.hpp>
 #include <utils/entt_lua.hpp>
@@ -11,12 +10,12 @@ using namespace entt::literals;
 template <typename... Types> struct ComponentList {};
 
 using all_components =
-    ComponentList<hf::meta, hf::visible, hf::ineditor,
-                  hf::glow, hf::renderable, hf::wall, hf::tags, hf::player,
-                  hf::vision, hf::obstacle, hf::creature, hf::script,
-                  entt::tag<"item"_hs>, entt::tag<"proto"_hs>, Frame,
-                  Connection, Environment, wl::transform, wl::sprite,
-                  wl::relation, wl::text, ResourcePatch>;
+    ComponentList<hf::meta, hf::ineditor,
+                  hf::tags, hf::player,
+                  hf::obstacle, hf::creature, hf::script,
+                  entt::tag<"proto"_hs>, Frame,
+                  Connection, Environment, wl::transform,
+                  wl::relation, ResourcePatch>;
 
 template <typename ComponentList, template <typename> class Visitor,
           std::size_t Index = 0>

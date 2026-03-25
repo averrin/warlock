@@ -162,6 +162,15 @@ export interface ControlZoneDTO {
   source: "nexus" | "relay";
 }
 
+/** An ECS entity with all its component data as returned by entities.list */
+export interface EcsEntityDTO {
+  entity_id: number;
+  label: string;
+  /** ineditor.color — used to tint entity rows in the inspector */
+  color?: string;
+  components: Record<string, Record<string, unknown> | boolean>;
+}
+
 export interface PowerNetworkDTO {
   name?: string;
   frames: number[];

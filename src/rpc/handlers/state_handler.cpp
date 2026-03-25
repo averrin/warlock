@@ -290,6 +290,217 @@ void registerStateHandlers(Server& server) {
     return result;
   });
 
+  // entities.list — enumerate all entities with their ECS component data
+  server.router().on("entities.list", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      return {{"entities", nlohmann::json::array()}};
+    }
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto& registry = state.registry;
+
+    // Collect all alive entities
+    nlohmann::json entities = nlohmann::json::array();
+    for (auto entity : registry.storage<entt::entity>()->each()) {
+      auto ent = std::get<0>(entity);
+      if (!registry.valid(ent)) continue;
+
+      nlohmann::json ent_json;
+      ent_json["entity_id"] = static_cast<int>(ent);
+      nlohmann::json comps = nlohmann::json::object();
+
+      // meta
+      if (registry.all_of<hf::meta>(ent)) {
+        auto& c = registry.get<hf::meta>(ent);
+        comps["meta"] = {{"name", c.name}, {"description", c.description}, {"id", c.id}};
+      }
+      // ineditor
+      if (registry.all_of<hf::ineditor>(ent)) {
+        auto& c = registry.get<hf::ineditor>(ent);
+        comps["ineditor"] = {{"icon", c.icon}, {"color", c.color}};
+      }
+      // tags
+      if (registry.all_of<hf::tags>(ent)) {
+        auto& c = registry.get<hf::tags>(ent);
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& t : c.tags) arr.push_back(t);
+        comps["tags"] = {{"tags", arr}};
+      }
+      // player
+      if (registry.all_of<hf::player>(ent)) {
+        comps["player"] = nlohmann::json::object();
+      }
+      // obstacle
+      if (registry.all_of<hf::obstacle>(ent)) {
+        auto& c = registry.get<hf::obstacle>(ent);
+        comps["obstacle"] = {{"passThrough", c.passThrough}, {"seeThrough", c.seeThrough}, {"interactive", c.interactive}, {"passAddCost", c.passAddCost}, {"interactionCost", c.interactionCost}};
+      }
+      // creature
+      if (registry.all_of<hf::creature>(ent)) {
+        comps["creature"] = nlohmann::json::object();
+      }
+      // script
+      if (registry.all_of<hf::script>(ent)) {
+        auto& c = registry.get<hf::script>(ent);
+        comps["script"] = {{"path", c.path}, {"enabled", c.enabled}};
+      }
+      // Frame
+      if (registry.all_of<Frame>(ent)) {
+        auto& f = registry.get<Frame>(ent);
+        comps["Frame"] = {{"id", f.data.id}, {"name", f.data.name}, {"size", std::string(magic_enum::enum_name(f.size))}, {"material", std::string(magic_enum::enum_name(f.material))}, {"component_count", static_cast<int>(f.components.size())}};
+      }
+      // Connection
+      if (registry.all_of<Connection>(ent)) {
+        auto& c = registry.get<Connection>(ent);
+        comps["Connection"] = {{"id", c.data.id}, {"source", c.source}, {"target", c.target}, {"type", std::string(magic_enum::enum_name(c.type))}, {"medium", std::string(magic_enum::enum_name(c.medium))}};
+      }
+      // Environment
+      if (registry.all_of<Environment>(ent)) {
+        auto& c = registry.get<Environment>(ent);
+        comps["Environment"] = {{"temperature", c.temperature}, {"air_flow", c.airFlow}, {"sun", c.sun}, {"minutes", c.minutes}, {"days", c.days}, {"radioactivity", c.radioactivity}};
+      }
+      // transform
+      if (registry.all_of<wl::transform>(ent)) {
+        auto& c = registry.get<wl::transform>(ent);
+        comps["transform"] = {{"x", c.position.x}, {"y", c.position.y}, {"scale", c.scale}, {"rotation", c.rotation}, {"relative", c.relative}, {"layer", c.layer}};
+      }
+      // relation
+      if (registry.all_of<wl::relation>(ent)) {
+        auto& c = registry.get<wl::relation>(ent);
+        nlohmann::json children = nlohmann::json::array();
+        for (auto ch : c.children) children.push_back(static_cast<int>(ch));
+        comps["relation"] = {{"parent", c.parent == entt::null ? -1 : static_cast<int>(c.parent)}, {"children", children}};
+      }
+      // ResourcePatch
+      if (registry.all_of<ResourcePatch>(ent)) {
+        auto& c = registry.get<ResourcePatch>(ent);
+        comps["ResourcePatch"] = {{"patch_type", c.patch_type}, {"item_name", c.item_name}, {"obstacle", c.obstacle}, {"cell_count", static_cast<int>(c.cells.size())}};
+      }
+      // proto tag
+      if (registry.all_of<entt::tag<"proto"_hs>>(ent)) {
+        comps["proto"] = true;
+      }
+
+      // Determine a label for the entity
+      std::string label;
+      if (registry.all_of<hf::meta>(ent)) {
+        auto& m = registry.get<hf::meta>(ent);
+        if (!m.name.empty()) label = m.name;
+      }
+      if (label.empty() && registry.all_of<Frame>(ent)) {
+        label = "Frame: " + registry.get<Frame>(ent).data.name;
+      }
+      if (label.empty() && registry.all_of<Connection>(ent)) {
+        label = "Connection #" + std::to_string(registry.get<Connection>(ent).data.id);
+      }
+      if (label.empty() && registry.all_of<Environment>(ent)) {
+        label = "Environment";
+      }
+      if (label.empty() && registry.all_of<ResourcePatch>(ent)) {
+        label = "Patch: " + registry.get<ResourcePatch>(ent).patch_type;
+      }
+
+      // Resolve ineditor color for UI styling
+      std::string ineditor_color;
+      if (registry.all_of<hf::ineditor>(ent)) {
+        ineditor_color = registry.get<hf::ineditor>(ent).color;
+      }
+      ent_json["color"] = ineditor_color;
+
+      ent_json["label"] = label;
+      ent_json["components"] = comps;
+      entities.push_back(ent_json);
+    }
+
+    return {{"entities", entities}};
+  });
+
+  // entities.set_field — update a single field on an ECS component of an entity
+  server.router().on("entities.set_field", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+
+    int entity_id = params.at("entity_id").get<int>();
+    std::string component = params.at("component").get<std::string>();
+    std::string field = params.at("field").get<std::string>();
+    const auto& value = params.at("value");
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto& registry = state.registry;
+
+    auto ent = static_cast<entt::entity>(entity_id);
+    if (!registry.valid(ent)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Invalid entity"};
+    }
+
+    // macro-style dispatch for each component type
+    if (component == "meta" && registry.all_of<hf::meta>(ent)) {
+      auto& c = registry.get<hf::meta>(ent);
+      if (field == "name") c.name = value.get<std::string>();
+      else if (field == "description") c.description = value.get<std::string>();
+      else if (field == "id") c.id = value.get<std::string>();
+      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+    } else if (component == "ineditor" && registry.all_of<hf::ineditor>(ent)) {
+      auto& c = registry.get<hf::ineditor>(ent);
+      if (field == "icon") c.icon = value.get<std::string>();
+      else if (field == "color") c.color = value.get<std::string>();
+      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+    } else if (component == "tags" && registry.all_of<hf::tags>(ent)) {
+      auto& c = registry.get<hf::tags>(ent);
+      if (field == "tags") {
+        c.tags.clear();
+        for (const auto& t : value) c.tags.push_back(t.get<std::string>());
+      } else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+    } else if (component == "obstacle" && registry.all_of<hf::obstacle>(ent)) {
+      auto& c = registry.get<hf::obstacle>(ent);
+      if (field == "passThrough") c.passThrough = value.get<bool>();
+      else if (field == "seeThrough") c.seeThrough = value.get<bool>();
+      else if (field == "interactive") c.interactive = value.get<bool>();
+      else if (field == "passAddCost") c.passAddCost = value.get<int>();
+      else if (field == "interactionCost") c.interactionCost = value.get<int>();
+      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+    } else if (component == "script" && registry.all_of<hf::script>(ent)) {
+      auto& c = registry.get<hf::script>(ent);
+      if (field == "path") c.path = value.get<std::string>();
+      else if (field == "enabled") c.enabled = value.get<bool>();
+      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+    } else if (component == "Environment" && registry.all_of<Environment>(ent)) {
+      auto& c = registry.get<Environment>(ent);
+      if (field == "temperature") c.temperature = value.get<float>();
+      else if (field == "air_flow") c.airFlow = value.get<float>();
+      else if (field == "sun") c.sun = value.get<float>();
+      else if (field == "minutes") c.minutes = value.get<int>();
+      else if (field == "days") c.days = value.get<int>();
+      else if (field == "radioactivity") c.radioactivity = value.get<float>();
+      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+    } else if (component == "transform" && registry.all_of<wl::transform>(ent)) {
+      auto& c = registry.get<wl::transform>(ent);
+      if (field == "x") c.position.x = value.get<float>();
+      else if (field == "y") c.position.y = value.get<float>();
+      else if (field == "scale") c.scale = value.get<float>();
+      else if (field == "rotation") c.rotation = value.get<float>();
+      else if (field == "relative") c.relative = value.get<bool>();
+      else if (field == "layer") c.layer = value.get<std::string>();
+      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+    } else if (component == "ResourcePatch" && registry.all_of<ResourcePatch>(ent)) {
+      auto& c = registry.get<ResourcePatch>(ent);
+      if (field == "patch_type") c.patch_type = value.get<std::string>();
+      else if (field == "item_name") c.item_name = value.get<std::string>();
+      else if (field == "obstacle") c.obstacle = value.get<bool>();
+      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+    } else {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown component or entity does not have it"};
+    }
+
+    return {{"ok", true}};
+  });
+
   // state.thermalField — rectangular scalar field for map overlay (env.temperature + AoE sum)
   server.router().on("state.thermalField", [](const Context& /*ctx*/, const nlohmann::json& params) -> nlohmann::json {
     auto& gm = entt::locator<GameManager>::value();

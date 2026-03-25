@@ -136,13 +136,20 @@ struct meta {
 struct ineditor {
   std::string name = "";
   std::string icon = "";
+  std::string color = "";
   bool selected = false;
 
   friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const { ar(icon); };
-  template <class Archive> void load(Archive &ar) { ar(icon); };
-  void field_save(FieldOutputArchive &ar) const { FIELD(ar, icon); }
-  void field_load(FieldInputArchive &ar) { FIELD(ar, icon); }
+  template <class Archive> void save(Archive &ar) const { ar(icon, color); };
+  template <class Archive> void load(Archive &ar) { ar(icon, color); };
+  void field_save(FieldOutputArchive &ar) const {
+    FIELD(ar, icon);
+    FIELD(ar, color);
+  }
+  void field_load(FieldInputArchive &ar) {
+    FIELD(ar, icon);
+    FIELD(ar, color);
+  }
 };
 
 struct position {
@@ -158,47 +165,6 @@ struct position {
   template <class Archive> void load(Archive &ar) { ar(x, y, z, movable); };
 };
 
-struct visible {
-  std::string type = "";
-  std::string sign = "";
-  bool hidden = false;
-  bool seeThrough = true;
-  bool passThrough = true;
-
-  friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const {
-    ar(type, sign, hidden, seeThrough, passThrough);
-  };
-  template <class Archive> void load(Archive &ar) {
-    ar(type, sign, hidden, seeThrough, passThrough);
-  };
-  void field_save(FieldOutputArchive &ar) const {
-    FIELD(ar, type);
-    FIELD(ar, sign);
-    FIELD(ar, hidden);
-    FIELD(ar, seeThrough);
-    FIELD(ar, passThrough);
-  }
-  void field_load(FieldInputArchive &ar) {
-    FIELD(ar, type);
-    FIELD(ar, sign);
-    FIELD(ar, hidden);
-    FIELD(ar, seeThrough);
-    FIELD(ar, passThrough);
-  }
-};
-
-struct children {
-  std::vector<entt::entity> children;
-};
-struct size {
-  int width = 0;
-  int height = 0;
-};
-struct wall {
-  void field_save(FieldOutputArchive &) const {}
-  void field_load(FieldInputArchive &) {}
-};
 struct tags {
   std::vector<std::string> tags;
   friend class cereal::access;
@@ -208,66 +174,6 @@ struct tags {
   void field_load(FieldInputArchive &ar) { FIELD(ar, tags); }
 };
 
-struct renderable {
-  std::string spriteKey = "UNKNOWN";
-  std::string fgColor = "#fff";
-  bool hasBg = false;
-  std::string bgColor = "#ffffff00";
-  bool hasBorder = false;
-  std::string borderColor = "#ffffff00";
-  bool hidden = false;
-  int zIndex = 0;
-  std::string fgLayer = "entities";
-  std::string bgLayer = "entitiesBg";
-  std::string brdLayer = "entitiesBrd";
-
-  friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const {
-    ar(spriteKey, fgColor, hasBg, bgColor, hasBorder, borderColor, hidden,
-       zIndex, fgLayer, bgLayer, brdLayer);
-  };
-  template <class Archive> void load(Archive &ar) {
-    ar(spriteKey, fgColor, hasBg, bgColor, hasBorder, borderColor, hidden,
-       zIndex, fgLayer, bgLayer, brdLayer);
-  };
-  void field_save(FieldOutputArchive &ar) const {
-    FIELD(ar, spriteKey);
-    FIELD(ar, fgColor);
-    FIELD(ar, hasBg);
-    FIELD(ar, bgColor);
-    FIELD(ar, hasBorder);
-    FIELD(ar, borderColor);
-    FIELD(ar, hidden);
-    FIELD(ar, zIndex);
-    FIELD(ar, fgLayer);
-    FIELD(ar, bgLayer);
-    FIELD(ar, brdLayer);
-  }
-  void field_load(FieldInputArchive &ar) {
-    FIELD(ar, spriteKey);
-    FIELD(ar, fgColor);
-    FIELD(ar, hasBg);
-    FIELD(ar, bgColor);
-    FIELD(ar, hasBorder);
-    FIELD(ar, borderColor);
-    FIELD(ar, hidden);
-    FIELD(ar, zIndex);
-    FIELD(ar, fgLayer);
-    FIELD(ar, bgLayer);
-    FIELD(ar, brdLayer);
-  }
-};
-
-struct overwrite {
-  std::string spriteKey = "UNKNOWN";
-  std::string fgColor = "#fff";
-  bool hasBg = false;
-  std::string bgColor = "#ffffff00";
-  bool hasBorder = false;
-  std::string borderColor = "#ffffff00";
-  bool hidden = false;
-  int zIndex = 0;
-};
 
 struct creature {
   void field_save(FieldOutputArchive &) const {}
@@ -305,13 +211,4 @@ struct player {
   void field_save(FieldOutputArchive &) const {}
   void field_load(FieldInputArchive &) {}
 };
-struct vision {
-  float distance = 0;
-  friend class cereal::access;
-  template <class Archive> void save(Archive &ar) const { ar(distance); };
-  template <class Archive> void load(Archive &ar) { ar(distance); };
-  void field_save(FieldOutputArchive &ar) const { FIELD(ar, distance); }
-  void field_load(FieldInputArchive &ar) { FIELD(ar, distance); }
-};
-
 }; // namespace hf
