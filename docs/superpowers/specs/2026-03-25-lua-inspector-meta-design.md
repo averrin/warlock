@@ -89,7 +89,7 @@ inspector = { widget = "code" }
 ```
 
 ### `list`
-Display-only list of homogeneous int/float/string values. The attribute must be `AttributeType.STRING`; the value is a comma-separated string (e.g. `"1,2,3"` or `"alpha,beta"`). The renderer splits on `","` and displays each element. Empty string renders as an empty list.
+Display-only list of homogeneous int/float/string values. The attribute must be `AttributeType.STRING`; the value is a comma-separated string (e.g. `"1,2,3"` or `"alpha,beta"`). The renderer splits on `","` and displays each element. Empty string renders as an empty list. Always non-editable regardless of the `readonly` field.
 ```lua
 inspector = { widget = "list" }
 ```
@@ -113,17 +113,19 @@ These apply to any widget (or to attributes with no widget, as standalone modifi
 ## C++ Changes
 
 ### `include/game/attributes.hpp`
-- Add `nlohmann::json inspector_meta` field to `Attribute` (defaults to null/empty)
-- Update constructor signature to accept it
-- **Do not persist `inspector_meta` in `save`/`load`** — it is always reconstructed from the Lua spec at startup. Because inspector metadata is a pure UI concern derived from the Lua script, persisting it is unnecessary.
-- **Keep `target_filter` in `save`/`load` as a legacy tombstone.** `Attribute` uses positional cereal (not FieldArchive) — the field is the 8th positional argument. Removing it from the `ar()` call would corrupt loading of all existing save files and proto files. After migration it holds no functional value but must remain in the signature to preserve binary compatibility.
+- Add `nlohmann::json inspector_meta` field to `Attribute` (defaults to null/empty object)
+- Remove `target_filter` from the constructor parameter list — it is no longer set from Lua
+- New constructor signature: `Attribute(title, description, type, value, easing, inspector_meta)`
+- **Keep `target_filter` as a class field and keep it in `save`/`load`.** `Attribute` uses positional cereal (not FieldArchive) — `target_filter` is the 8th positional argument. Removing it from the `ar()` call would corrupt loading of all existing save files and proto files. After migration it holds no functional value but must remain in the positional archive as a legacy tombstone.
+- **Do not add `inspector_meta` to `save`/`load`** — it is always reconstructed from the Lua spec at startup. Persisting it is unnecessary and would require an additive migration strategy.
 - Stop reading `target_filter` from Lua in `component_bindings.cpp` (the `inspector` table replaces it)
 - Stop emitting `target_filter` in `serializeAttribute()` (the frontend no longer reads it)
 
 ### `src/game/component_bindings.cpp`
 - After parsing `easing`, check if `attr_data["inspector"]` is a valid table
-- If present: recursively convert `sol::table` → `nlohmann::json` (generic conversion handles strings, numbers, bools, arrays, nested tables)
+- If present: recursively convert `sol::table` → `nlohmann::json` using a local helper `sol_table_to_json(sol::table)` — this helper does not currently exist and must be written; it handles strings, numbers (int/float), bools, arrays, and nested tables
 - Remove existing `target_filter` parsing
+- Pass `inspector_meta` (or empty json object) to the `Attribute` constructor instead of `target_filter`
 
 ### `src/rpc/dto.cpp`
 - In `serializeAttribute()`: append `j["inspector"] = attr.inspector_meta` when non-null
@@ -136,9 +138,9 @@ These apply to any widget (or to attributes with no widget, as standalone modifi
 
 ### `web/src/rpc/types.ts`
 - Add `inspector?: InspectorMeta` to `AttributeDTO` (note: `target_filter` does not exist in this file — it only exists in the local `AttributeDTO` interface inside `ComponentAttributes.tsx`)
-- Define and **export** `InspectorMeta` so it can be imported by `ComponentAttributes.tsx`:
+- Define and export `InspectorMeta` so it can be imported by `ComponentAttributes.tsx`:
 ```typescript
-interface InspectorMeta {
+export interface InspectorMeta {
   widget?: "select" | "link" | "progress" | "color" | "code" | "list";
   options?: string[];
   link_scope?: "frame" | "world";
@@ -160,14 +162,15 @@ interface InspectorMeta {
 - Replace `key !== "code"` filter with `inspector?.widget !== "code"` (checking the attribute's inspector metadata, not the key name)
 - Replace `target_filter` component-picker logic with `inspector.widget === "link"` dispatch
 - Replace conveyor mode hardcoded check with `inspector.widget === "select"`
+- **Widget takes priority over type:** when `inspector.widget` is set, it is the sole dispatch key — no type-based fallthrough. Unknown or absent `widget` values fall back to the default renderer for the attribute's type (unchanged from today).
+- Remove the `componentName` prop — it was used exclusively for the conveyor mode component-name gate. Update the call site in `ComponentCard.tsx` to stop passing it.
 - Implement renderers for each widget type
 - Apply common fields (`readonly`, `hidden`, `precision`, `unit`, `label`, `color`, `icon`) across all renderers
-- Unknown or absent `widget` values fall back to the default renderer for the attribute's type (the same behavior as today when no `inspector` table is present)
 
 ### `web/src/components/frame/ComponentCard.tsx`
 - Detection of the code editor attribute currently uses `component.attributes?.["code"] !== undefined` (a direct key lookup), with the discovered raw value passed to `extractCodeString` and the string `"code"` hardcoded as `attrKey`
 - Replace with: iterate `Object.entries(component.attributes ?? {})` and find the first entry `[key, attr]` where `attr.inspector?.widget === "code"`
-- Use the discovered `key` for both `attrKey` and as the argument to `extractCodeString` — do not hardcode `"code"`
+- Use the discovered `key` for both the `attrKey:` field in the `openComponentCodeEditor` call and as the argument to `extractCodeString` — do not hardcode `"code"` in either location
 - If no attribute has `widget = "code"`, `hasCodeAttr` is false
 
 ## Migration Plan
