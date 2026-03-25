@@ -1,7 +1,36 @@
 import { create } from "zustand";
 import type { RpcClient } from "../rpc/client";
-import type { ConnectionDTO, EnvironmentDTO, FrameDTO, PowerNetworkDTO } from "../rpc/types";
+import type { ConnectionDTO, ControlZoneDTO, EnvironmentDTO, FrameDTO, PowerNetworkDTO } from "../rpc/types";
 import { usePatchStore, Patch } from "./patches";
+
+const ZONE_CELL = 25;
+const ZONE_FRAME_CELLS: Record<string, number> = { XS: 1, S: 3, M: 6, L: 9, G: 12 };
+
+/** Compute which frame IDs fall inside at least one control zone circle. */
+function computeControllableFrameIds(
+  frames: FrameDTO[],
+  zones: ControlZoneDTO[],
+): Set<number> {
+  if (zones.length === 0) return new Set<number>(); // empty = unrestricted (handled by caller)
+  const ids = new Set<number>();
+  for (const f of frames) {
+    if (!f.position) continue;
+    const cells = ZONE_FRAME_CELLS[f.size] ?? 2;
+    const half = (cells * ZONE_CELL) / 2;
+    const cx = f.position.x + half;
+    const cy = f.position.y + half;
+    for (const z of zones) {
+      const rPx = z.radius * ZONE_CELL;
+      const dx = cx - z.x;
+      const dy = cy - z.y;
+      if (dx * dx + dy * dy <= rPx * rPx) {
+        ids.add(f.id);
+        break;
+      }
+    }
+  }
+  return ids;
+}
 
 interface TimeControl {
   paused: boolean;
@@ -39,6 +68,11 @@ interface GameStore {
   environment: EnvironmentDTO | null;
   /** Global spendable currency amounts (server: state save + Nexus delivery). */
   spendablePool: Record<string, number>;
+  controlZones: ControlZoneDTO[];
+  /** Frame IDs that fall inside at least one control zone (empty zones = all controllable). */
+  controllableFrameIds: Set<number>;
+  /** Returns true if the given frame can be interacted with (inside control zone). */
+  isFrameControllable: (frameId: number) => boolean;
   powerNetworks: PowerNetworkDTO[];
   selectedFrameId: number | null;
   /** Multi-select (RTS-style); primary for inspector is `selectedFrameId`. */
@@ -171,6 +205,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
   connections: [],
   environment: null,
   spendablePool: {},
+  controlZones: [],
+  controllableFrameIds: new Set<number>(),
+  isFrameControllable: (frameId: number) => {
+    const { controlZones, controllableFrameIds } = get();
+    if (controlZones.length === 0) return true; // no zones → unrestricted
+    return controllableFrameIds.has(frameId);
+  },
   powerNetworks: [],
   selectedFrameId: null,
   selectedFrameIds: [],
@@ -192,7 +233,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({ hydrated: false });
     });
     client.on("event.state_update", (payload) => {
-      const next = payload as { frames?: FrameDTO[]; connections?: ConnectionDTO[] };
+      const next = payload as { frames?: FrameDTO[]; connections?: ConnectionDTO[]; control_zones?: ControlZoneDTO[] };
       set((state) => {
         const frames = next.frames ?? state.frames;
         const ids = new Set(frames.map((f) => f.id));
@@ -201,9 +242,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (primary !== null && !ids.has(primary)) {
           primary = nextSel.length ? nextSel[nextSel.length - 1]! : null;
         }
+        const zones = next.control_zones ?? state.controlZones;
         return {
           frames,
           connections: next.connections ?? state.connections,
+          controlZones: zones,
+          controllableFrameIds: computeControllableFrameIds(frames, zones),
           selectedFrameIds: nextSel,
           selectedFrameId: primary,
         };

@@ -34,8 +34,10 @@ void TweeningSystem::fixedUpdate() {
   for (auto &f : current_state.registry.view<Frame>()) {
     auto &frame = current_state.registry.get<Frame>(f);
     for (auto &c : frame.components) {
+      if (!c) continue;
       if (c->state != ComponentState::DEACTIVATED) {
         for (auto [key, attribute] : c->data.attributes) {
+          if (!attribute) continue;
           attribute->update(delta);
         }
       }
@@ -56,7 +58,7 @@ void TweeningSystem::fixedUpdate() {
               emitter.publish(exec_lua_function{c, "stop"});
             }
             for (auto [key, attribute] : c->data.attributes) {
-              attribute->resetEasing();
+              if (attribute) attribute->resetEasing();
             }
           } else if (c->state == ComponentState::ACTIVE) {
             emitter.publish(component_state_changed{
@@ -65,7 +67,7 @@ void TweeningSystem::fixedUpdate() {
               "activation_complete"
             });
             for (auto [key, attribute] : c->data.attributes) {
-              attribute->resetEasing();
+              if (attribute) attribute->resetEasing();
             }
             if (c->data.get<std::string>("type") == "Core") {
               emitter.publish(exec_lua_function{c, "start"});

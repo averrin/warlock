@@ -33,6 +33,7 @@ return {
 			description = "Component to operate on",
 			type = AttributeType.INT,
 			value = -1,
+			target_filter = "Battery",
 		},
 		heat = {
 			title = "Active heat",

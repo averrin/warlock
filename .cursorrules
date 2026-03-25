@@ -1,0 +1,31 @@
+# Hellfrost (warlock)
+Sci-fi automation hardcore game. C++20 headless engine + React/TypeScript web client, JSON-RPC 2.0 over WebSocket.
+
+Full documentation: CLAUDE.md
+
+## Stack
+- Engine: C++20, EnTT (ECS), Sol2+Lua5.4, IXWebSocket, cereal, nlohmann/json, magic_enum
+- Web: React 19, TypeScript, Vite, Zustand, Pixi.js, Dockview, Monaco Editor
+- Build: CMake + just. `just run` / `just test-e2e` / `just web-dev`
+
+## Architecture
+Web UI → JSON-RPC (:9800) → C++ Handler → EnTT registry → 50ms systems → broadcast → Zustand → React
+
+## Critical Rules
+- Ask questions before implementing. Never rush to code.
+- Search before creating — duplicates are the main failure mode.
+- Run `just test-e2e` after any C++ change.
+- Never modify `data/` or `save/` directories.
+- No code comments unless truly non-obvious.
+- Report features done only after end-to-end verification.
+
+## Serialization Footgun
+field_save() and field_load() MUST have identical fields in identical order. COMPONENT_LIST macro is the single source of truth for serialization.
+
+## Key Files
+- include/game/components/frame.hpp — core structs
+- include/game/component_registry.hpp — COMPONENT_LIST macro
+- src/rpc/handlers/ — RPC method implementations
+- scripts/components/ — Lua component definitions
+- web/src/stores/game.ts — game state
+- web/src/rpc/types.ts — TypeScript DTOs

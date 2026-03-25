@@ -153,6 +153,15 @@ export interface EnvironmentDTO {
   [k: string]: unknown;
 }
 
+export interface ControlZoneDTO {
+  x: number;
+  y: number;
+  /** Radius in grid cells. */
+  radius: number;
+  frame_id: number;
+  source: "nexus" | "relay";
+}
+
 export interface PowerNetworkDTO {
   name?: string;
   frames: number[];

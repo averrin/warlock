@@ -1,8 +1,10 @@
 #include <rpc/dto.hpp>
 #include <game/data_link.hpp>
+#include <game/state.hpp>
 #include <game/systems/items.hpp>
 #include <magic_enum.hpp>
 #include <algorithm>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -18,13 +20,17 @@ nlohmann::json serializeAttribute(const std::string& key, const Attribute& attr)
   for (const auto& m : attr.modifiers) {
     if (m) mods.push_back(m->name);
   }
-  return {
+  nlohmann::json j = {
     {"title", attr.GetTitle()},
     {"type", std::string(magic_enum::enum_name(attr.GetType()))},
     {"base_value", serializeAttributeValue(attr.GetBaseValue())},
     {"final_value", serializeAttributeValue(attr.GetFinalValue())},
     {"modifiers", mods}
   };
+  if (!attr.target_filter.empty()) {
+    j["target_filter"] = attr.target_filter;
+  }
+  return j;
 }
 
 nlohmann::json serializeMetadata(const Metadata& data) {
@@ -333,6 +339,91 @@ nlohmann::json serializeEnvironment(const Environment& env) {
     {"is_day", env.isDay},
     {"days", env.days}
   };
+}
+
+nlohmann::json computeControlZones(entt::registry& registry) {
+  nlohmann::json zones = nlohmann::json::array();
+
+  // Helper: get frame center position in world coords
+  auto frameCenter = [&](entt::entity e, const Frame& frame) -> std::pair<float, float> {
+    float x = 0.f, y = 0.f;
+    if (registry.all_of<wl::transform>(e)) {
+      auto& t = registry.get<wl::transform>(e);
+      x = t.position.x;
+      y = t.position.y;
+    }
+    // Frame position is top-left; compute center based on frame size
+    int side = 1;
+    switch (frame.size) {
+      case FrameSize::XS: side = 1; break;
+      case FrameSize::S:  side = 3; break;
+      case FrameSize::M:  side = 6; break;
+      case FrameSize::L:  side = 9; break;
+      case FrameSize::G:  side = 12; break;
+    }
+    float half = side * 25.f * 0.5f;  // CELL = 25 px
+    return {x + half, y + half};
+  };
+
+  // Map frame_id -> (entity, frame ref) for quick lookup
+  std::unordered_map<int, std::pair<entt::entity, Frame*>> frame_map;
+  auto view = registry.view<Frame>();
+  for (auto e : view) {
+    auto& frame = view.get<Frame>(e);
+    frame_map[frame.data.id] = {e, &frame};
+  }
+
+  // Find nexus component(s)
+  for (auto& [fid, ef] : frame_map) {
+    auto& [entity, frame] = ef;
+    for (auto& comp : frame->components) {
+      if (!comp) continue;
+      if (comp->data.get_or<std::string>("type", "") != "Nexus") continue;
+
+      // Nexus found — add its zone
+      int radius = comp->data.get_or<int>("control_radius", 40);
+      auto [cx, cy] = frameCenter(entity, *frame);
+      zones.push_back({
+        {"x", cx}, {"y", cy},
+        {"radius", radius},
+        {"frame_id", fid},
+        {"source", "nexus"}
+      });
+
+      // Parse alive relays
+      std::string alive_str = comp->data.get_or<std::string>("alive_relays", "");
+      if (alive_str.empty()) continue;
+
+      std::istringstream ss(alive_str);
+      std::string token;
+      while (std::getline(ss, token, ',')) {
+        if (token.empty()) continue;
+        int relay_fid = 0;
+        try { relay_fid = std::stoi(token); } catch (...) { continue; }
+
+        auto it = frame_map.find(relay_fid);
+        if (it == frame_map.end()) continue;
+        auto& [relay_entity, relay_frame] = it->second;
+
+        // Find Control Relay component on that frame
+        for (auto& rc : relay_frame->components) {
+          if (!rc) continue;
+          if (rc->data.get_or<std::string>("type", "") != "Control Relay") continue;
+          int relay_radius = rc->data.get_or<int>("control_radius", 20);
+          auto [rx, ry] = frameCenter(relay_entity, *relay_frame);
+          zones.push_back({
+            {"x", rx}, {"y", ry},
+            {"radius", relay_radius},
+            {"frame_id", relay_fid},
+            {"source", "relay"}
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  return zones;
 }
 
 } // namespace rpc

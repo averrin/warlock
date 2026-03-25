@@ -1,0 +1,56 @@
+---
+description: RPC handler patterns — apply when editing or creating files in src/rpc/, include/rpc/, or web/src/rpc/ or web/src/stores/
+globs:
+  - "src/rpc/**/*.cpp"
+  - "include/rpc/**/*.hpp"
+  - "web/src/rpc/**/*.ts"
+  - "web/src/stores/*.ts"
+alwaysApply: false
+---
+
+# RPC Handler Patterns
+
+JSON-RPC 2.0 over WebSocket. Naming: `domain.action` (e.g., `frame.create`, `storage.set_slot`).
+
+## C++ Handler Template
+```cpp
+server.router().on("domain.action", [&server](const Context& ctx, const json& params) -> json {
+  requireClaim(server, ctx);  // mutations only; omit for read-only
+  auto& gm = entt::locator<GameManager>::value();
+  if (!gm.started) throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+  std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+  // ... logic ...
+  logWebAction(server, "domain.action", "ok", {});
+  return result_json;
+});
+```
+
+## Serialization
+- Enums: `std::string(magic_enum::enum_name(value))`
+- Arrays: `nlohmann::json::array()` + `push_back`
+- Declare in `include/rpc/dto.hpp`, implement in `src/rpc/dto.cpp`
+
+## Entity Lookup by ID
+```cpp
+entt::entity found = entt::null;
+for (auto e : registry.view<Frame>())
+  if (registry.get<Frame>(e).data.id == target_id) { found = e; break; }
+if (found == entt::null)
+  throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Frame not found"};
+```
+
+## Error Codes
+`INVALID_PARAMS`(-32602) · `ENTITY_NOT_FOUND`(1002) · `INVALID_COMPONENT`(1003) · `INTERNAL_ERROR`(-32603) · `NOT_CLAIMED`(1000)
+
+## Registration Checklist
+1. Handler in `src/rpc/handlers/<domain>_handler.cpp`
+2. DTO in `dto.hpp` / `dto.cpp`
+3. Register in `src/main.cpp`
+4. TypeScript type in `web/src/rpc/types.ts`
+5. Store action or `client.call()` in `web/src/stores/game.ts`
+
+## Web Client
+```typescript
+const result = await client.call<ResultType>("domain.action", { param });
+// broadcasts: client.on("event.state_update", handler)
+```

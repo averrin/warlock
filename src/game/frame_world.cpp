@@ -1,6 +1,7 @@
 #include <game/frame_world.hpp>
 #include <game/components/resource_patch.hpp>
 #include <game/state.hpp>
+#include <game/systems/power.hpp>
 #include <utils/entt.hpp>
 #include <utils/entt_draw.hpp>
 #include <algorithm>
@@ -26,8 +27,22 @@ int footprintInGrid(FrameSize size, float grid_px) {
   return std::max(1, static_cast<int>(std::lround(w_px / grid_px)));
 }
 
-int toLargeCellIndex(int coord, float grid_px) {
-  return static_cast<int>(std::floor(static_cast<float>(coord) * grid_px / CELL));
+/// Patch `cells` are 25px subcell indices (see frame_deposit_query, patches.create).
+bool patchObstacleBlocksCell(const ResourcePatch& patch, int cell_x, int cell_y, float grid_px) {
+  if (!patch.obstacle) return false;
+  constexpr float kSub = CELL / 3.0f;
+  if (std::abs(grid_px - kSub) < 1e-3f) {
+    return patch.containsCell(cell_x, cell_y);
+  }
+  if (std::abs(grid_px - CELL) < 1e-3f) {
+    for (int dy = 0; dy < 3; ++dy) {
+      for (int dx = 0; dx < 3; ++dx) {
+        if (patch.containsCell(cell_x * 3 + dx, cell_y * 3 + dy)) return true;
+      }
+    }
+    return false;
+  }
+  return false;
 }
 
 bool isCellBlocked(entt::registry& registry, int exclude_id, int cell_x, int cell_y, float grid_px) {
@@ -45,15 +60,10 @@ bool isCellBlocked(entt::registry& registry, int exclude_id, int cell_x, int cel
     }
   }
 
-  const int lx = toLargeCellIndex(cell_x, grid_px);
-  const int ly = toLargeCellIndex(cell_y, grid_px);
-
   for (auto entity : registry.view<ResourcePatch>()) {
     auto& patch = registry.get<ResourcePatch>(entity);
-    if (patch.obstacle) {
-      if (patch.containsCell(lx, ly)) {
-        return true;
-      }
+    if (patchObstacleBlocksCell(patch, cell_x, cell_y, grid_px)) {
+      return true;
     }
   }
 
@@ -133,12 +143,18 @@ sol::table FrameWorld::scanAdjacent(int id, sol::this_state s) {
 }
 
 bool FrameWorld::moveFrame(int id, std::string direction) {
-  return moveFrame(id, direction, CELL, 0.f);
+  return moveFrame(id, direction, CELL, 0.f, 0.f);
 }
 
-bool FrameWorld::moveFrame(int id, std::string direction, float step_px, float speed) {
+bool FrameWorld::moveFrame(int id, std::string direction, float step_px, float speed,
+                           float extra_power_cost) {
   auto& current_state = entt::locator<State>::value();
   auto& registry = current_state.registry;
+
+  if (extra_power_cost > 1e-6f &&
+      !frame_network_can_afford_extra_consumption(registry, id, extra_power_cost)) {
+    return false;
+  }
 
   entt::entity source_entity = entt::null;
   for (auto entity : registry.view<Frame>()) {

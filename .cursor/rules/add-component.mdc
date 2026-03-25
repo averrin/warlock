@@ -1,0 +1,45 @@
+---
+description: Step-by-step guide for adding a new game component to Hellfrost. Use when asked to create or add a component.
+globs:
+alwaysApply: false
+---
+
+# Adding a New Component
+
+## Step 1 — Ask First
+Before writing any code, ask:
+- What category? (Power, Data, Production, Movement, Structure)
+- What attributes and types?
+- Size? (S, M, L)
+- Require / conflict with other components?
+- Custom API methods needed?
+- Needs ItemStorage?
+- Interacts with which system? (Power, Thermal, Items, CodeExecution)
+
+## Step 2 — Search
+```
+scripts/components/         — existing components (avoid duplication)
+include/game/systems/       — system integration points
+web/src/components/frame/ComponentControls.tsx  — existing inspector patterns
+```
+
+## Step 3 — Create Lua Script
+`scripts/components/<name>.lua` — follow existing component pattern.
+Icon: white, no background PNG from game-icons.net → `assets/icons/`.
+
+## Step 4 — System Integration (if needed)
+- Power production/consumption → `src/game/systems/power.cpp`
+- Heat generation → `src/game/systems/thermal.cpp`
+- Inventory → `src/game/systems/items.cpp`
+- Tick behavior → add to relevant system's `fixedUpdate()`
+
+## Step 5 — Inspector UI (if needed)
+Add controls to `web/src/components/frame/ComponentControls.tsx`.
+Read the file first. Match existing patterns.
+
+## Step 6 — Serialization (if new C++ data)
+- Add to `COMPONENT_LIST` in `include/game/component_registry.hpp`
+- Implement `field_save()` and `field_load()` with **matching fields in matching order**
+
+## Step 7 — Verify
+`just test-e2e` for C++ changes, `npm test` in `web/` for frontend.

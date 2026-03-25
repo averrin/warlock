@@ -1,0 +1,41 @@
+---
+description: Core project context for Hellfrost/Warlock. Always read this first.
+globs:
+alwaysApply: true
+---
+
+# Hellfrost (warlock)
+Sci-fi automation hardcore game. C++20 headless engine + React/TypeScript web client, connected via JSON-RPC 2.0 over WebSocket.
+
+## Stack
+- **Engine**: C++20, EnTT (ECS), Sol2+Lua5.4, IXWebSocket, cereal, nlohmann/json, magic_enum
+- **Web**: React 19, TypeScript, Vite, Zustand, Pixi.js, Dockview, Monaco Editor
+- **Build**: CMake + `just` task runner. `just run` / `just test-e2e` / `just web-dev`
+
+## Architecture
+Web UI → JSON-RPC (:9800) → C++ Handler → EnTT registry → 50ms systems tick → broadcast → Zustand stores → React
+
+Systems order (DO NOT reorder without checking dependencies):
+TweeningSystem → PowerSystem → ThermalSystem → EnvironmentSystem → WirelessConnectionSystem → CodeExecutionSystem → ItemsSystem
+
+## Critical Rules
+- **Ask questions before implementing**. Never rush to code.
+- **Search before creating** — duplicates are the main failure mode.
+- **Run `just test-e2e`** after any C++ change. Unit tests are secondary.
+- **Never modify** `data/` or `save/` — binary game data.
+- **No code comments** unless logic is non-obvious.
+- **No docstrings, no error handling for impossible cases, no premature abstractions.**
+- Report features as done only after end-to-end verification.
+
+## Key Files
+```
+include/game/components/frame.hpp     — Frame, Component, Connection, Metadata structs
+include/game/attributes.hpp           — Attribute, Modifier, AttributeValue
+include/game/component_registry.hpp  — COMPONENT_LIST macro (serialization registry)
+include/game/game_manager.hpp        — Systems, registry, spendable pool
+src/rpc/handlers/                    — RPC method implementations
+scripts/components/                  — Lua component definitions
+scripts/blueprints/                  — Lua frame templates
+web/src/stores/game.ts               — Primary game state (Zustand)
+web/src/rpc/types.ts                 — TypeScript DTOs
+```

@@ -67,6 +67,7 @@ interface AttributeDTO {
   base_value: string | number | boolean;
   final_value?: string | number | boolean;
   modifiers?: string[];
+  target_filter?: string;
 }
 
 function isAttributeDTO(v: unknown): v is AttributeDTO {
@@ -344,10 +345,15 @@ function SingleAttribute({
   const canEditModifiers = isDTO && type === "float";
   const showModifiersTrigger = canEditModifiers || modifiers.length > 0;
 
-  const isTargetComponentSelect = attrKey === "target" && type === "int";
+  const targetFilter = isDTO ? val.target_filter : undefined;
+  const isTargetComponentSelect = !!targetFilter && type === "int";
   const targetIdRaw = typeof rawValue === "number" ? rawValue : Number(rawValue);
   const targetId = Number.isFinite(targetIdRaw) ? Math.trunc(targetIdRaw) : -1;
-  const targetCandidates = frameComponents.filter((c) => c.id !== componentId);
+  const targetCandidates = frameComponents.filter((c) => {
+    if (c.id === componentId) return false;
+    if (!targetFilter) return true;
+    return c.type === targetFilter;
+  });
   const targetIds = new Set(targetCandidates.map((c) => c.id));
   const orphanTarget = targetId >= 0 && !targetIds.has(targetId);
 
@@ -489,6 +495,7 @@ export function ComponentAttributes({
 }: Props) {
   const updateComponentAttribute = useGameStore((s) => s.updateComponentAttribute);
   const setComponentAttributeModifiers = useGameStore((s) => s.setComponentAttributeModifiers);
+  const controllable = useGameStore((s) => s.isFrameControllable)(frameId);
   const frameComponents = useGameStore(
     (s) => s.frames.find((f) => f.id === frameId)?.components ?? [],
   );
@@ -502,6 +509,9 @@ export function ComponentAttributes({
   return (
     <div style={{ display: "grid", gap: 4 }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af" }}>Attributes</div>
+      {!controllable && (
+        <div style={{ fontSize: 10, color: "#f59e0b", marginBottom: 2 }}>Outside control zone — read only</div>
+      )}
       {entries.map(([key, val]) => (
         <SingleAttribute
           key={key}
@@ -512,8 +522,8 @@ export function ComponentAttributes({
           componentName={componentName}
           frameComponents={frameComponents}
           rpcClient={rpcClient}
-          updateAttribute={updateComponentAttribute}
-          setAttributeModifiers={setComponentAttributeModifiers}
+          updateAttribute={controllable ? updateComponentAttribute : (async () => {}) as typeof updateComponentAttribute}
+          setAttributeModifiers={controllable ? setComponentAttributeModifiers : (async () => {}) as typeof setComponentAttributeModifiers}
         />
       ))}
     </div>

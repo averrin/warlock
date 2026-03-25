@@ -1,0 +1,49 @@
+---
+description: Step-by-step guide for adding a new ECS system to Hellfrost. Use when asked to create a system.
+globs:
+alwaysApply: false
+---
+
+# Adding a New ECS System
+
+## Step 1 — Ask First
+- What entities/components does it operate on?
+- Tick interval? (default 50ms)
+- Where in system order? (check data dependencies)
+- Needs RPC exposure or Lua API?
+
+## Step 2 — Search
+Read all files in `include/game/systems/` — check if functionality belongs in an existing system.
+
+## Step 3 — Header
+`include/game/systems/<name>.hpp`:
+```cpp
+#pragma once
+#include <game/system.hpp>
+
+class <Name>System : public System {
+public:
+  <Name>System() : System(50, "<Name>") {}
+  void fixedUpdate() override;
+};
+```
+
+## Step 4 — Implementation
+`src/game/systems/<name>.cpp`:
+```cpp
+void <Name>System::fixedUpdate() {
+  auto& state = entt::locator<State>::value();
+  auto& registry = state.registry;
+  for (auto e : registry.view<RelevantComponent>()) { /* ... */ }
+}
+```
+
+## Step 5 — Register
+Add in `src/game/game_manager.cpp` → `GameManager::start()`:
+```cpp
+systems.push_back(std::make_shared<<Name>System>());
+```
+Current order: Tweening → Power → Thermal → Environment → Wireless → CodeExecution → Items
+
+## Step 6 — Verify
+Write E2E test in `tests/e2e/`. Run `just test-e2e`.

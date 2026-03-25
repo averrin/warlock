@@ -1,9 +1,11 @@
 import { useRef, useCallback } from "react";
+import toast from "react-hot-toast";
 import { useGameStore } from "../../stores/game";
 import type { FrameOverlayHandle } from "./FrameOverlay";
 import {
   CELL,
   FRAME_CELL_SIZES,
+  isFrameInControlZone,
   isGroupMoveValid,
   type ConnectionLike,
 } from "./connectionGeometry";
@@ -47,6 +49,7 @@ export function useFrameDrag({
 
   const dragOrigPosRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const dragStartCursorRef = useRef({ x: 0, y: 0 });
+  const leftControlZoneWarnedRef = useRef(false);
 
   const screenToWorld = useCallback(
     (clientX: number, clientY: number): { wx: number; wy: number } => {
@@ -92,10 +95,17 @@ export function useFrameDrag({
         onFrameMiniInspect?.(frameId, e.clientX, e.clientY, { keepInPlace });
       }
 
-      const groupIds = storeIds.filter((id) => framePositionsRef.current.has(id));
-      if (groupIds.length === 0) return;
+      const { isFrameControllable, controlZones } = useGameStore.getState();
+      const groupIds = storeIds.filter((id) => framePositionsRef.current.has(id) && isFrameControllable(id));
+      if (groupIds.length === 0) {
+        if (controlZones.length > 0 && !isFrameControllable(frameId)) {
+          toast.error("Outside control zone — cannot move this frame by dragging");
+        }
+        return;
+      }
 
       const { wx, wy } = screenToWorld(e.clientX, e.clientY);
+      leftControlZoneWarnedRef.current = false;
       draggingFrameIdsRef.current = new Set(groupIds);
       dragMovedRef.current = false;
       dragOrigPosRef.current = new Map();
@@ -166,6 +176,23 @@ export function useFrameDrag({
         }
 
         dragMovedRef.current = true;
+
+        const zones = useGameStore.getState().controlZones;
+        if (zones.length > 0 && !leftControlZoneWarnedRef.current) {
+          for (const id of group) {
+            const pos = candidate.get(id);
+            const fr = framesRef.current.find((f) => f.id === id);
+            const sizeKey = fr?.size ?? "S";
+            if (pos && !isFrameInControlZone(pos, sizeKey, zones)) {
+              leftControlZoneWarnedRef.current = true;
+              toast(
+                "Leaving the control zone — you won't be able to drag this frame back until it's in range again",
+                { duration: 4500 },
+              );
+              break;
+            }
+          }
+        }
 
         const overlay = overlayRef.current;
         const host = hostRef.current;

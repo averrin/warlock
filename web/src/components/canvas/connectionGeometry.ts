@@ -625,3 +625,41 @@ export function isHypotheticalFramePlacementValid(
   ]);
   return isGroupMoveValid(moves, connections, frames, framePositions, obstacleCells);
 }
+
+/**
+ * Control zone circle descriptor (from server).
+ * `x`, `y` are the center of the zone source frame in world px.
+ * `radius` is in grid cells.
+ */
+export interface ControlZoneCircle {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+/**
+ * Returns true if the frame rectangle (top-left at `topLeft`, size `sizeKey`)
+ * has **any** cell overlapping at least one control zone circle.
+ * An empty zones array means no control zones exist (placement unrestricted).
+ */
+export function isFrameInControlZone(
+  topLeft: { x: number; y: number },
+  sizeKey: string,
+  zones: readonly ControlZoneCircle[],
+): boolean {
+  if (zones.length === 0) return true; // no zones defined → unrestricted
+  const cells = FRAME_CELL_SIZES[sizeKey] ?? 2;
+  // Frame center in world px
+  const half = (cells * CELL) / 2;
+  const cx = topLeft.x + half;
+  const cy = topLeft.y + half;
+  for (const zone of zones) {
+    const radiusPx = zone.radius * CELL;
+    const dx = cx - zone.x;
+    const dy = cy - zone.y;
+    if (dx * dx + dy * dy <= radiusPx * radiusPx) {
+      return true;
+    }
+  }
+  return false;
+}

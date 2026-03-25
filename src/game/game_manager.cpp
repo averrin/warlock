@@ -18,6 +18,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <utils/data/loader.hpp>
 
 #include <algorithm> // For std::ranges::transform
+#include <fmt/format.h>
 #include <fmt/ranges.h>
 #include <sstream>
 #include <iomanip>
@@ -68,6 +69,19 @@ void Metadata::reconcileGlobalIdCounter(entt::registry &registry) {
     bump(registry.get<Connection>(e).data.id);
   }
   entt::monostate<"id"_hs>{} = max_id;
+}
+
+static void stripInvalidFrameComponents(entt::registry &registry) {
+  for (auto e : registry.view<Frame>()) {
+    auto &frame = registry.get<Frame>(e);
+    std::erase_if(frame.components, [](const std::shared_ptr<Component> &c) {
+      return c == nullptr;
+    });
+    for (auto &c : frame.components) {
+      std::erase_if(c->data.attributes,
+                    [](const auto &p) { return p.second == nullptr; });
+    }
+  }
 }
 
 namespace {
@@ -225,22 +239,47 @@ void GameManager::loadData() {
   fs::path PATH = entt::monostate<"path"_hs>{};
   auto state_path =
       PATH / fs::path(lua["settings"]["current_state"].get<std::string>());
-  if (fs::exists(state_path) == false) {
-    log.info("Creating new current state");
+  auto init_state_files =
+      lua["settings"]["init_states"].get<std::vector<std::string>>();
+
+  auto rebuildFromInit = [&]() {
+    log.info("Creating state from init");
     auto init_state = std::make_shared<State>();
-    auto init_state_files =
-        lua["settings"]["init_states"].get<std::vector<std::string>>();
     loader.load<State>(*init_state, init_state_files);
     log.var("Init State", init_state->registry.storage<hf::meta>().size());
+    current_state.registry.clear();
+    current_state.stores.clear();
     auto store = current_state.create("current", state_path);
     store->initEmpty();
     EnttTools::copyRegistry(init_state->registry, store->registry);
     current_state.add(store);
     log.var("State Path", current_state.stores.front()->path.string());
+  };
+
+  if (!fs::exists(state_path)) {
+    log.info("No save file; creating from init");
+    rebuildFromInit();
   } else {
     log.info("Loading current state");
     loader.load<State>(current_state, {state_path.string()});
-    log.var("Current State", current_state.registry.storage<hf::meta>().size());
+    if (current_state.registry.storage<hf::meta>().size() == 0) {
+      log.warn("Save unusable (corrupt or incompatible with this build); reinitializing from init");
+      try {
+        fs::path bak = state_path;
+        bak += ".corrupt";
+        for (int n = 0; fs::exists(bak) && n < 100; ++n) {
+          bak = state_path;
+          bak += fmt::format(".corrupt.{}", n);
+        }
+        fs::rename(state_path, bak);
+        log.warn("Renamed broken save to {}", bak.string());
+      } catch (const std::exception &e) {
+        log.warn("Could not rename broken save: {}", e.what());
+      }
+      rebuildFromInit();
+    } else {
+      log.var("Current State", current_state.registry.storage<hf::meta>().size());
+    }
   }
   if (!current_state.stores.empty()) {
     auto &st = current_state.stores.front();
@@ -273,6 +312,7 @@ void GameManager::loadData() {
   entt::locator<WellKnownEntities>::emplace(wk);
 
   Metadata::reconcileGlobalIdCounter(current_state.registry);
+  stripInvalidFrameComponents(current_state.registry);
 
   if (exec) {
     exec->invalidateAllScripts();
@@ -446,7 +486,7 @@ int GameManager::addFrameFromBlueprint(std::string name) {
   for (auto cn : spec["components"].get<std::vector<std::string>>()) {
     auto component = create_component_from_lua(exec->getState(frame.data.id),
                                                exec->getScript(cn));
-    if (cn == "Core") {
+    if (cn == "Core" || cn == "Main Core") {
       auto code = spec["code"].get_or<std::string>("");
       if (code != "") {
         component->data.set("code", code);
@@ -701,7 +741,8 @@ void GameManager::serve() {
         rpcServer.broadcast("event.state_update", {
           {"tick", tick_count_},
           {"frames", frames},
-          {"connections", connections}
+          {"connections", connections},
+          {"control_zones", rpc::computeControlZones(registry)}
         });
         last_state_push_ = now;
       }

@@ -1,0 +1,62 @@
+---
+description: Lua component and blueprint scripting patterns. Apply when editing files in scripts/components/ or scripts/blueprints/.
+globs:
+  - "scripts/components/*.lua"
+  - "scripts/blueprints/*.lua"
+alwaysApply: false
+---
+
+# Lua Component Scripting
+
+Components are Lua files returning a spec table. CodeExecutionSystem auto-loads them on startup.
+
+## Component Template
+```lua
+return {
+  name = "My Component",
+  category = "Power",            -- Power, Data, Production, Movement, Structure
+  description = "What it does",
+  icon = "icon-name.png",        -- from game-icons.net, white, no background
+  attributes = {
+    my_attr = {
+      title = "Display Name",
+      description = "Tooltip",
+      type = AttributeType.FLOAT, -- INT | FLOAT | STRING | BOOL
+      value = 1.0,
+      -- optional easing: { type = AttributeEasingType.SIN, range = 0.1, period = 1000.0 }
+    },
+  },
+  state = ComponentState.DEACTIVATED,
+  size = ComponentSize.S,         -- S | M | L
+  require = {},                   -- must coexist with
+  conflict = {},                  -- cannot coexist with
+  api = {
+    myMethod = function(self)
+      return self.data.attributes["my_attr"]:GetFinalValue()
+    end,
+  },
+}
+```
+
+## Attribute Access
+```lua
+self.data.attributes["key"]:GetFinalValue()  -- with easing applied
+self.data.attributes["key"]:SetBaseValue(v)
+self.data.attributes["key"]:GetBaseValue()
+```
+
+## Available Globals
+- `frameWorld:scanAdjacent(id)` / `frameWorld:moveFrame(id, dir, step, speed, power)` / `frameWorld:nfcFrames(id, dist)`
+- `nexus:showToast(msg, type)` / `nexus:setGlobalIndicator(key, label, value, color)`
+- `gm:addFrame(name)` / `gm:addFrameFromBlueprint(name)` / `gm:addConnection(src, tgt, type)`
+
+## Data Packets
+```lua
+self:send({ destination = frame_id, body = "payload", headers = {} })
+local pkt = self:read()   -- nil if empty
+```
+
+## Enums
+`ComponentState.DEACTIVATED|ACTIVATING|ACTIVE|DEACTIVATING|ERROR|DESTROYED|BLOCKED|BROKEN`
+`ComponentSize.S|M|L` · `FrameSize.XS|S|M|L|G` · `AttributeType.INT|FLOAT|STRING|BOOL`
+`ConnectionType.POWER|DATA|CONVEYOR`

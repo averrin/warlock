@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useRef, useCallback, useLayoutEffect, useMemo } from "react";
 import { FrameCard, type PlacedFrame, type WiringState } from "./FrameCard";
 import type { ConnectionDTO } from "../../rpc/types";
+import { useGameStore } from "../../stores/game";
 import { CELL, connectionWiringGeometryOk, frameCenterFromTopLeft, FRAME_CELL_SIZES } from "./connectionGeometry";
 
 type ConnectionMedium = "WIRE" | "WIRELESS" | "BEAM";
@@ -180,6 +181,8 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const transformRef = useRef({ scale: 1, tx: 0, ty: 0 });
     const selectedSet = useMemo(() => new Set(selectedFrameIds), [selectedFrameIds]);
+    const controlZones = useGameStore((s) => s.controlZones);
+    const isFrameControllable = useGameStore((s) => s.isFrameControllable);
 
     /** Lower world Y first in DOM (underneath); higher on screen (smaller Y) last so they receive pointer hits first when stacked. */
     const orderedFrames = useMemo(
@@ -334,6 +337,8 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
           {orderedFrames.map((frame) => {
             const cells = FRAME_CELL_SIZES[frame.size] ?? 1;
             const cellSize = cells * CELL;
+            const outsideZone =
+              controlZones.length > 0 && !isFrameControllable(frame.id);
             return (
               <FrameCard
                 key={frame.id}
@@ -341,6 +346,7 @@ export const FrameOverlay = forwardRef<FrameOverlayHandle, FrameOverlayProps>(
                 cellSize={cellSize}
                 isSelected={selectedSet.has(frame.id)}
                 wiringState={getWiringState(frame.id)}
+                outsideControlZone={outsideZone}
                 zoom={zoom}
                 onPointerDown={onFramePointerDown}
                 onContextMenu={onFrameContextMenu}

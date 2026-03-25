@@ -16,7 +16,8 @@ public:
   /// Full-cell instant move (legacy / scripts).
   bool moveFrame(int id, std::string direction);
   /// Move by step_px (use subcellStep() for propulsion); speed > 0 tweens over ~0.35s/speed, speed ~0 snaps.
-  bool moveFrame(int id, std::string direction, float step_px, float speed);
+  /// extra_power_cost: burst draw (e.g. propulsion move); move is rejected if the grid would brown out.
+  bool moveFrame(int id, std::string direction, float step_px, float speed, float extra_power_cost = 0.f);
   /// Other frames with NFC; maxDistance > 0 limits distance as maxDistance * grid cell (75px).
   std::vector<Frame> nfcFrames(int id, float maxDistance);
 };

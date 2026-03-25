@@ -24,8 +24,20 @@ namespace fs = std::filesystem;
 #include <map>
 #include <sstream>
 #include <string>
+#include <type_traits>
 
 #include <game/registry_container.hpp>
+#include <game/registry_store.hpp>
+
+namespace loader_detail {
+template <typename S>
+void clearIfRegistryStore(const std::shared_ptr<S> &store) {
+  if constexpr (std::is_same_v<S, RegistryStore>) {
+    store->registry.clear();
+    store->spendable_pool.clear();
+  }
+}
+} // namespace loader_detail
 
 class Loader {
   LibLog::Logger log = LibLog::Logger(fmt::color::orange, "LOAD");
@@ -65,9 +77,10 @@ public:
                    LibPrint::utils::green("󰟉 Load"),
                    LibPrint::utils::italic(store->name), store->type,
                    store->version);
-        } catch (cereal::Exception &e) {
-          log.error("Error loading {}: {}", path, e.what());
-          continue;
+        } catch (const std::exception &e) {
+          log.error("Error loading {}: {} — using empty store", path, e.what());
+          loader_detail::clearIfRegistryStore(store);
+          store->initEmpty();
         }
       }
       container.add(store);

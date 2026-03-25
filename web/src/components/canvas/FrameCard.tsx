@@ -18,6 +18,8 @@ export interface FrameCardProps {
   cellSize: number;
   isSelected: boolean;
   wiringState: WiringState | null;
+  /** When control zones exist and this frame is outside all of them */
+  outsideControlZone?: boolean;
   zoom: number;
   onPointerDown: (e: React.PointerEvent, frameId: number) => void;
   onContextMenu: (e: React.MouseEvent, frameId: number) => void;
@@ -148,6 +150,7 @@ export const FrameCard = memo(function FrameCard({
   cellSize,
   isSelected,
   wiringState,
+  outsideControlZone = false,
   zoom,
   onPointerDown,
   onContextMenu,
@@ -182,6 +185,7 @@ export const FrameCard = memo(function FrameCard({
     else if (wiringState.isEligible) className += " frame-card--wiring-eligible";
     else className += " frame-card--wiring-ineligible";
   }
+  if (outsideControlZone) className += " frame-card--outside-zone";
 
   const style: React.CSSProperties = {
     // Position/size set by FrameOverlay.syncTransform() via direct DOM writes
@@ -220,9 +224,15 @@ export const FrameCard = memo(function FrameCard({
         )}
         <span className="frame-card__name">{frame.name}</span>
         <span className="frame-card__id">#{frame.id}</span>
+        {outsideControlZone && (
+          <span className="frame-card__zone-badge" title="Outside control zone">
+            NC
+          </span>
+        )}
         <span className="frame-card__size-badge">{frame.size}</span>
       </div>
 
+      <div className="frame-card__body">
       {/* STATUS ROW */}
       {badges && (
         <div className="frame-card__status">
@@ -337,6 +347,7 @@ export const FrameCard = memo(function FrameCard({
           </div>
         </>
       )}
+      </div>
     </div>
   );
 });

@@ -21,5 +21,6 @@ nlohmann::json serializeFrame(entt::registry& registry, entt::entity entity, con
 nlohmann::json serializeFrameSummary(entt::entity entity, const Frame& frame);
 nlohmann::json serializeCanvasBadges(const Frame& frame, const PowerInfo* powerInfo);
 nlohmann::json serializeEnvironment(const Environment& env);
+nlohmann::json computeControlZones(entt::registry& registry);
 
 } // namespace rpc

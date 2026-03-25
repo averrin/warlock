@@ -2,7 +2,11 @@
 #include <deque>
 #include <game/components/frame.hpp>
 #include <game/system.hpp>
+#include <utils/entt.hpp>
 #include <vector>
+
+/// True if frame_id is not on a power net, or steady load + extra fits production + battery headroom.
+bool frame_network_can_afford_extra_consumption(entt::registry& registry, int frame_id, float extra);
 
 struct NetworkInfo {
   Metadata data;

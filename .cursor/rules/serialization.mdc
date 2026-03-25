@@ -1,0 +1,46 @@
+---
+description: Serialization rules and footguns for save/load system. Apply when editing field_save/field_load, COMPONENT_LIST, FieldArchive, or any serializable struct.
+globs:
+  - "include/game/components/*.hpp"
+  - "include/game/component_registry.hpp"
+  - "include/utils/data/*.hpp"
+  - "src/game/game_manager.cpp"
+alwaysApply: false
+---
+
+# Serialization System
+
+FieldArchive = named-field binary format wrapping cereal. Forward-compatible: unknown fields skip, missing fields get C++ defaults.
+
+## Invariants (NEVER break these)
+- `field_save()` and `field_load()` **must have identical fields in identical order**
+- Every component in `COMPONENT_LIST` must implement both methods
+- Never change a field's C++ type without migration logic
+- Renaming a field silently loses old save data for it
+
+## Safe Changes (no version bump needed)
+- Add field: add `FIELD(ar, newField)` to both save and load → old saves use C++ default
+- Remove field: delete `FIELD(ar, name)` from both → old saves skip the field
+- Add component: add line to `COMPONENT_LIST` + implement save/load
+
+## Unsafe Changes
+- Field reorder → silent data corruption
+- Type change → cereal deserialization failure or corruption
+- Field rename → old data permanently lost
+
+## Pattern
+```cpp
+void field_save(FieldOutputArchive& ar) const {
+  FIELD(ar, fieldA);
+  FIELD(ar, fieldB);
+}
+void field_load(FieldInputArchive& ar) {
+  FIELD(ar, fieldA);  // SAME ORDER as save
+  FIELD(ar, fieldB);
+}
+```
+
+## Notes
+- Files in `data/` (frame.proto, main.proto) are cereal binary archives of entity templates, NOT protobuf
+- After load, `Metadata::reconcileGlobalIdCounter()` prevents ID collisions — do not remove this call
+- Corrupt saves auto-backed up with `.corrupt` suffix; fallback to `init.state`

@@ -5,6 +5,7 @@
 #include <liblog/liblog.hpp>
 #include <map>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 // Convenience macro: ar.field("x", x) -> FIELD(ar, x)
@@ -70,11 +71,19 @@ public:
   void readFrom(cereal::BinaryInputArchive &ar) {
     uint16_t count = 0;
     ar(count);
+    constexpr uint16_t kMaxFields = 4096;
+    constexpr uint32_t kMaxBlob = 64u * 1024u * 1024u;
+    if (count > kMaxFields) {
+      throw std::runtime_error("FieldArchive: field count out of range");
+    }
     for (uint16_t i = 0; i < count; i++) {
       std::string name;
       uint32_t sz = 0;
       ar(name);
       ar(sz);
+      if (sz > kMaxBlob) {
+        throw std::runtime_error("FieldArchive: field blob too large");
+      }
       std::string data(sz, '\0');
       if (sz > 0) {
         ar(cereal::binary_data(data.data(), sz));
@@ -96,7 +105,7 @@ public:
       cereal::BinaryInputArchive ar{buf};
       ar(value);
       return true;
-    } catch (cereal::Exception &e) {
+    } catch (const std::exception &e) {
       static LibLog::Logger log =
           LibLog::Logger(fmt::color::yellow, "FieldAr");
       log.warn("Failed to deserialize field '{}': {}", name, e.what());

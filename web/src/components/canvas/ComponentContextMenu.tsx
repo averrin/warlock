@@ -152,6 +152,9 @@ export function ComponentContextMenu({ x, y, frameId, componentId, component, on
 
       {/* Actions section */}
       <div style={{ borderTop: "1px solid #334155", marginTop: 2 }}>
+        {!useGameStore.getState().isFrameControllable(frameId) ? (
+          <div style={{ padding: "4px 10px", fontSize: 11, color: "#f59e0b" }}>Outside control zone</div>
+        ) : (<>
         {showStart && (
           <div
             style={menuRowStyle}
@@ -190,6 +193,7 @@ export function ComponentContextMenu({ x, y, frameId, componentId, component, on
         >
           <span style={{ color: "#f87171" }}>&#x2715;</span><span style={{ color: "#f87171" }}>Remove</span>
         </div>
+        </>)}
       </div>
     </div>,
     document.body,

@@ -28,6 +28,7 @@ import {
   edgeExitTowardPoint,
   frameCenterFromTopLeft,
   isGroupMoveValid,
+  isFrameInControlZone,
   isHypotheticalFramePlacementValid,
   obstacleCellKeysFromPatches,
   OFFSET_STEP,
@@ -675,11 +676,15 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const blueprintSupported = isFeatureSupported(capabilityMethods.blueprintPalette);
   const connections = useGameStore((s) => s.connections);
   const powerNetworks = useGameStore((s) => s.powerNetworks);
+  const controlZones = useGameStore((s) => s.controlZones);
+  const controlZonesRef = useRef(controlZones);
+  controlZonesRef.current = controlZones;
   const createConnection = useGameStore((s) => s.createConnection);
   const removeConnection = useGameStore((s) => s.removeConnection);
   const removeFrame = useGameStore((s) => s.removeFrame);
   const connectionLayerRef = useRef<Graphics | null>(null);
   const emitterRadiusLayerRef = useRef<Graphics | null>(null);
+  const controlZoneLayerRef = useRef<Graphics | null>(null);
   const wiringLineRef = useRef<Graphics | null>(null);
   const connectionsRef = useRef(connections);
   connectionsRef.current = connections;
@@ -904,6 +909,25 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
     drawRestrictedDropZonesRef.current();
   };
 
+  const drawControlZones = () => {
+    const g = controlZoneLayerRef.current;
+    if (!g) return;
+    g.clear();
+    const zones = controlZonesRef.current;
+    if (!zones.length) return;
+    for (const zone of zones) {
+      const radiusPx = zone.radius * CELL;
+      const isNexus = zone.source === "nexus";
+      const color = isNexus ? 0x60a5fa : 0x34d399;
+      g.circle(zone.x, zone.y, radiusPx);
+      g.stroke({ width: 1.5, color, alpha: 0.35 });
+      g.circle(zone.x, zone.y, radiusPx);
+      g.fill({ color, alpha: 0.04 });
+    }
+  };
+  const drawControlZonesRef = useRef(drawControlZones);
+  drawControlZonesRef.current = drawControlZones;
+
   const drawEmitterRadii = () => {
     const g = emitterRadiusLayerRef.current;
     if (!g) return;
@@ -953,6 +977,10 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   useEffect(() => {
     updateMarkers();
   }, [markers, updateMarkers]);
+
+  useEffect(() => {
+    drawControlZonesRef.current();
+  }, [controlZones]);
 
   const renderPatches = useCallback(() => {
     const layer = patchLayerRef.current;
@@ -1296,6 +1324,15 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               )
             : false;
 
+        // Both endpoints must be inside the control zone
+        const srcPos = getPosition(wiring.sourceId);
+        const tgtPos = getPosition(frameId);
+        const srcSize = getFrameSize(wiring.sourceId) ?? "S";
+        const tgtSize = tgtFrame?.size ?? "S";
+        const zoneOk =
+          (!srcPos || isFrameInControlZone(srcPos, srcSize, controlZonesRef.current)) &&
+          (!tgtPos || isFrameInControlZone(tgtPos, tgtSize, controlZonesRef.current));
+
         if (
           frameId !== wiring.sourceId &&
           tgtFrame &&
@@ -1303,7 +1340,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           hasReq &&
           cardOk &&
           pairOk &&
-          geometryOk
+          geometryOk &&
+          zoneOk
         ) {
           createConnectionRef.current(rpcClientRef.current, wiring.sourceId, frameId, wiring.type, wiring.medium).catch(console.error);
         }
@@ -1611,7 +1649,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             connectionsRef.current,
             framePositionsRef.current,
             obstacleCellsRef.current,
-          )
+          ) || !isFrameInControlZone({ x, y }, sizeKey, controlZonesRef.current)
         ) {
           return;
         }
@@ -1892,6 +1930,11 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         worldContainer.addChild(mLayer);
         patchLayerRef.current = patchLayer;
 
+        const controlZoneG = new Graphics();
+        controlZoneG.eventMode = "none";
+        controlZoneLayerRef.current = controlZoneG;
+        worldContainer.addChild(controlZoneG);
+
         const emitterRadiusG = new Graphics();
         emitterRadiusG.eventMode = "none";
         emitterRadiusLayerRef.current = emitterRadiusG;
@@ -2129,7 +2172,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
                 connectionsRef.current,
                 framePositionsRef.current,
                 obstacleCellsRef.current,
-              );
+              ) && isFrameInControlZone({ x: wx, y: wy }, sizeKey, controlZonesRef.current);
               ghost.beginFill(valid ? 0x3b82f6 : 0xff3355);
               ghost.roundRect(0, 0, boxSize, boxSize, 10);
               ghost.fill();
@@ -2254,6 +2297,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       markerLayerRef.current = null;
       connectionLayerRef.current = null;
       emitterRadiusLayerRef.current = null;
+      controlZoneLayerRef.current = null;
       selectionBoxRef.current = null;
       wiringLineRef.current = null;
       panningRef.current = false;
@@ -2306,7 +2350,8 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       const el = e.target as HTMLElement | null;
       if (el?.closest("input, textarea, select, [contenteditable=true]")) return;
-      const ids = [...useGameStore.getState().selectedFrameIds];
+      const { selectedFrameIds: selIds, isFrameControllable: isCtrl } = useGameStore.getState();
+      const ids = selIds.filter(isCtrl);
       if (ids.length === 0) return;
       e.preventDefault();
       const n = ids.length;
@@ -2578,7 +2623,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               onClick={() => {
-                const ids = bulkFrameContextMenu.frameIds;
+                const { isFrameControllable: isCtrl } = useGameStore.getState();
+                const ids = bulkFrameContextMenu.frameIds.filter(isCtrl);
+                if (ids.length === 0) return;
                 if (!window.confirm(`Remove ${ids.length} frames? Connections will be removed.`)) return;
                 setBulkFrameContextMenu(null);
                 void removeFramesBulk(ids).catch(console.error);
@@ -2591,6 +2638,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
         )}
       {frameContextMenu && (() => {
         const frame = frames.find((f) => f.id === frameContextMenu.frameId);
+        const controllable = useGameStore.getState().isFrameControllable(frameContextMenu.frameId);
         const allConnInfo = (["POWER", "DATA", "CONVEYOR"] as const).map((type) => {
           if (!frame) {
             return { type, available: false as const, reason: "Frame not found." };
@@ -2710,7 +2758,12 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
                 </>
               )}
             </div>
-            {frameRenaming?.frameId !== frameContextMenu.frameId && (
+            {!controllable && (
+              <div style={{ padding: "4px 10px", fontSize: 11, color: "#f59e0b" }}>
+                Outside control zone
+              </div>
+            )}
+            {controllable && frameRenaming?.frameId !== frameContextMenu.frameId && (
               <div
                 style={{ padding: "4px 10px", cursor: "pointer" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
@@ -2722,7 +2775,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
                 Rename
               </div>
             )}
-            <div
+            {controllable && <div
               style={{ padding: "4px 10px", cursor: "pointer" }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -2732,8 +2785,9 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
               }}
             >
               Add Component...
-            </div>
+            </div>}
             {/* Accent color picker */}
+            {controllable && <>
             <div style={{ padding: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>Color</div>
             <div style={{ padding: "2px 10px", display: "flex", gap: 4, flexWrap: "wrap" }}>
               {[null, "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"].map((color) => (
@@ -2911,6 +2965,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
             >
               Remove frame…
             </div>
+            </>}
           </div>,
           document.body
         );

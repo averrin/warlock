@@ -1,0 +1,44 @@
+---
+description: Step-by-step guide for adding a new RPC method end-to-end. Use when asked to add or create an RPC handler or method.
+globs:
+alwaysApply: false
+---
+
+# Adding a New RPC Handler
+
+## Step 1 — Ask First
+- Read-only query or mutation? (mutations need `requireClaim`)
+- Parameters and return type?
+- Synchronous response or enqueued command?
+- Broadcast to other clients?
+
+## Step 2 — Search
+Check `src/rpc/handlers/` for similar methods. Check existing domains:
+`frame` · `component` · `connection` · `code` · `game` · `state` · `session` · `items` · `storage` · `patch` · `env` · `power`
+
+## Step 3 — DTO (if new complex return type)
+`include/rpc/dto.hpp` declaration + `src/rpc/dto.cpp` implementation.
+
+## Step 4 — Handler
+In `src/rpc/handlers/<domain>_handler.cpp`:
+```cpp
+server.router().on("domain.action", [&server](const Context& ctx, const json& params) -> json {
+  requireClaim(server, ctx);  // mutations only
+  auto& gm = entt::locator<GameManager>::value();
+  if (!gm.started) throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+  std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+  // ...
+  logWebAction(server, "domain.action", "ok", {});
+  return result;
+});
+```
+
+## Step 5 — Register (new domain only)
+Add `rpc::register<Domain>Handlers(rpcServer)` in `src/main.cpp`.
+
+## Step 6 — TypeScript
+- Type in `web/src/rpc/types.ts`
+- Call in store: `await client.call<T>("domain.action", { params })`
+
+## Step 7 — Verify
+`just test-e2e`. Add E2E test to `tests/e2e/`.

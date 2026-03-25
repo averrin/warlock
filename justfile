@@ -72,6 +72,57 @@ test-e2e: (build "warlock_e2e")
     "./" + build_dir + "/tests/warlock_e2e --reporter console" \
   } }}
 
-# Run all tests
+# Run all C++ tests
 [no-cd]
 test: test-unit test-serial test-e2e
+
+# ── Web ──────────────────────────────────────────────────────────────────────
+
+# Install web dependencies
+[no-cd]
+web-install:
+  {{ if os_family() == "windows" { \
+    "Push-Location web; npm install; Pop-Location" \
+  } else { \
+    "cd web && npm install" \
+  } }}
+
+# Start web dev server (Vite, port 5173)
+[no-cd]
+web-dev:
+  {{ if os_family() == "windows" { \
+    "Push-Location web; npm run dev; Pop-Location" \
+  } else { \
+    "cd web && npm run dev" \
+  } }}
+
+# Build web frontend (TypeScript check + Vite bundle)
+[no-cd]
+web-build:
+  {{ if os_family() == "windows" { \
+    "Push-Location web; npm run build; Pop-Location" \
+  } else { \
+    "cd web && npm run build" \
+  } }}
+
+# Run web unit tests (Vitest)
+[no-cd]
+web-test:
+  {{ if os_family() == "windows" { \
+    "Push-Location web; npm test; Pop-Location" \
+  } else { \
+    "cd web && npm test" \
+  } }}
+
+# Run web E2E tests (Playwright)
+[no-cd]
+web-test-e2e:
+  {{ if os_family() == "windows" { \
+    "Push-Location web; npm run test:e2e; Pop-Location" \
+  } else { \
+    "cd web && npm run test:e2e" \
+  } }}
+
+# Run all tests (C++ + web)
+[no-cd]
+test-all: test web-test

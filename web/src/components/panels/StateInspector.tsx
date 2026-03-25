@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
-import { usePatchStore, Patch } from "../../stores/patches";
+import { usePatchStore, Patch, type PatchType } from "../../stores/patches";
 import type { ConnectionDTO, FrameDTO, PowerNetworkDTO } from "../../rpc/types";
 import { CollapsibleSection, NumberField, TransformEditor, inputStyle, smallBtnStyle } from "../ui";
 import { FramePanel } from "../frame";
@@ -169,6 +169,8 @@ function ConnectionRow({
   frames: FrameDTO[];
 }) {
   const removeConnection = useGameStore((s) => s.removeConnection);
+  const isFrameControllable = useGameStore((s) => s.isFrameControllable);
+  const bothControllable = isFrameControllable(conn.source) && isFrameControllable(conn.target);
   const sourceName = frames.find((f) => f.id === conn.source)?.name;
   const targetName = frames.find((f) => f.id === conn.target)?.name;
   const medium = conn.medium?.trim() ? conn.medium : "—";
@@ -201,13 +203,13 @@ function ConnectionRow({
           </div>
         )}
       </div>
-      <button
+      {bothControllable && <button
         type="button"
         style={{ ...smallBtnStyle, color: "#ef4444", alignSelf: "start" }}
         onClick={() => removeConnection(rpcClient, conn.id)}
       >
         Remove
-      </button>
+      </button>}
     </div>
   );
 }
@@ -353,18 +355,56 @@ function PowerNetworksSection() {
   );
 }
 
-// ─── Patches section ──────────────────────────────────────────────────────────
+// ─── Patches & surfaces (resource deposits, painted terrain, etc.) ───────────
+
+function rgbaToHex(r: number, g: number, b: number): string {
+  const x = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  return `#${x(r)}${x(g)}${x(b)}`;
+}
+
+function patchColorSwatch(
+  c: { r: number; g: number; b: number; a: number },
+  px: number,
+) {
+  return (
+    <span
+      title="Tint from patch type (read-only)"
+      style={{
+        display: "inline-block",
+        width: px,
+        height: px,
+        borderRadius: 3,
+        background: `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a / 255})`,
+        border: "1px solid #374151",
+        flexShrink: 0,
+        boxSizing: "border-box",
+        verticalAlign: "middle",
+      }}
+    />
+  );
+}
+
+function patchTypeMeta(patchTypes: PatchType[], patch: Patch): PatchType | undefined {
+  return patchTypes.find((t) => t.key === patch.type);
+}
 
 function PatchRow({
   rpcClient,
   patch,
+  patchTypes,
 }: {
   rpcClient: RpcClient;
   patch: Patch;
+  patchTypes: PatchType[];
 }) {
   const removePatch = usePatchStore((s) => s.removePatch);
   const movePatch = usePatchStore((s) => s.movePatch);
   const [expanded, setExpanded] = useState(false);
+  const meta = patchTypeMeta(patchTypes, patch);
+  const obstacle = patch.obstacle ?? meta?.obstacle ?? false;
+  const paintSurface = meta?.paint_surface ?? false;
+  const z = meta?.z_index ?? 0;
+  const colorHex = rgbaToHex(patch.color.r, patch.color.g, patch.color.b);
 
   const handleDelete = async () => {
     try {
@@ -375,6 +415,22 @@ function PatchRow({
     }
   };
 
+  const badge = (label: string, on: boolean, bg: string) =>
+    on ? (
+      <span
+        style={{
+          fontSize: 9,
+          padding: "1px 5px",
+          borderRadius: 3,
+          background: bg,
+          color: "#e5e7eb",
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </span>
+    ) : null;
+
   return (
     <div style={{ marginBottom: 4 }}>
       <div
@@ -382,19 +438,12 @@ function PatchRow({
         onClick={() => setExpanded(!expanded)}
       >
         <span style={{ color: "#6b7280", fontSize: 10 }}>{expanded ? "▼" : "▶"}</span>
-        <span
-          style={{
-            width: 12,
-            height: 12,
-            borderRadius: 2,
-            background: `rgba(${patch.color.r}, ${patch.color.g}, ${patch.color.b}, ${patch.color.a / 255})`,
-            border: "1px solid #374151",
-            flexShrink: 0,
-          }}
-        />
+        <span onClick={(e) => e.stopPropagation()}>{patchColorSwatch(patch.color, 18)}</span>
         <span style={{ color: "#e5e7eb" }}>
           #{patch.id} {patch.name}
         </span>
+        {badge("Obstacle", obstacle, "#7f1d1d")}
+        {badge("Surface", paintSurface, "#14532d")}
         <span style={{ color: "#9ca3af", fontSize: 10 }}>
           [{patch.cells.length} cells]
         </span>
@@ -408,8 +457,39 @@ function PatchRow({
       </div>
       {expanded && (
         <div style={{ paddingLeft: 20, paddingTop: 4, fontSize: 11, color: "#9ca3af" }}>
-          <div>Type: <span style={{ color: "#e5e7eb" }}>{patch.type}</span></div>
-          <div>Item: <span style={{ color: "#e5e7eb" }}>{patch.item}</span></div>
+          <div style={{ marginBottom: 6, fontSize: 10, color: "#6b7280" }}>
+            Type attributes (read-only; defined in scripts/patches/*.lua)
+          </div>
+          <div>
+            Type: <span style={{ color: "#e5e7eb" }}>{patch.type}</span>
+            {meta?.name && meta.name !== patch.name && (
+              <span style={{ color: "#6b7280" }}> ({meta.name})</span>
+            )}
+          </div>
+          <div>
+            Item: <span style={{ color: "#e5e7eb" }}>{patch.item}</span>
+          </div>
+          <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <span>Obstacle: <span style={{ color: obstacle ? "#fca5a5" : "#86efac" }}>{obstacle ? "yes" : "no"}</span></span>
+            <span>Surface paint: <span style={{ color: paintSurface ? "#86efac" : "#9ca3af" }}>{paintSurface ? "yes" : "no"}</span></span>
+            <span>z-index: <span style={{ color: "#e5e7eb" }}>{z}</span></span>
+          </div>
+          {meta?.generation && (
+            <div style={{ marginTop: 2 }}>
+              Gen:{" "}
+              <span style={{ color: "#e5e7eb" }}>
+                {meta.generation.min_width}–{meta.generation.max_width} × {meta.generation.min_height}–{meta.generation.max_height} cells
+              </span>
+            </div>
+          )}
+          <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span>Color</span>
+            {patchColorSwatch(patch.color, 22)}
+            <span style={{ color: "#e5e7eb", fontFamily: "monospace", fontSize: 10 }}>
+              {colorHex} · rgba({patch.color.r}, {patch.color.g}, {patch.color.b}, {(patch.color.a / 255).toFixed(2)})
+            </span>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 10, color: "#6b7280" }}>Placement (editable)</div>
           <div style={{ marginTop: 4 }}>
             <TransformEditor
               x={patch.bounds.x}
@@ -423,26 +503,35 @@ function PatchRow({
   );
 }
 
-function PatchesSection({ rpcClient, filter }: { rpcClient: RpcClient; filter: string }) {
+function PatchesAndSurfacesSection({ rpcClient, filter }: { rpcClient: RpcClient; filter: string }) {
   const patches = usePatchStore((s) => s.patches);
+  const patchTypes = usePatchStore((s) => s.patchTypes);
 
   const filtered = useMemo(() => {
     if (!filter) return patches;
     const lower = filter.toLowerCase();
-    return patches.filter(
-      (p) =>
+    return patches.filter((p) => {
+      const pt = patchTypeMeta(patchTypes, p);
+      const typeLabel = pt?.name ?? "";
+      return (
         p.name.toLowerCase().includes(lower) ||
         String(p.id).includes(lower) ||
         p.type.toLowerCase().includes(lower) ||
-        p.item.toLowerCase().includes(lower),
-    );
-  }, [patches, filter]);
+        p.item.toLowerCase().includes(lower) ||
+        typeLabel.toLowerCase().includes(lower) ||
+        (lower === "obstacle" && (p.obstacle || pt?.obstacle)) ||
+        (lower === "surface" && pt?.paint_surface)
+      );
+    });
+  }, [patches, filter, patchTypes]);
 
   return (
-    <CollapsibleSection title={`⛏ Patches (${patches.length})`}>
-      {filtered.length === 0 && <div style={{ color: "#6b7280" }}>No patches</div>}
+    <CollapsibleSection title={`🗺 Patches & surfaces (${patches.length})`}>
+      {filtered.length === 0 && (
+        <div style={{ color: "#6b7280" }}>No terrain patches or painted surfaces</div>
+      )}
       {filtered.map((patch) => (
-        <PatchRow key={patch.id} rpcClient={rpcClient} patch={patch} />
+        <PatchRow key={patch.id} rpcClient={rpcClient} patch={patch} patchTypes={patchTypes} />
       ))}
     </CollapsibleSection>
   );
@@ -476,7 +565,7 @@ export function StateInspector({ rpcClient }: Props) {
       <FramesSection rpcClient={rpcClient} filter={filter} />
       <ConnectionsSection rpcClient={rpcClient} filter={filter} />
       <PowerNetworksSection />
-      <PatchesSection rpcClient={rpcClient} filter={filter} />
+      <PatchesAndSurfacesSection rpcClient={rpcClient} filter={filter} />
     </div>
   );
 }

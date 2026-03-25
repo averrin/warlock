@@ -272,6 +272,9 @@ void register_bindings(sol::state &lua) {
           [](FrameWorld& fw, int id, std::string d) { return fw.moveFrame(id, std::move(d)); },
           [](FrameWorld& fw, int id, std::string d, float step, float speed) {
             return fw.moveFrame(id, std::move(d), step, speed);
+          },
+          [](FrameWorld& fw, int id, std::string d, float step, float speed, float extra_power) {
+            return fw.moveFrame(id, std::move(d), step, speed, extra_power);
           }),
       "subcellStep", []() { return FrameWorld::subcellStep(); },
       "cellStep", []() { return FrameWorld::cellStep(); }, "nfcFrames", &FrameWorld::nfcFrames);
@@ -338,8 +341,9 @@ create_component_from_lua(sol::state &lua, const std::string &lua_source) {
       easing.easing_period = attr_data["easing"]["period"].get<float>();
     }
 
+    std::string target_filter = attr_data["target_filter"].get_or<std::string>("");
     auto attribute =
-        std::make_shared<Attribute>(title, description, type, value, easing);
+        std::make_shared<Attribute>(title, description, type, value, easing, target_filter);
     component->data.attributes[key] = attribute;
   }
 

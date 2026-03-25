@@ -99,17 +99,19 @@ private:
 public:
   std::vector<std::shared_ptr<Modifier>> modifiers = {};
   AttributeEasing easing;
+  std::string target_filter;  // When non-empty, UI renders a component-select filtered by this component type string
   // Constructor that accepts title, description, type, and base value
   Attribute(const std::string &t, const std::string &d, AttributeType at,
-            AttributeValue base, AttributeEasing easing = AttributeEasing())
-      : title(t), description(d), type(at), baseValue(base) {
+            AttributeValue base, AttributeEasing easing = AttributeEasing(),
+            const std::string &target_filter = "")
+      : title(t), description(d), type(at), baseValue(base), target_filter(target_filter) {
     SetEasing(easing);
   }
 
   Attribute() {}
   Attribute(const Attribute &other)
       : title(other.title), description(other.description), type(other.type),
-        baseValue(other.baseValue) {
+        baseValue(other.baseValue), target_filter(other.target_filter) {
     SetEasing(other.easing);
   }
 
@@ -247,12 +249,12 @@ public:
     auto t = static_cast<int>(type);
     auto et = static_cast<int>(easing.easing_type);
     ar(title, description, type, baseValue, easing.easing_type,
-       easing.easing_range, easing.easing_period);
+       easing.easing_range, easing.easing_period, target_filter);
   }
 
   template <class Archive> void load(Archive &ar) {
     ar(title, description, type, baseValue, easing.easing_type,
-       easing.easing_range, easing.easing_period);
+       easing.easing_range, easing.easing_period, target_filter);
     SetEasing(easing); // Reconstruct the easing tween after loading
   }
 };
