@@ -64,8 +64,11 @@ inspector = { widget = "link", link_scope = "world", link_filter = "Miner" }
 - `link_filter: string` — optional
   - frame scope: filters by `component.type` among components on the current frame
   - world scope: filters by `frame.name` among all frames in `useGameStore(s => s.frames)`; omit to show all frames
-- Stored value for both scopes is an `int` entity ID; -1 means "none"
-- World scope is new functionality — no existing component uses it yet
+- Stored value differs by scope:
+  - **frame scope**: stores component `data.id` (application-level sequential ID from `Metadata::newId()`) — same integer space as the current `target_filter` behavior; -1 means "none"
+  - **world scope**: stores the EnTT entity handle cast to `int`; -1 means "none"
+  - These are different integer spaces — a frame-scope and world-scope link attribute are not interchangeable
+- World scope is new functionality — no existing component uses it yet; no save migration needed
 
 ### `progress`
 Numeric input with a visual progress bar. Editable by default; `readonly = true` for display-only.
@@ -116,6 +119,7 @@ These apply to any widget (or to attributes with no widget, as standalone modifi
 - Add `nlohmann::json inspector_meta` field to `Attribute` (defaults to null/empty object)
 - Remove `target_filter` from the constructor parameter list — it is no longer set from Lua
 - New constructor signature: `Attribute(title, description, type, value, easing, inspector_meta)`
+- **Update the copy constructor** to include `inspector_meta` in the member initializer list. The existing copy constructor is hand-written (calls `SetEasing` to reinitialize the tween — `= default` is not safe). Add `inspector_meta(other.inspector_meta)` to the init list.
 - **Keep `target_filter` as a class field and keep it in `save`/`load`.** `Attribute` uses positional cereal (not FieldArchive) — `target_filter` is the 8th positional argument. Removing it from the `ar()` call would corrupt loading of all existing save files and proto files. After migration it holds no functional value but must remain in the positional archive as a legacy tombstone.
 - **Do not add `inspector_meta` to `save`/`load`** — it is always reconstructed from the Lua spec at startup. Persisting it is unnecessary and would require an additive migration strategy.
 - Stop reading `target_filter` from Lua in `component_bindings.cpp` (the `inspector` table replaces it)
@@ -172,6 +176,11 @@ export interface InspectorMeta {
 - Replace with: iterate `Object.entries(component.attributes ?? {})` and find the first entry `[key, attr]` where `attr.inspector?.widget === "code"`
 - Use the discovered `key` for both the `attrKey:` field in the `openComponentCodeEditor` call and as the argument to `extractCodeString` — do not hardcode `"code"` in either location
 - If no attribute has `widget = "code"`, `hasCodeAttr` is false
+
+### `web/src/components/frame/ComponentCodeEditorPanel.tsx`
+- This file has a guard at line 94: `if (mode !== "attribute" || attrKey !== "code" || ...)` that controls whether the Core code-execution context is shown
+- The `attrKey !== "code"` part of this guard assumes the code attribute key is always `"code"`. Since `core.lua` and `main_core.lua` both use `"code"` as the attribute key (and the migration adds `inspector = { widget = "code" }` to that same attribute), the key will remain `"code"` in practice
+- No change required to this file — document this as a stable convention: attributes with `widget = "code"` on Core components must use the key `"code"` for the code editor panel's execution context to activate
 
 ## Migration Plan
 
