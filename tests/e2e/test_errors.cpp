@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 
 // ─── §9 Error handling ────────────────────────────────────────────────────────
 
-TEST_CASE("error — unknown method returns -32601") {
+E2E_TEST(errors,"error — unknown method returns -32601") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -20,7 +20,7 @@ TEST_CASE("error — unknown method returns -32601") {
   assert_jsonrpc_error(resp, -32601);
 }
 
-TEST_CASE("error — method not found message is present") {
+E2E_TEST(errors,"error — method not found message is present") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -31,7 +31,7 @@ TEST_CASE("error — method not found message is present") {
   CHECK(!resp["error"]["message"].get<std::string>().empty());
 }
 
-TEST_CASE("error — frame.get without id returns error") {
+E2E_TEST(errors,"error — frame.get without id returns error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -41,7 +41,7 @@ TEST_CASE("error — frame.get without id returns error") {
   CHECK(resp["error"]["code"].get<int>() != 0);
 }
 
-TEST_CASE("error — frame.create without claim returns 1000") {
+E2E_TEST(errors,"error — frame.create without claim returns 1000") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -50,7 +50,7 @@ TEST_CASE("error — frame.create without claim returns 1000") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("error — frame.update without claim returns 1000") {
+E2E_TEST(errors,"error — frame.update without claim returns 1000") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -59,7 +59,7 @@ TEST_CASE("error — frame.update without claim returns 1000") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("error — state.save without claim returns 1000") {
+E2E_TEST(errors,"error — state.save without claim returns 1000") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -68,7 +68,7 @@ TEST_CASE("error — state.save without claim returns 1000") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("error — state.load without claim returns 1000") {
+E2E_TEST(errors,"error — state.load without claim returns 1000") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -77,7 +77,7 @@ TEST_CASE("error — state.load without claim returns 1000") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("error — error response has correct JSON-RPC shape") {
+E2E_TEST(errors,"error — error response has correct JSON-RPC shape") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -92,7 +92,7 @@ TEST_CASE("error — error response has correct JSON-RPC shape") {
   CHECK(!resp.contains("result"));
 }
 
-TEST_CASE("error — error response id matches request id") {
+E2E_TEST(errors,"error — error response id matches request id") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());

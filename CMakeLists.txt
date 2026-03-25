@@ -30,7 +30,7 @@ include(cmake/deps.cmake)
 target_sources(${PROJECT_NAME} PRIVATE ${DEPS_SOURCES})
 
 if(MSVC)
-  target_compile_options(${PROJECT_NAME} PRIVATE /W3 /wd4244 /wd4267 /wd4996 /wd4305 /Zc:__cplusplus /bigobj)
+  target_compile_options(${PROJECT_NAME} PRIVATE /W3 /wd4244 /wd4267 /wd4996 /wd4305 /Zc:__cplusplus /bigobj /Zm400)
   target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 else()
   target_compile_options(${PROJECT_NAME} PRIVATE -Wno-format-security -Wno-switch)

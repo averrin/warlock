@@ -5,6 +5,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			value = "Consumer",
 		},
 		consumption = {
@@ -17,6 +18,7 @@ return {
 				range = 0.1,
 				period = 650.0,
 			},
+			inspector = { precision = 1 },
 		},
 		temp_proof = {
 			title = "Temp Proof",

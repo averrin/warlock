@@ -19,6 +19,7 @@ using Random = effolkronium::random_static;
 #include <cereal/types/string.hpp>
 #include <cereal/types/variant.hpp>
 #include <cereal/types/vector.hpp>
+#include <nlohmann/json.hpp>
 
 // Define a variant type for the attribute that can be int, float, or string
 using AttributeValue = std::variant<int, float, std::string, bool>;
@@ -99,19 +100,21 @@ private:
 public:
   std::vector<std::shared_ptr<Modifier>> modifiers = {};
   AttributeEasing easing;
-  std::string target_filter;  // When non-empty, UI renders a component-select filtered by this component type string
-  // Constructor that accepts title, description, type, and base value
+  std::string target_filter;
+  nlohmann::json inspector_meta;
   Attribute(const std::string &t, const std::string &d, AttributeType at,
             AttributeValue base, AttributeEasing easing = AttributeEasing(),
-            const std::string &target_filter = "")
-      : title(t), description(d), type(at), baseValue(base), target_filter(target_filter) {
+            nlohmann::json inspector_meta = nlohmann::json())
+      : title(t), description(d), type(at), baseValue(base), target_filter(),
+        inspector_meta(std::move(inspector_meta)) {
     SetEasing(easing);
   }
 
   Attribute() {}
   Attribute(const Attribute &other)
       : title(other.title), description(other.description), type(other.type),
-        baseValue(other.baseValue), target_filter(other.target_filter) {
+        baseValue(other.baseValue), target_filter(other.target_filter),
+        inspector_meta(other.inspector_meta) {
     SetEasing(other.easing);
   }
 

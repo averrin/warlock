@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CELL,
+  frameHasCoreForDataConnections,
   groupMoveAvoidsWireIntersections,
   isGroupMoveValid,
   isHypotheticalFramePlacementValid,
@@ -194,5 +195,18 @@ describe("segmentForPairAndType", () => {
     expect(power).not.toBeNull();
     expect(data).not.toBeNull();
     expect(power!.y1).toBeCloseTo(data!.y1 - 10, 5);
+  });
+});
+
+describe("frameHasCoreForDataConnections", () => {
+  it("is true for Main Core by name or logical type Core", () => {
+    expect(frameHasCoreForDataConnections({ components: [{ name: "Main Core" }] })).toBe(true);
+    expect(frameHasCoreForDataConnections({ components: [{ name: "X", type: "Core" }] })).toBe(true);
+    expect(frameHasCoreForDataConnections({ components: [{ name: "Core" }] })).toBe(true);
+  });
+
+  it("is false without a core-like component", () => {
+    expect(frameHasCoreForDataConnections({ components: [{ name: "Miner" }] })).toBe(false);
+    expect(frameHasCoreForDataConnections({})).toBe(false);
   });
 });

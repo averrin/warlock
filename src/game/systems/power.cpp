@@ -5,7 +5,8 @@
 #include <game/state.hpp>
 #include <game/systems/power.hpp>
 #include <liblog/liblog.hpp>
-#include <ranges> // For ranges
+#include <ranges>
+#include <string_view>
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 #include <utils/graph.hpp>
@@ -254,11 +255,24 @@ void PowerSystem::fixedUpdate() {
     netInfo.history["consumption"] = ch;
     netInfo.history["total"] = th;
 
+    const auto attrs_has = [](const std::shared_ptr<Component> &comp,
+                              std::string_view key) {
+      return std::ranges::find_if(comp->data.attributes, [key](const auto &a) {
+               return a.first == key;
+             }) != comp->data.attributes.end();
+    };
+
     if (consumption > production + accumulated_available) {
       for (auto &f : frames) {
         for (auto &c : f.components) {
-          if (c->data.get_or<bool>("stable", false) ||
-              c->data.get_or<bool>("passive", false)) {
+          if (!c) {
+            continue;
+          }
+          if (c->data.get_or<bool>("passive", false)) {
+            continue;
+          }
+          if (c->data.get_or<bool>("stable", false) &&
+              !attrs_has(c, "consumption")) {
             continue;
           }
           auto prev = c->state;
@@ -271,6 +285,22 @@ void PowerSystem::fixedUpdate() {
               static_cast<int>(prev), static_cast<int>(c->state), c->error
             });
           }
+        }
+      }
+    } else {
+      for (auto &f : frames) {
+        for (auto &c : f.components) {
+          if (!c || c->data.get_or<bool>("passive", false)) {
+            continue;
+          }
+          if (!c->data.get_or<bool>("stable", false)) {
+            continue;
+          }
+          if (c->state != ComponentState::DEACTIVATED ||
+              c->error != "insufficient power") {
+            continue;
+          }
+          c->activate();
         }
       }
     }
@@ -336,19 +366,17 @@ NetworkPowerSnapshot compute_network_metrics(const std::vector<Frame>& frames) {
   return s;
 }
 
-} // namespace
-
-bool frame_network_can_afford_extra_consumption(entt::registry& registry, int frame_id, float extra) {
-  if (extra <= 1e-6f) return true;
+std::vector<int> power_net_for_frame(entt::registry &registry, int frame_id) {
   auto frames_view = registry.view<Frame>();
   auto conns = std::vector<Connection>{};
-  for (auto& c : registry.view<Connection>()) {
+  for (auto &c : registry.view<Connection>()) {
     auto conn = registry.get<Connection>(c);
-    if (conn.type != ConnectionType::POWER)
+    if (conn.type != ConnectionType::POWER) {
       continue;
+    }
     auto n = 0;
-    for (auto& f : frames_view) {
-      auto& frame = registry.get<Frame>(f);
+    for (auto f : frames_view) {
+      auto &frame = registry.get<Frame>(f);
       if (frame.data.id == conn.source || frame.data.id == conn.target) {
         if (conn.medium == ConnectionMedium::WIRELESS) {
           if (frame.hasComponentType("Power Wireless Emitter") ||
@@ -367,18 +395,47 @@ bool frame_network_can_afford_extra_consumption(entt::registry& registry, int fr
     }
   }
   auto nets = findUnconnectedNets(conns, {});
-  std::vector<int>* found_net = nullptr;
-  for (auto& net : nets) {
+  for (const auto &net : nets) {
     if (std::ranges::find(net, frame_id) != net.end()) {
-      found_net = &net;
-      break;
+      return net;
     }
   }
-  if (!found_net) return true;
+  return {};
+}
+
+} // namespace
+
+float component_peak_draw_when_activating(Component &c) {
+  if (c.data.get_or<bool>("passive", false)) {
+    return 0.f;
+  }
+  float extra = 0.f;
+  if (std::ranges::find_if(c.data.attributes, [](const auto &a) {
+        return a.first == "consumption";
+      }) != c.data.attributes.end()) {
+    extra += c.data.get<float>("consumption") * c.data.get_or<float>("load", 1.0f);
+  }
+  if (std::ranges::find_if(c.data.attributes, [](const auto &a) {
+        return a.first == "activation_consumption";
+      }) != c.data.attributes.end()) {
+    extra += c.data.get<float>("activation_consumption");
+  }
+  return extra;
+}
+
+bool frame_on_power_network(entt::registry &registry, int frame_id) {
+  return !power_net_for_frame(registry, frame_id).empty();
+}
+
+bool frame_network_can_afford_extra_consumption(entt::registry& registry, int frame_id, float extra) {
+  if (extra <= 1e-6f) return true;
+  const auto net = power_net_for_frame(registry, frame_id);
+  if (net.empty()) return true;
+  auto frames_view = registry.view<Frame>();
   auto frames = std::vector<Frame>{};
-  for (auto& f : frames_view) {
-    auto& frame = registry.get<Frame>(f);
-    if (std::ranges::find(*found_net, frame.data.id) != found_net->end()) {
+  for (auto f : frames_view) {
+    auto &frame = registry.get<Frame>(f);
+    if (std::ranges::find(net, frame.data.id) != net.end()) {
       frames.push_back(frame);
     }
   }

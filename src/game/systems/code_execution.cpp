@@ -45,7 +45,7 @@ void CodeExecutionSystem::installPrintOverride(sol::state& lua, int frame_id) {
 
 sol::state &CodeExecutionSystem::getState(int id) {
   if (states.find(id) == states.end()) {
-    fmt::print("Creating new state for frame {}\n", id);
+    // fmt::print("Creating new state for frame {}\n", id);
     states[id] = sol::state();
     states[id].open_libraries(sol::lib::base, sol::lib::package,
                               sol::lib::string, sol::lib::table, sol::lib::math,

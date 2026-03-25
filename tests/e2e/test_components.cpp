@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -22,7 +22,7 @@ static int find_frame_with_components(RpcClient& client) {
   return -1;
 }
 
-TEST_CASE("component — frame.get returns components array") {
+E2E_TEST(components,"component — frame.get returns components array") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -37,7 +37,7 @@ TEST_CASE("component — frame.get returns components array") {
   REQUIRE(frame["components"].is_array());
 }
 
-TEST_CASE("component — each component has required DTO fields") {
+E2E_TEST(components,"component — each component has required DTO fields") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -54,7 +54,7 @@ TEST_CASE("component — each component has required DTO fields") {
   }
 }
 
-TEST_CASE("component — state is a valid enum value") {
+E2E_TEST(components,"component — state is a valid enum value") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -77,7 +77,7 @@ TEST_CASE("component — state is a valid enum value") {
   }
 }
 
-TEST_CASE("component — attributes is an object") {
+E2E_TEST(components,"component — attributes is an object") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -94,7 +94,7 @@ TEST_CASE("component — attributes is an object") {
   }
 }
 
-TEST_CASE("component — size is valid enum value") {
+E2E_TEST(components,"component — size is valid enum value") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());

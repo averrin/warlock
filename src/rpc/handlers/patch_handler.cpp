@@ -5,14 +5,49 @@
 #include <game/systems/patch_generation.hpp>
 #include <game/game_manager.hpp>
 #include <game/state.hpp>
+#include <game/well_known_entities.hpp>
 #include <utils/entt.hpp>
 #include <utils/entt_draw.hpp>
+#include <utils/entt_tools.hpp>
 #include <algorithm>
 #include <fmt/core.h>
 #include <random>
 #include <vector>
 
 namespace rpc {
+
+namespace {
+
+void reparentOrphanPatches(entt::registry& reg, entt::entity folder) {
+  if (folder == entt::null || !reg.valid(folder)) return;
+  auto& folder_rel = reg.get_or_emplace<wl::relation>(folder);
+  for (auto e : reg.view<ResourcePatch>()) {
+    auto& rel = reg.get_or_emplace<wl::relation>(e);
+    if (rel.parent != entt::null) continue;
+    rel.parent = folder;
+    if (std::find(folder_rel.children.begin(), folder_rel.children.end(), e) == folder_rel.children.end()) {
+      folder_rel.children.push_back(e);
+    }
+  }
+}
+
+entt::entity ensurePatchesFolder(entt::registry& reg) {
+  auto& wk = entt::locator<WellKnownEntities>::value();
+  if (wk.patches_folder != entt::null && reg.valid(wk.patches_folder)) {
+    return wk.patches_folder;
+  }
+  for (auto e : reg.view<hf::meta>()) {
+    if (reg.get<hf::meta>(e).name == "Patches") {
+      wk.patches_folder = e;
+      return e;
+    }
+  }
+  wk.patches_folder = EnttTools::createEntityFromPrototype("FOLDER", reg, "Patches");
+  reparentOrphanPatches(reg, wk.patches_folder);
+  return wk.patches_folder;
+}
+
+} // namespace
 
 nlohmann::json serializePatch(entt::entity e, const ResourcePatch& patch, const hf::meta& meta) {
   nlohmann::json cells_arr = nlohmann::json::array();
@@ -216,6 +251,14 @@ void registerPatchHandlers(Server& server) {
     patch.cells = cells;
     patch.recalculateBounds();
     state.registry.emplace<ResourcePatch>(e, patch);
+
+    entt::entity folder = ensurePatchesFolder(state.registry);
+    auto& rel = state.registry.get_or_emplace<wl::relation>(e);
+    rel.parent = folder;
+    auto& prel = state.registry.get_or_emplace<wl::relation>(folder);
+    if (std::find(prel.children.begin(), prel.children.end(), e) == prel.children.end()) {
+      prel.children.push_back(e);
+    }
     
     nlohmann::json result = {{"id", static_cast<int>(e)}, {"status", "created"}};
     logWebAction(server, "patches.create", "ok", {{"type", type}, {"id", static_cast<int>(e)}});
@@ -240,7 +283,14 @@ void registerPatchHandlers(Server& server) {
     if (!state.registry.valid(e) || !state.registry.all_of<ResourcePatch>(e)) {
       throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Patch not found"};
     }
-    
+    if (state.registry.all_of<wl::relation>(e)) {
+      auto& rel = state.registry.get<wl::relation>(e);
+      if (rel.parent != entt::null && state.registry.valid(rel.parent) &&
+          state.registry.all_of<wl::relation>(rel.parent)) {
+        auto& pch = state.registry.get<wl::relation>(rel.parent).children;
+        pch.erase(std::remove(pch.begin(), pch.end(), e), pch.end());
+      }
+    }
     state.registry.destroy(e);
     nlohmann::json result = {{"status", "deleted"}};
     logWebAction(server, "patches.delete", "ok", {{"id", id}});

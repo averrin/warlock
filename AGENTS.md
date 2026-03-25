@@ -106,6 +106,11 @@ Files in `data/` (frame.proto, main.proto, extra.proto) are NOT Protocol Buffers
 ### WellKnownEntities — Two Population Sites
 `WellKnownEntities` (singleton entity handles for Environment, etc.) is populated in **both** `GameManager::loadData()` and `GameManager::start()`. Any new singleton entity must be found/created in both locations or it will be a null handle when loading from a save.
 
+### Blueprint Code `start()` Is Never Called on Game Load (FOOTGUN)
+When a game is loaded from save, Cores that were already `ACTIVE` never go through the ACTIVATING→ACTIVE transition. The `start()` function in blueprint code is published by `TweeningSystem` only when a Core's `time_switch` fires the transition — it does **not** run on load. Any Lua globals initialized in `start()` remain `nil`, causing arithmetic/nil errors on the first `update()` call and putting the Core into `COMP_ERROR`.
+
+**Rule**: Never put essential logic inside blueprint `start()` if it needs to survive a save/load cycle. Engine-level concerns (heartbeats, registration) belong in C++ (`game_manager.cpp`), not in Lua blueprints. `recompute_data_link_counterparts()` always runs unconditionally at the top of `CodeExecutionSystem::fixedUpdate()`, so data link counterparts are always valid even when Cores are in error states.
+
 ## System Registration Order
 
 Systems run in this order (defined in `GameManager::start()`). Order matters for data dependencies:

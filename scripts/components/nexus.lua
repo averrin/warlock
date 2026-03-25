@@ -5,6 +5,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			description = "",
 			type = AttributeType.STRING,
 			value = "Nexus",
@@ -25,6 +26,7 @@ return {
 				range = 0.05,
 				period = 1000.0,
 			},
+			inspector = { precision = 1 },
 		},
 		slots = {
 			title = "Slots",
@@ -38,25 +40,18 @@ return {
 			type = AttributeType.BOOL,
 			value = true,
 		},
-		target = {
-			title = "Target storage",
-			description = "Component id of storage that absorbs spendable items into the global pool",
-			type = AttributeType.INT,
-			value = -1,
-			target_filter = "Storage",
-		},
 		target_data = {
 			title = "Target data connector",
 			description = "Component id of data connector used for control zone heartbeat reception",
 			type = AttributeType.INT,
 			value = -1,
-			target_filter = "Data Connector",
+			inspector = { widget = "link", link_scope = "frame", link_filter = "Data Connector" },
 		},
 		control_radius = {
 			title = "Control Radius",
 			description = "Placement and visibility radius in grid cells",
 			type = AttributeType.INT,
-			value = 10,
+			value = 20,
 		},
 		alive_relays = {
 			title = "Alive Relays",

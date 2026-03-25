@@ -27,6 +27,7 @@ import {
   connectionWiringGeometryOk,
   edgeExitTowardPoint,
   frameCenterFromTopLeft,
+  frameHasCoreForDataConnections,
   isGroupMoveValid,
   isFrameInControlZone,
   isHypotheticalFramePlacementValid,
@@ -346,7 +347,7 @@ function frameMeetsConnectionRequirements(
   }
   if (type === "DATA" || type === "POE") {
     if ((frame.components ?? []).some((c) => c.name === "Data Relay")) return true;
-    return frameHasComponentByName(frame, "Core");
+    return frameHasCoreForDataConnections(frame);
   }
   return true;
 }

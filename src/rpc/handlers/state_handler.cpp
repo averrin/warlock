@@ -6,9 +6,14 @@
 #include <game/thermal_aoe.hpp>
 #include <game/well_known_entities.hpp>
 #include <game/systems/power.hpp>
+#include <game/components/frame.hpp>
 #include <game/components/resource_patch.hpp>
 #include <game/patch_loader.hpp>
 
+#include <magic_enum.hpp>
+#include <fmt/format.h>
+
+#include <algorithm>
 #include <mutex>
 #include <vector>
 
@@ -93,6 +98,135 @@ nlohmann::json serializePowerNetworks() {
   }
 
   return networks;
+}
+
+void removeEntityFromParentChildren(entt::registry& reg, entt::entity ent) {
+  if (!reg.all_of<wl::relation>(ent)) return;
+  auto& rel = reg.get<wl::relation>(ent);
+  if (rel.parent == entt::null || !reg.valid(rel.parent) || !reg.all_of<wl::relation>(rel.parent)) return;
+  auto& pch = reg.get<wl::relation>(rel.parent).children;
+  pch.erase(std::remove(pch.begin(), pch.end(), ent), pch.end());
+}
+
+bool isProtectedWellKnown(entt::entity ent, const WellKnownEntities& wk) {
+  return ent == wk.environment || ent == wk.frames_folder || ent == wk.connections_folder ||
+         ent == wk.patches_folder;
+}
+
+void emplaceComponentByName(entt::registry& reg, entt::entity ent, const std::string& name) {
+  if (name == "meta") {
+    if (!reg.all_of<hf::meta>(ent)) reg.emplace<hf::meta>(ent);
+    return;
+  }
+  if (name == "ineditor") {
+    if (!reg.all_of<hf::ineditor>(ent)) reg.emplace<hf::ineditor>(ent);
+    return;
+  }
+  if (name == "tags") {
+    if (!reg.all_of<hf::tags>(ent)) reg.emplace<hf::tags>(ent);
+    return;
+  }
+  if (name == "player") {
+    if (!reg.all_of<hf::player>(ent)) reg.emplace<hf::player>(ent);
+    return;
+  }
+  if (name == "obstacle") {
+    if (!reg.all_of<hf::obstacle>(ent)) reg.emplace<hf::obstacle>(ent);
+    return;
+  }
+  if (name == "creature") {
+    if (!reg.all_of<hf::creature>(ent)) reg.emplace<hf::creature>(ent);
+    return;
+  }
+  if (name == "script") {
+    if (!reg.all_of<hf::script>(ent)) reg.emplace<hf::script>(ent);
+    return;
+  }
+  if (name == "Frame") {
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Use frame APIs for Frame"};
+  }
+  if (name == "Connection") {
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Use connection APIs for Connection"};
+  }
+  if (name == "Environment") {
+    if (!reg.all_of<Environment>(ent)) reg.emplace<Environment>(ent);
+    return;
+  }
+  if (name == "transform") {
+    if (!reg.all_of<wl::transform>(ent)) reg.emplace<wl::transform>(ent);
+    return;
+  }
+  if (name == "relation") {
+    if (!reg.all_of<wl::relation>(ent)) reg.emplace<wl::relation>(ent);
+    return;
+  }
+  if (name == "ResourcePatch") {
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Use patch APIs for ResourcePatch"};
+  }
+  if (name == "proto") {
+    if (!reg.all_of<entt::tag<"proto"_hs>>(ent)) reg.emplace<entt::tag<"proto"_hs>>(ent);
+    return;
+  }
+  throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown component: " + name};
+}
+
+void removeComponentByName(entt::registry& reg, entt::entity ent, const std::string& name) {
+  if (name == "Frame" || name == "Connection" || name == "ResourcePatch") {
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Use dedicated APIs to remove " + name};
+  }
+  if (name == "Environment") {
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Cannot remove Environment component"};
+  }
+  if (name == "relation") {
+    if (!reg.all_of<wl::relation>(ent)) return;
+    auto rel_copy = reg.get<wl::relation>(ent);
+    removeEntityFromParentChildren(reg, ent);
+    for (auto c : rel_copy.children) {
+      if (reg.valid(c) && reg.all_of<wl::relation>(c)) {
+        auto& cr = reg.get<wl::relation>(c);
+        if (cr.parent == ent) cr.parent = entt::null;
+      }
+    }
+    reg.remove<wl::relation>(ent);
+    return;
+  }
+  if (name == "meta" && reg.all_of<hf::meta>(ent)) {
+    reg.remove<hf::meta>(ent);
+    return;
+  }
+  if (name == "ineditor" && reg.all_of<hf::ineditor>(ent)) {
+    reg.remove<hf::ineditor>(ent);
+    return;
+  }
+  if (name == "tags" && reg.all_of<hf::tags>(ent)) {
+    reg.remove<hf::tags>(ent);
+    return;
+  }
+  if (name == "player" && reg.all_of<hf::player>(ent)) {
+    reg.remove<hf::player>(ent);
+    return;
+  }
+  if (name == "obstacle" && reg.all_of<hf::obstacle>(ent)) {
+    reg.remove<hf::obstacle>(ent);
+    return;
+  }
+  if (name == "creature" && reg.all_of<hf::creature>(ent)) {
+    reg.remove<hf::creature>(ent);
+    return;
+  }
+  if (name == "script" && reg.all_of<hf::script>(ent)) {
+    reg.remove<hf::script>(ent);
+    return;
+  }
+  if (name == "transform" && reg.all_of<wl::transform>(ent)) {
+    reg.remove<wl::transform>(ent);
+    return;
+  }
+  if (name == "proto" && reg.all_of<entt::tag<"proto"_hs>>(ent)) {
+    reg.remove<entt::tag<"proto"_hs>>(ent);
+    return;
+  }
+  throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Component not present or unknown: " + name};
 }
 
 } // namespace
@@ -303,8 +437,8 @@ void registerStateHandlers(Server& server) {
 
     // Collect all alive entities
     nlohmann::json entities = nlohmann::json::array();
-    for (auto entity : registry.storage<entt::entity>()->each()) {
-      auto ent = std::get<0>(entity);
+    for (auto tup : registry.storage<entt::entity>().each()) {
+      auto ent = std::get<0>(tup);
       if (!registry.valid(ent)) continue;
 
       nlohmann::json ent_json;
@@ -498,6 +632,114 @@ void registerStateHandlers(Server& server) {
       throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown component or entity does not have it"};
     }
 
+    return {{"ok", true}};
+  });
+
+  // entities.create — { name?: string, parent_entity_id?: int }
+  server.router().on("entities.create", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    std::string name = params.value("name", std::string("Entity"));
+    int parent_raw = params.value("parent_entity_id", -1);
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto& registry = state.registry;
+
+    auto ent = registry.create();
+    hf::meta meta;
+    meta.name = name;
+    meta.id = fmt::format("ENT-{}", static_cast<int>(ent));
+    registry.emplace<hf::meta>(ent, meta);
+    registry.emplace<wl::relation>(ent);
+
+    if (parent_raw >= 0) {
+      auto parent_e = static_cast<entt::entity>(parent_raw);
+      if (registry.valid(parent_e)) {
+        auto& rel = registry.get<wl::relation>(ent);
+        rel.parent = parent_e;
+        auto& prel = registry.get_or_emplace<wl::relation>(parent_e);
+        prel.children.push_back(ent);
+      }
+    }
+
+    logWebAction(server, "entities.create", "ok", {{"entity_id", static_cast<int>(ent)}});
+    return {{"entity_id", static_cast<int>(ent)}};
+  });
+
+  // entities.destroy — { entity_id: int }
+  server.router().on("entities.destroy", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    int eid = params.at("entity_id").get<int>();
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto& registry = state.registry;
+    auto ent = static_cast<entt::entity>(eid);
+    if (!registry.valid(ent)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Invalid entity"};
+    }
+    auto& wk = entt::locator<WellKnownEntities>::value();
+    if (isProtectedWellKnown(ent, wk)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Cannot destroy well-known entity"};
+    }
+    if (registry.all_of<wl::relation>(ent) && !registry.get<wl::relation>(ent).children.empty()) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Entity still has children"};
+    }
+    removeEntityFromParentChildren(registry, ent);
+    registry.destroy(ent);
+    logWebAction(server, "entities.destroy", "ok", {{"entity_id", eid}});
+    return {{"ok", true}};
+  });
+
+  // entities.component.add — { entity_id: int, component: string }
+  server.router().on("entities.component.add", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    int eid = params.at("entity_id").get<int>();
+    std::string comp = params.at("component").get<std::string>();
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto& registry = state.registry;
+    auto ent = static_cast<entt::entity>(eid);
+    if (!registry.valid(ent)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Invalid entity"};
+    }
+    emplaceComponentByName(registry, ent, comp);
+    logWebAction(server, "entities.component.add", "ok", {{"entity_id", eid}, {"component", comp}});
+    return {{"ok", true}};
+  });
+
+  // entities.component.remove — { entity_id: int, component: string }
+  server.router().on("entities.component.remove", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) {
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    }
+    int eid = params.at("entity_id").get<int>();
+    std::string comp = params.at("component").get<std::string>();
+
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto& registry = state.registry;
+    auto ent = static_cast<entt::entity>(eid);
+    if (!registry.valid(ent)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Invalid entity"};
+    }
+    removeComponentByName(registry, ent, comp);
+    logWebAction(server, "entities.component.remove", "ok", {{"entity_id", eid}, {"component", comp}});
     return {{"ok", true}};
   });
 

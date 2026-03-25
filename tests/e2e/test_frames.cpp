@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -15,7 +15,7 @@ using namespace std::chrono_literals;
 
 // ─── §3 Frame management ──────────────────────────────────────────────────────
 
-TEST_CASE("frame.list — returns array of frames") {
+E2E_TEST(frames,"frame.list — returns array of frames") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -27,7 +27,7 @@ TEST_CASE("frame.list — returns array of frames") {
   CHECK(result["frames"].size() >= 1);
 }
 
-TEST_CASE("frame.list — each summary has required fields") {
+E2E_TEST(frames,"frame.list — each summary has required fields") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -44,7 +44,7 @@ TEST_CASE("frame.list — each summary has required fields") {
   }
 }
 
-TEST_CASE("frame.get — returns full frame DTO") {
+E2E_TEST(frames,"frame.get — returns full frame DTO") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -57,7 +57,7 @@ TEST_CASE("frame.get — returns full frame DTO") {
   assert_frame_dto(frame);
 }
 
-TEST_CASE("frame.get — components have required fields") {
+E2E_TEST(frames,"frame.get — components have required fields") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -81,7 +81,7 @@ TEST_CASE("frame.get — components have required fields") {
   SUCCEED("No frames with components found — skipping component field check");
 }
 
-TEST_CASE("frame.get — returns error 1002 for unknown entity") {
+E2E_TEST(frames,"frame.get — returns error 1002 for unknown entity") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -93,7 +93,7 @@ TEST_CASE("frame.get — returns error 1002 for unknown entity") {
   CHECK(resp["error"]["code"].get<int>() != 0);
 }
 
-TEST_CASE("frame.create — requires session claim") {
+E2E_TEST(frames,"frame.create — requires session claim") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -102,7 +102,7 @@ TEST_CASE("frame.create — requires session claim") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("frame.create — queues frame creation") {
+E2E_TEST(frames,"frame.create — queues frame creation") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -129,7 +129,7 @@ TEST_CASE("frame.create — queues frame creation") {
   CHECK(found);
 }
 
-TEST_CASE("frame.update — requires session claim") {
+E2E_TEST(frames,"frame.update — requires session claim") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -145,7 +145,7 @@ TEST_CASE("frame.update — requires session claim") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("frame.update — updates frame name") {
+E2E_TEST(frames,"frame.update — updates frame name") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -171,7 +171,7 @@ TEST_CASE("frame.update — updates frame name") {
   CHECK(frame["name"].get<std::string>() == "RenamedFrame");
 }
 
-TEST_CASE("state.snapshot — frames include canvas_badges") {
+E2E_TEST(frames,"state.snapshot — frames include canvas_badges") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -205,7 +205,7 @@ TEST_CASE("state.snapshot — frames include canvas_badges") {
   }
 }
 
-TEST_CASE("state.snapshot — new empty frame has health ok and no error") {
+E2E_TEST(frames,"state.snapshot — new empty frame has health ok and no error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -229,7 +229,7 @@ TEST_CASE("state.snapshot — new empty frame has health ok and no error") {
   FAIL("BadgeTestFrame not found in snapshot");
 }
 
-TEST_CASE("state.snapshot — component storage includes summary fields") {
+E2E_TEST(frames,"state.snapshot — component storage includes summary fields") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -323,7 +323,7 @@ TEST_CASE("state.snapshot — component storage includes summary fields") {
   FAIL("Target frame with storage component not found in snapshot");
 }
 
-TEST_CASE("frame.get — full frame also includes canvas_badges") {
+E2E_TEST(frames,"frame.get — full frame also includes canvas_badges") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -340,7 +340,7 @@ TEST_CASE("frame.get — full frame also includes canvas_badges") {
   REQUIRE(badges.contains("has_error"));
 }
 
-TEST_CASE("frame.list — game_init frames plus created ones") {
+E2E_TEST(frames,"frame.list — game_init frames plus created ones") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());

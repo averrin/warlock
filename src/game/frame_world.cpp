@@ -75,7 +75,7 @@ constexpr float kMoveBaseSec = 0.35f;
 void breakPropulsionOnBlocked(Frame& frame) {
   for (auto& comp : frame.components) {
     if (!comp) continue;
-    if (comp->data.get_or<std::string>("type", "") != "Propulsion") continue;
+    if (!comp->data.has("move_consumption")) continue;
     if (comp->state == ComponentState::BROKEN) return;
     const auto prev = comp->state;
     comp->state = ComponentState::BROKEN;

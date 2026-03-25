@@ -22,10 +22,12 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <fmt/ranges.h>
 #include <sstream>
 #include <iomanip>
+#include <game/attributes.hpp>
 #include <game/components/frame.hpp>
 #include <game/systems/environment.hpp>
 #include <game/systems/items.hpp>
 #include <game/systems/power.hpp>
+#include <game/data_link.hpp>
 #include <game/systems/thermal.hpp>
 #include <game/systems/tweening.hpp>
 #include <game/systems/wireless_connection.hpp>
@@ -188,6 +190,305 @@ void mergeLegacySpendablesJsonInto(std::map<std::string, int64_t> &pool) {
   }
 }
 
+static constexpr const char kControlRelayNexusErr[] =
+    "Not registered with Nexus (control heartbeat not acknowledged)";
+
+static std::unordered_map<int, std::chrono::steady_clock::time_point>
+    g_control_relay_nexus_pending;
+static std::unordered_map<int, std::chrono::steady_clock::time_point>
+    g_relay_hb_sent;
+static std::unordered_map<int, std::chrono::steady_clock::time_point>
+    g_relay_hb_recv;
+static constexpr auto kRelayHeartbeatTimeout = std::chrono::seconds(10);
+
+static std::unordered_set<int>
+collect_nexus_registered_relay_frame_ids() {
+  const auto now = std::chrono::steady_clock::now();
+  std::unordered_set<int> out;
+  for (auto &[fid, last] : g_relay_hb_recv) {
+    if (now - last < kRelayHeartbeatTimeout)
+      out.insert(fid);
+  }
+  return out;
+}
+
+static bool control_relay_participates(ComponentState s) {
+  return s == ComponentState::ACTIVE || s == ComponentState::ACTIVATING ||
+         s == ComponentState::COMP_ERROR;
+}
+
+static int control_relay_target_connector_id(const Component &relay) {
+  auto it = relay.data.attributes.find("target");
+  if (it == relay.data.attributes.end() || !it->second)
+    return -1;
+  if (it->second->GetType() != AttributeType::INT)
+    return -1;
+  return std::get<int>(it->second->GetFinalValue());
+}
+
+static std::shared_ptr<Component>
+find_data_connector_for_control_relay(const Frame &fr, const Component &relay) {
+  const int tid = control_relay_target_connector_id(relay);
+  if (tid >= 0) {
+    for (auto &c : fr.components) {
+      if (!c || c->data.id != tid)
+        continue;
+      if (c->data.get_or<std::string>("type", "") == "Data Connector")
+        return c;
+    }
+    return nullptr;
+  }
+  for (auto &c : fr.components) {
+    if (!c)
+      continue;
+    if (c->data.get_or<std::string>("type", "") == "Data Connector")
+      return c;
+  }
+  return nullptr;
+}
+
+static void ensure_control_relay_link_status_attr(Component &relay) {
+  auto &m = relay.data.attributes;
+  if (auto it = m.find("link_status"); it != m.end() && it->second)
+    return;
+  nlohmann::json ins = nlohmann::json::object();
+  ins["readonly"] = true;
+  m["link_status"] = std::make_shared<Attribute>(
+      "Nexus link",
+      "Data wire path and Nexus heartbeat registration (engine-maintained).",
+      AttributeType::STRING, std::string("-"), AttributeEasing{},
+      std::move(ins));
+}
+
+static void set_control_relay_link_status(Component &relay, const std::string &v) {
+  ensure_control_relay_link_status_attr(relay);
+  relay.data.attributes["link_status"]->SetBaseValue(v);
+}
+
+static std::string compute_control_relay_link_status(
+    const Frame &fr, const Component &relay,
+    const std::unordered_set<int> &registered,
+    const std::unordered_map<int, std::chrono::steady_clock::time_point> &pending,
+    std::chrono::steady_clock::time_point now,
+    std::chrono::seconds grace) {
+  if (!control_relay_participates(relay.state))
+    return "Inactive";
+  const auto dc = find_data_connector_for_control_relay(fr, relay);
+  if (control_relay_target_connector_id(relay) >= 0 && !dc)
+    return "Target link invalid";
+  if (!dc)
+    return "No data connector";
+  if (dc->counterpart_id < 0)
+    return "Data wire not connected";
+  const int fid = fr.data.id;
+  if (registered.find(fid) != registered.end())
+    return "Registered with Nexus";
+  auto pit = pending.find(fid);
+  if (pit == pending.end() || now - pit->second < grace)
+    return "Heartbeat sent, awaiting Nexus";
+  return "No acknowledgement from Nexus (timeout)";
+}
+
+static bool frame_has_active_control_relay(entt::registry &registry, int frame_id) {
+  for (auto e : registry.view<Frame>()) {
+    auto &fr = registry.get<Frame>(e);
+    if (fr.data.id != frame_id)
+      continue;
+    for (auto &c : fr.components) {
+      if (!c)
+        continue;
+      if (c->data.get_or<std::string>("type", "") != "Control Relay")
+        continue;
+      if (c->state == ComponentState::ACTIVE)
+        return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+static void process_relay_heartbeats(entt::registry &registry) {
+  const auto now = std::chrono::steady_clock::now();
+
+  for (auto it = g_relay_hb_recv.begin(); it != g_relay_hb_recv.end();) {
+    if (now - it->second >= kRelayHeartbeatTimeout ||
+        !frame_has_active_control_relay(registry, it->first))
+      it = g_relay_hb_recv.erase(it);
+    else
+      ++it;
+  }
+
+  for (auto e : registry.view<Frame>()) {
+    auto &fr = registry.get<Frame>(e);
+    for (auto &comp : fr.components) {
+      if (!comp) continue;
+      if (comp->data.get_or<std::string>("type", "") != "Control Relay")
+        continue;
+      if (!control_relay_participates(comp->state)) continue;
+
+      int interval_ticks = 60;
+      if (auto it = comp->data.attributes.find("heartbeat_interval");
+          it != comp->data.attributes.end() && it->second &&
+          it->second->GetType() == AttributeType::INT) {
+        interval_ticks = std::get<int>(it->second->GetFinalValue());
+      }
+      auto interval = std::chrono::milliseconds(interval_ticks * 50);
+
+      auto &last_sent = g_relay_hb_sent[fr.data.id];
+      if (last_sent.time_since_epoch().count() != 0 && now - last_sent < interval) continue;
+      last_sent = now;
+
+      auto dc = find_data_connector_for_control_relay(fr, *comp);
+      if (!dc || dc->counterpart_id < 0) continue;
+
+      DataPacket pkt;
+      pkt.source = fr.data.id;
+      pkt.destination = -1;
+      pkt.headers["hb"] = "CONTROL_HEARTBEAT";
+      pkt.body = std::to_string(fr.data.id);
+      data_link_send_packet(dc, std::move(pkt));
+    }
+  }
+
+  for (auto e : registry.view<Frame>()) {
+    auto &fr = registry.get<Frame>(e);
+    for (auto &comp : fr.components) {
+      if (!comp) continue;
+      if (comp->data.get_or<std::string>("type", "") != "Nexus") continue;
+      if (comp->state != ComponentState::ACTIVE) {
+        auto &m = comp->data.attributes;
+        if (auto it = m.find("alive_relays"); it != m.end() && it->second)
+          it->second->SetBaseValue(std::string{});
+        continue;
+      }
+
+      std::shared_ptr<Component> dc;
+      if (auto it = comp->data.attributes.find("target_data");
+          it != comp->data.attributes.end() && it->second &&
+          it->second->GetType() == AttributeType::INT) {
+        int tid = std::get<int>(it->second->GetFinalValue());
+        if (tid >= 0) dc = find_component_by_id(tid);
+      }
+      if (!dc) {
+        for (auto &c : fr.components) {
+          if (c && c->data.get_or<std::string>("type", "") == "Data Connector") {
+            dc = c;
+            break;
+          }
+        }
+      }
+      if (!dc) continue;
+
+      constexpr int kDrainCap = 64;
+      int n = 0;
+      while (n++ < kDrainCap && !dc->data_packet_inbox.empty()) {
+        auto pkt = std::move(dc->data_packet_inbox.front());
+        dc->data_packet_inbox.pop_front();
+        auto it = pkt.headers.find("hb");
+        if (it == pkt.headers.end() || it->second != "CONTROL_HEARTBEAT") continue;
+        int relay_fid = 0;
+        try { relay_fid = std::stoi(pkt.body); } catch (...) { continue; }
+        if (relay_fid > 0) g_relay_hb_recv[relay_fid] = now;
+      }
+
+      std::vector<std::string> ids;
+      ids.reserve(g_relay_hb_recv.size());
+      for (auto &[fid, last] : g_relay_hb_recv) {
+        (void)last;
+        ids.push_back(std::to_string(fid));
+      }
+      auto &m = comp->data.attributes;
+      if (auto it = m.find("alive_relays"); it != m.end() && it->second) {
+        it->second->SetBaseValue(ids.empty() ? std::string{} : fmt::format("{}", fmt::join(ids, ",")));
+      }
+    }
+  }
+}
+
+static void enforce_control_relay_nexus_registration(
+    entt::registry &registry, event_emitter &emitter,
+    std::unordered_map<int, std::chrono::steady_clock::time_point> &pending) {
+  const auto registered = collect_nexus_registered_relay_frame_ids();
+  const auto now = std::chrono::steady_clock::now();
+  const auto grace = std::chrono::seconds(4);
+
+  std::unordered_set<int> participating_frames;
+  for (auto e : registry.view<Frame>()) {
+    auto &fr = registry.get<Frame>(e);
+    for (auto &comp : fr.components) {
+      if (!comp)
+        continue;
+      if (!comp->data.has("control_radius") || comp->data.has("alive_relays"))
+        continue;
+      if (control_relay_participates(comp->state))
+        participating_frames.insert(fr.data.id);
+    }
+  }
+
+  for (auto it = pending.begin(); it != pending.end();) {
+    if (participating_frames.find(it->first) == participating_frames.end())
+      it = pending.erase(it);
+    else
+      ++it;
+  }
+
+  for (auto e : registry.view<Frame>()) {
+    auto &fr = registry.get<Frame>(e);
+    for (auto &comp : fr.components) {
+      if (!comp)
+        continue;
+      if (!comp->data.has("control_radius") || comp->data.has("alive_relays"))
+        continue;
+
+      set_control_relay_link_status(
+          *comp, compute_control_relay_link_status(fr, *comp, registered, pending,
+                                                    now, grace));
+
+      if (!control_relay_participates(comp->state))
+        continue;
+
+      const int fid = fr.data.id;
+      if (registered.find(fid) != registered.end()) {
+        pending.erase(fid);
+        if (comp->state == ComponentState::COMP_ERROR &&
+            comp->error == kControlRelayNexusErr) {
+          auto prev = comp->state;
+          comp->state = ComponentState::ACTIVE;
+          comp->error.clear();
+          emitter.publish(component_state_changed{
+              comp->frame_id,
+              comp->data.id,
+              comp->data.name,
+              static_cast<int>(prev),
+              static_cast<int>(comp->state),
+              comp->error});
+        }
+        continue;
+      }
+
+      auto pit = pending.find(fid);
+      if (pit == pending.end())
+        pit = pending.emplace(fid, now).first;
+      if (now - pit->second < grace)
+        continue;
+
+      if (comp->state != ComponentState::COMP_ERROR ||
+          comp->error != kControlRelayNexusErr) {
+        auto prev = comp->state;
+        comp->state = ComponentState::COMP_ERROR;
+        comp->error = kControlRelayNexusErr;
+        emitter.publish(component_state_changed{
+            comp->frame_id,
+            comp->data.id,
+            comp->data.name,
+            static_cast<int>(prev),
+            static_cast<int>(comp->state),
+            comp->error});
+      }
+    }
+  }
+}
+
 } // namespace
 
 GameManager::GameManager() {
@@ -267,10 +568,8 @@ void GameManager::loadData() {
       try {
         fs::path bak = state_path;
         bak += ".corrupt";
-        for (int n = 0; fs::exists(bak) && n < 100; ++n) {
-          bak = state_path;
-          bak += fmt::format(".corrupt.{}", n);
-        }
+        if (fs::exists(bak))
+          fs::remove(bak);
         fs::rename(state_path, bak);
         log.warn("Renamed broken save to {}", bak.string());
       } catch (const std::exception &e) {
@@ -308,6 +607,7 @@ void GameManager::loadData() {
     auto &meta = current_state.registry.get<hf::meta>(e);
     if (meta.name == "Frames") wk.frames_folder = e;
     if (meta.name == "Connections") wk.connections_folder = e;
+    if (meta.name == "Patches") wk.patches_folder = e;
   }
   entt::locator<WellKnownEntities>::emplace(wk);
 
@@ -317,6 +617,11 @@ void GameManager::loadData() {
   if (exec) {
     exec->invalidateAllScripts();
   }
+
+  g_control_relay_nexus_pending.clear();
+  g_relay_hb_sent.clear();
+  g_relay_hb_recv.clear();
+  rpc::reset_control_zones_update_cache();
 
   started = true;
 
@@ -508,7 +813,8 @@ entt::entity GameManager::addFrame(std::string name) {
   frame.data.name = name;
 
   Attribute temp("Temperature", "Total frame temperature in Celsius",
-                 AttributeType::FLOAT, -1000.0f);
+                 AttributeType::FLOAT, -1000.0f, AttributeEasing(),
+                 nlohmann::json{{"precision", 1}});
   frame.data.attributes["temp"] = std::make_shared<Attribute>(temp);
 
   current_state.registry.emplace_or_replace<Frame>(e, frame);
@@ -590,6 +896,7 @@ void GameManager::start() {
       auto &meta = current_state.registry.get<hf::meta>(e);
       if (meta.name == "Frames") wk.frames_folder = e;
       if (meta.name == "Connections") wk.connections_folder = e;
+      if (meta.name == "Patches") wk.patches_folder = e;
     }
     entt::locator<WellKnownEntities>::emplace(wk);
     log.setAsync(false);
@@ -604,6 +911,8 @@ void GameManager::start() {
                                        "Frames");
   wk.connections_folder = EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
                                        "Connections");
+  wk.patches_folder = EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
+                                       "Patches");
   entt::locator<WellKnownEntities>::emplace(wk);
   lua.load_file((PATH / "scripts/game_init.lua").string()).call();
 
@@ -644,6 +953,8 @@ void GameManager::serve() {
   }
 
   tick_count_++;
+  nlohmann::json push_control_zones;
+  bool do_push_control_zones = false;
   if (!paused_) {
     updateMutex.lock();
 
@@ -712,7 +1023,32 @@ void GameManager::serve() {
       }
     }
     lastUpdate = hr_clock::now();
+
+    {
+      auto &emitter = entt::locator<event_emitter>::value();
+      process_relay_heartbeats(current_state.registry);
+      enforce_control_relay_nexus_registration(
+          current_state.registry, emitter, g_control_relay_nexus_pending);
+    }
+
+    if (entt::locator<rpc::Server>::has_value()) {
+      auto &rpcServer = entt::locator<rpc::Server>::value();
+      if (rpcServer.clientCount() > 0 &&
+          rpc::take_control_zones_if_changed(current_state.registry,
+                                              &push_control_zones)) {
+        do_push_control_zones = true;
+      }
+    }
+
     updateMutex.unlock();
+  }
+
+  if (do_push_control_zones && entt::locator<rpc::Server>::has_value()) {
+    auto &rpcServer = entt::locator<rpc::Server>::value();
+    if (rpcServer.clientCount() > 0) {
+      rpcServer.broadcast("event.state_update",
+                          {{"control_zones", push_control_zones}});
+    }
   }
 
   // Broadcast state (including storage) to all connected clients
@@ -738,11 +1074,13 @@ void GameManager::serve() {
           connections.push_back(rpc::serializeConnection(entity, conn, items.get()));
         }
 
+        nlohmann::json control_zones = rpc::computeControlZones(registry);
+        rpc::remember_control_zones_json(control_zones);
         rpcServer.broadcast("event.state_update", {
           {"tick", tick_count_},
           {"frames", frames},
           {"connections", connections},
-          {"control_zones", rpc::computeControlZones(registry)}
+          {"control_zones", std::move(control_zones)}
         });
         last_state_push_ = now;
       }

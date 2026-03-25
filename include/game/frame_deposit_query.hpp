@@ -73,3 +73,26 @@ inline std::unordered_set<std::string> depositItemsUnderFrame(entt::registry& re
   }
   return out;
 }
+
+inline int depositOverlapCellCountUnderFrame(entt::registry& reg, entt::entity frame_e,
+                                             const Frame& frame) {
+  if (!reg.valid(frame_e) || !reg.all_of<wl::transform>(frame_e)) {
+    return 0;
+  }
+  const auto& tr = reg.get<wl::transform>(frame_e);
+  const auto cells = frameOccupiedGridCells(tr, frame.size);
+  int n = 0;
+  for (const auto& cell : cells) {
+    for (auto pe : reg.view<ResourcePatch>()) {
+      const auto& patch = reg.get<ResourcePatch>(pe);
+      if (patch.obstacle || patch.item_name.empty()) {
+        continue;
+      }
+      if (patch.containsCell(cell.first, cell.second)) {
+        ++n;
+        break;
+      }
+    }
+  }
+  return n;
+}

@@ -6,6 +6,7 @@
 #include <game/components/items.hpp>
 #include <game/frame_deposit_query.hpp>
 #include <game/game_manager.hpp>
+#include <game/systems/power.hpp>
 #include <game/lua_completion.hpp>
 #include <game/spendable.hpp>
 #include <game/state.hpp>
@@ -116,7 +117,15 @@ void registerComponentHandlers(Server& server) {
     auto& frame = registry.get<Frame>(frame_entity);
     for (auto& comp : frame.components) {
       if (comp && comp->data.id == component_id) {
-        comp->activate();
+        const float peak = component_peak_draw_when_activating(*comp);
+        if (peak > 1e-6f &&
+            (!frame_on_power_network(registry, frame_data_id) ||
+             !frame_network_can_afford_extra_consumption(registry, frame_data_id, peak))) {
+          throw rpc::RpcError{rpc::error::INVALID_PARAMS, "insufficient power"};
+        }
+        if (!comp->activate()) {
+          throw rpc::RpcError{rpc::error::INVALID_PARAMS, "cannot activate component"};
+        }
         nlohmann::json result = {{"ok", true}};
         logWebAction(server, "component.activate", "ok", {{"frame_id", frame_data_id}, {"component_id", component_id}});
         return result;

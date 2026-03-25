@@ -28,7 +28,7 @@ init:
 [no-cd]
 build target=bin_name:
   {{ if os_family() == "windows" { \
-    "cmake --build ./" + build_dir + " --target " + target + " --config Debug" \
+    "cmake --build ./" + build_dir + " --target " + target + " --config Debug --parallel 2" \
   } else { \
     "cmake --build ./" + build_dir + " --target " + target + " -j$(nproc 2>/dev/null || echo 4)" \
   } }}
@@ -63,13 +63,39 @@ test-serial: (build "warlock_serial")
     "./" + build_dir + "/tests/warlock_serial --reporter console" \
   } }}
 
-# Run E2E tests (boots headless engine + WebSocket)
+# Run E2E tests (boots headless engine + WebSocket). Optional args forwarded to Catch2 (e.g. "[items]" or a test name substring).
+# Batches (tags): session errors frames components connections code environment events concurrency regression items lua state_editor web
+# Examples: just test-e2e-batch items   |   just test-e2e -- "[lua]"
 [no-cd]
-test-e2e: (build "warlock_e2e")
+test-e2e *args: (build "warlock_e2e")
   {{ if os_family() == "windows" { \
-    "./" + build_dir + "/tests/Debug/warlock_e2e.exe --reporter console" \
+    "./" + build_dir + "/tests/Debug/warlock_e2e.exe --reporter console " + args \
   } else { \
-    "./" + build_dir + "/tests/warlock_e2e --reporter console" \
+    "./" + build_dir + "/tests/warlock_e2e --reporter console " + args \
+  } }}
+
+[no-cd]
+test-e2e-batch batch: (build "warlock_e2e")
+  {{ if os_family() == "windows" { \
+    "./" + build_dir + "/tests/Debug/warlock_e2e.exe --reporter console '" + "[" + batch + "]" + "'" \
+  } else { \
+    "./" + build_dir + "/tests/warlock_e2e --reporter console '" + "[" + batch + "]" + "'" \
+  } }}
+
+[no-cd]
+test-e2e-list: (build "warlock_e2e")
+  {{ if os_family() == "windows" { \
+    "./" + build_dir + "/tests/Debug/warlock_e2e.exe --list-tests" \
+  } else { \
+    "./" + build_dir + "/tests/warlock_e2e --list-tests" \
+  } }}
+
+[no-cd]
+test-e2e-tags: (build "warlock_e2e")
+  {{ if os_family() == "windows" { \
+    "./" + build_dir + "/tests/Debug/warlock_e2e.exe --list-tags" \
+  } else { \
+    "./" + build_dir + "/tests/warlock_e2e --list-tags" \
   } }}
 
 # Run all C++ tests

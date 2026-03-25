@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 
 // ─── §2 Session management ────────────────────────────────────────────────────
 
-TEST_CASE("session.info — returns correct shape before claim") {
+E2E_TEST(session,"session.info — returns correct shape before claim") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -25,7 +25,7 @@ TEST_CASE("session.info — returns correct shape before claim") {
   CHECK(result["uptime_ms"].get<int64_t>() >= 0);
 }
 
-TEST_CASE("session.claim — succeeds for first caller") {
+E2E_TEST(session,"session.claim — succeeds for first caller") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -34,7 +34,7 @@ TEST_CASE("session.claim — succeeds for first caller") {
   CHECK(result["ok"] == true);
 }
 
-TEST_CASE("session.claim — second caller gets error 1000") {
+E2E_TEST(session,"session.claim — second caller gets error 1000") {
   TestHarness h;
   RpcClient client1, client2;
   client1.connect(h.ws_url());
@@ -46,7 +46,7 @@ TEST_CASE("session.claim — second caller gets error 1000") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("session.release — owner can release") {
+E2E_TEST(session,"session.release — owner can release") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -62,7 +62,7 @@ TEST_CASE("session.release — owner can release") {
   CHECK(result2["ok"] == true);
 }
 
-TEST_CASE("session.release — non-owner gets error 1000") {
+E2E_TEST(session,"session.release — non-owner gets error 1000") {
   TestHarness h;
   RpcClient client1, client2;
   client1.connect(h.ws_url());
@@ -74,7 +74,7 @@ TEST_CASE("session.release — non-owner gets error 1000") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("session.info — shows claimed_by after claim") {
+E2E_TEST(session,"session.info — shows claimed_by after claim") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -85,7 +85,7 @@ TEST_CASE("session.info — shows claimed_by after claim") {
   CHECK(!result["claimed_by"].is_null());
 }
 
-TEST_CASE("session — disconnect releases claim automatically") {
+E2E_TEST(session,"session — disconnect releases claim automatically") {
   TestHarness h;
 
   {

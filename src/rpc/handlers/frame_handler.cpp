@@ -4,6 +4,7 @@
 #include <game/game_manager.hpp>
 #include <game/spendable.hpp>
 #include <game/state.hpp>
+#include <game/systems/power.hpp>
 #include <game/well_known_entities.hpp>
 #include <magic_enum.hpp>
 #include <utils/entt_lua.hpp>
@@ -244,6 +245,12 @@ void registerFrameHandlers(Server& server) {
     auto& frame = registry.get<Frame>(entity);
     for (auto& comp : frame.components) {
       if (!comp) continue;
+      const float peak = component_peak_draw_when_activating(*comp);
+      if (peak > 1e-6f &&
+          (!frame_on_power_network(registry, frame.data.id) ||
+           !frame_network_can_afford_extra_consumption(registry, frame.data.id, peak))) {
+        continue;
+      }
       auto prev = comp->state;
       if (comp->activate()) {
         logWebAction(server, "component.state", "user_activate", {

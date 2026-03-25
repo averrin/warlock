@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import type { RpcClient } from "../rpc/client";
+
+let ecsEntitiesRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 import type {
   ConnectionDTO,
   ControlZoneDTO,
@@ -12,6 +14,19 @@ import { usePatchStore, Patch } from "./patches";
 
 const ZONE_CELL = 25;
 const ZONE_FRAME_CELLS: Record<string, number> = { XS: 1, S: 3, M: 6, L: 9, G: 12 };
+
+function frameIdsWithNexusComponent(frames: FrameDTO[]): Set<number> {
+  const out = new Set<number>();
+  for (const f of frames) {
+    for (const c of f.components ?? []) {
+      if (c.name === "Nexus" || c.type === "Nexus") {
+        out.add(f.id);
+        break;
+      }
+    }
+  }
+  return out;
+}
 
 /** Compute which frame IDs fall inside at least one control zone circle. */
 function computeControllableFrameIds(
@@ -35,6 +50,9 @@ function computeControllableFrameIds(
         break;
       }
     }
+  }
+  for (const id of frameIdsWithNexusComponent(frames)) {
+    ids.add(id);
   }
   return ids;
 }
@@ -212,6 +230,25 @@ interface GameStore {
     field: string,
     value: unknown,
   ) => Promise<void>;
+  createEmptyEntity: (
+    client: RpcClient,
+    opts?: { parent_entity_id?: number; name?: string },
+  ) => Promise<number | null>;
+  destroyEntityByEid: (client: RpcClient, entityId: number) => Promise<void>;
+  addRegistryComponent: (client: RpcClient, entityId: number, component: string) => Promise<void>;
+  removeRegistryComponent: (client: RpcClient, entityId: number, component: string) => Promise<void>;
+}
+
+function scheduleEcsEntitiesRefresh(
+  get: () => { ecsEntities: EcsEntityDTO[]; fetchEntities: (c: RpcClient) => Promise<void> },
+  client: RpcClient,
+) {
+  if (get().ecsEntities.length === 0) return;
+  if (ecsEntitiesRefreshTimer != null) clearTimeout(ecsEntitiesRefreshTimer);
+  ecsEntitiesRefreshTimer = setTimeout(() => {
+    ecsEntitiesRefreshTimer = null;
+    void get().fetchEntities(client);
+  }, 400);
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -269,6 +306,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           selectedFrameId: primary,
         };
       });
+      scheduleEcsEntitiesRefresh(get, client);
     });
     client.on("event.env_update", (payload) => {
       const next = payload as { env?: EnvironmentDTO };
@@ -277,6 +315,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         environment: next.env,
         environmentHistory: next.env.history ?? null,
       });
+      scheduleEcsEntitiesRefresh(get, client);
     });
     client.on("event.power_update", (payload) => {
       const next = payload as { networks?: PowerNetworkDTO[] };
@@ -791,7 +830,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       field,
       value,
     });
-    // Optimistic update
     set((current) => ({
       ecsEntities: current.ecsEntities.map((e) => {
         if (e.entity_id !== entityId) return e;
@@ -806,5 +844,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
         };
       }),
     }));
+  },
+
+  createEmptyEntity: async (client, opts) => {
+    const result = await client.call<{ entity_id: number }>("entities.create", {
+      name: opts?.name ?? "Entity",
+      parent_entity_id: opts?.parent_entity_id ?? -1,
+    });
+    const id = result.entity_id;
+    await get().fetchEntities(client);
+    return typeof id === "number" ? id : null;
+  },
+
+  destroyEntityByEid: async (client, entityId) => {
+    await client.call("entities.destroy", { entity_id: entityId });
+    await get().fetchEntities(client);
+  },
+
+  addRegistryComponent: async (client, entityId, component) => {
+    await client.call("entities.component.add", { entity_id: entityId, component });
+    await get().fetchEntities(client);
+  },
+
+  removeRegistryComponent: async (client, entityId, component) => {
+    await client.call("entities.component.remove", { entity_id: entityId, component });
+    await get().fetchEntities(client);
   },
 }));

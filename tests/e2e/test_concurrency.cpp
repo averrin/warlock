@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -13,7 +13,7 @@ using namespace std::chrono_literals;
 
 // ─── §10 Concurrency ─────────────────────────────────────────────────────────
 
-TEST_CASE("concurrency — multiple clients read simultaneously") {
+E2E_TEST(concurrency,"concurrency — multiple clients read simultaneously") {
   TestHarness h;
 
   constexpr int N_CLIENTS = 5;
@@ -38,7 +38,7 @@ TEST_CASE("concurrency — multiple clients read simultaneously") {
   }
 }
 
-TEST_CASE("concurrency — rapid sequential calls are handled correctly") {
+E2E_TEST(concurrency,"concurrency — rapid sequential calls are handled correctly") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -69,7 +69,7 @@ TEST_CASE("concurrency — rapid sequential calls are handled correctly") {
   CHECK(list["frames"].size() >= 10);
 }
 
-TEST_CASE("concurrency — game.state is consistent under concurrent reads") {
+E2E_TEST(concurrency,"concurrency — game.state is consistent under concurrent reads") {
   TestHarness h;
 
   constexpr int N_ITERATIONS = 20;

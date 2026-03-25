@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -41,7 +41,7 @@ static std::string get_core_state(RpcClient& client, int frame_data_id) {
 
 // ─── code.sources ────────────────────────────────────────────────────────────
 
-TEST_CASE("lua exec: code.sources returns non-empty source map") {
+E2E_TEST(lua,"lua exec: code.sources returns non-empty source map") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -52,7 +52,7 @@ TEST_CASE("lua exec: code.sources returns non-empty source map") {
   CHECK(result["sources"].size() > 0);
 }
 
-TEST_CASE("lua exec: code.sources contains Core component") {
+E2E_TEST(lua,"lua exec: code.sources contains Core component") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -71,7 +71,7 @@ TEST_CASE("lua exec: code.sources contains Core component") {
 
 // ─── code.completion ─────────────────────────────────────────────────────────
 
-TEST_CASE("lua exec: code.completion returns keys for frame path") {
+E2E_TEST(lua,"lua exec: code.completion returns keys for frame path") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -90,7 +90,7 @@ TEST_CASE("lua exec: code.completion returns keys for frame path") {
   CHECK(has_data);
 }
 
-TEST_CASE("lua exec: code.completion globals include frame") {
+E2E_TEST(lua,"lua exec: code.completion globals include frame") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -110,7 +110,7 @@ TEST_CASE("lua exec: code.completion globals include frame") {
 
 // ─── code.blueprints ─────────────────────────────────────────────────────────
 
-TEST_CASE("lua exec: code.blueprints returns non-empty blueprint map") {
+E2E_TEST(lua,"lua exec: code.blueprints returns non-empty blueprint map") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -123,7 +123,7 @@ TEST_CASE("lua exec: code.blueprints returns non-empty blueprint map") {
 
 // ─── code.update + code.get_script roundtrip ─────────────────────────────────
 
-TEST_CASE("lua exec: code.update then get_script returns same code") {
+E2E_TEST(lua,"lua exec: code.update then get_script returns same code") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -150,7 +150,7 @@ return {
 
 // ─── code.execute with valid code ────────────────────────────────────────────
 
-TEST_CASE("lua exec: execute valid code returns status ok") {
+E2E_TEST(lua,"lua exec: execute valid code returns status ok") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -174,7 +174,7 @@ return {
 
 // ─── code.execute with syntax error ──────────────────────────────────────────
 
-TEST_CASE("lua exec: execute code with syntax error returns error") {
+E2E_TEST(lua,"lua exec: execute code with syntax error returns error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -196,7 +196,7 @@ this is not valid lua at all !!!
 
 // ─── code.execute with runtime error ─────────────────────────────────────────
 
-TEST_CASE("lua exec: execute code with runtime error returns error") {
+E2E_TEST(lua,"lua exec: execute code with runtime error returns error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -224,7 +224,7 @@ return {
 
 // ─── Component state set to COMP_ERROR after runtime error ───────────────────
 
-TEST_CASE("lua exec: runtime error sets component state to COMP_ERROR") {
+E2E_TEST(lua,"lua exec: runtime error sets component state to COMP_ERROR") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -254,7 +254,7 @@ return {
 
 // ─── code.update invalidates cached script ───────────────────────────────────
 
-TEST_CASE("lua exec: code.update invalidates cached script, new code runs") {
+E2E_TEST(lua,"lua exec: code.update invalidates cached script, new code runs") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -295,7 +295,7 @@ return {
 
 // ─── Missing function in script table ────────────────────────────────────────
 
-TEST_CASE("lua exec: calling missing function returns error") {
+E2E_TEST(lua,"lua exec: calling missing function returns error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -316,7 +316,7 @@ return {
 
 // ─── Script returns non-table ────────────────────────────────────────────────
 
-TEST_CASE("lua exec: script that returns non-table causes error") {
+E2E_TEST(lua,"lua exec: script that returns non-table causes error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -332,7 +332,7 @@ TEST_CASE("lua exec: script that returns non-table causes error") {
 
 // ─── Code accesses frame global ──────────────────────────────────────────────
 
-TEST_CASE("lua exec: code can access frame global") {
+E2E_TEST(lua,"lua exec: code can access frame global") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -358,7 +358,7 @@ return {
 
 // ─── Code accesses environment global ────────────────────────────────────────
 
-TEST_CASE("lua exec: code can access environment global") {
+E2E_TEST(lua,"lua exec: code can access environment global") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -386,7 +386,7 @@ return {
 
 // ─── Code can call frame:getComponentByType ──────────────────────────────────
 
-TEST_CASE("lua exec: code can call frame:getComponentByType") {
+E2E_TEST(lua,"lua exec: code can call frame:getComponentByType") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -412,7 +412,7 @@ return {
 
 // ─── Explicit function parameter: start ──────────────────────────────────────
 
-TEST_CASE("lua exec: code.execute with function=start calls start") {
+E2E_TEST(lua,"lua exec: code.execute with function=start calls start") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -436,7 +436,7 @@ return {
 
 // ─── Authorization: code.update requires session claim ───────────────────────
 
-TEST_CASE("lua exec: code.update without claim returns error 1000") {
+E2E_TEST(lua,"lua exec: code.update without claim returns error 1000") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -451,7 +451,7 @@ TEST_CASE("lua exec: code.update without claim returns error 1000") {
 
 // ─── Authorization: code.execute requires session claim ──────────────────────
 
-TEST_CASE("lua exec: code.execute without claim returns error 1000") {
+E2E_TEST(lua,"lua exec: code.execute without claim returns error 1000") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -466,7 +466,7 @@ TEST_CASE("lua exec: code.execute without claim returns error 1000") {
 
 // ─── code.execute on nonexistent frame ───────────────────────────────────────
 
-TEST_CASE("lua exec: code.execute on nonexistent frame returns error") {
+E2E_TEST(lua,"lua exec: code.execute on nonexistent frame returns error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -480,7 +480,7 @@ TEST_CASE("lua exec: code.execute on nonexistent frame returns error") {
 
 // ─── code.get_script on nonexistent frame ────────────────────────────────────
 
-TEST_CASE("lua exec: code.get_script on nonexistent frame returns RPC error") {
+E2E_TEST(lua,"lua exec: code.get_script on nonexistent frame returns RPC error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -492,7 +492,7 @@ TEST_CASE("lua exec: code.get_script on nonexistent frame returns RPC error") {
 
 // ─── code.update missing params ──────────────────────────────────────────────
 
-TEST_CASE("lua exec: code.update with missing params returns error") {
+E2E_TEST(lua,"lua exec: code.update with missing params returns error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -506,7 +506,7 @@ TEST_CASE("lua exec: code.update with missing params returns error") {
 
 // ─── code.execute missing frame_id ───────────────────────────────────────────
 
-TEST_CASE("lua exec: code.execute with missing frame_id returns error") {
+E2E_TEST(lua,"lua exec: code.execute with missing frame_id returns error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -519,7 +519,7 @@ TEST_CASE("lua exec: code.execute with missing frame_id returns error") {
 
 // ─── Blueprint with embedded code executes during game tick ──────────────────
 
-TEST_CASE("lua exec: code.blueprints lists available blueprints by name") {
+E2E_TEST(lua,"lua exec: code.blueprints lists available blueprints by name") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -542,7 +542,7 @@ TEST_CASE("lua exec: code.blueprints lists available blueprints by name") {
 
 // ─── Successive executions preserve Lua state ────────────────────────────────
 
-TEST_CASE("lua exec: successive executions share Lua global state") {
+E2E_TEST(lua,"lua exec: successive executions share Lua global state") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -577,7 +577,7 @@ return {
 
 // ─── code.execute default function is "update" ──────────────────────────────
 
-TEST_CASE("lua exec: code.execute without function param defaults to update") {
+E2E_TEST(lua,"lua exec: code.execute without function param defaults to update") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -602,7 +602,7 @@ return {
 
 // ─── Empty code attribute ────────────────────────────────────────────────────
 
-TEST_CASE("lua exec: execute with empty code returns error") {
+E2E_TEST(lua,"lua exec: execute with empty code returns error") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -618,7 +618,7 @@ TEST_CASE("lua exec: execute with empty code returns error") {
 
 // ─── Code that does heavy computation (no infinite loop protection check) ────
 
-TEST_CASE("lua exec: code that modifies component state") {
+E2E_TEST(lua,"lua exec: code that modifies component state") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -632,8 +632,8 @@ return {
   update = function()
     local core = frame:getComponentByType("Core")
     local name = core.data.name
-    if name ~= "Core" then
-      error("expected Core, got " .. tostring(name))
+    if name ~= "Core" and name ~= "Main Core" then
+      error("expected Core or Main Core, got " .. tostring(name))
     end
   end,
 }

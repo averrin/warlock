@@ -1,7 +1,10 @@
 #include <rpc/event_bridge.hpp>
+#include <rpc/dto.hpp>
 #include <rpc/handlers/handler_utils.hpp>
-#include <utils/entt.hpp>
+#include <game/game_manager.hpp>
 #include <game/nexus_api.hpp>
+#include <game/state.hpp>
+#include <utils/entt.hpp>
 #include <nlohmann/json.hpp>
 
 namespace rpc {
@@ -58,6 +61,25 @@ void initEventBridge(Server& server) {
       }
     )
   );
+
+  emitter.connect<component_state_changed>(
+      std::function<void(component_state_changed&, const event_emitter&)>(
+          [&server](component_state_changed& event, const event_emitter&) {
+            if (event.component_name != "Nexus" &&
+                event.component_name != "Control Relay")
+              return;
+            if (!entt::locator<GameManager>::has_value())
+              return;
+            auto& gm = entt::locator<GameManager>::value();
+            if (!gm.started || server.clientCount() == 0)
+              return;
+            std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+            nlohmann::json z;
+            if (!rpc::take_control_zones_if_changed(
+                    entt::locator<State>::value().registry, &z))
+              return;
+            server.broadcast("event.state_update", {{"control_zones", z}});
+          }));
 
   // Bridge NexusApi events
   emitter.connect<nexus_toast_event>(

@@ -50,12 +50,31 @@ export interface ItemsListResultDTO {
   items: ItemCatalogItemDTO[];
 }
 
+export interface InspectorMeta {
+  widget?: "select" | "link" | "progress" | "color" | "code" | "list";
+  options?: string[];
+  link_scope?: "frame" | "world";
+  link_filter?: string;
+  min?: number;
+  max?: number;
+  max_attr?: string;
+  min_attr?: string;
+  unit?: string;
+  readonly?: boolean;
+  hidden?: boolean;
+  precision?: number;
+  label?: string;
+  color?: string;
+  icon?: string;
+}
+
 export interface AttributeDTO {
   title: string;
   type: string;
   base_value: string | number | boolean;
   final_value: string | number | boolean;
   modifiers: string[];
+  inspector?: InspectorMeta;
 }
 
 export interface MetadataDTO {

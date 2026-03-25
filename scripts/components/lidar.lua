@@ -6,6 +6,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			description = "",
 			type = AttributeType.STRING,
 			value = "Lidar",
@@ -14,7 +15,7 @@ return {
 			title = "Consumption",
 			description = "Power consumption per scan",
 			type = AttributeType.FLOAT,
-			value = 2.0,
+			value = 100.0,
 		},
 	},
 	state = ComponentState.DEACTIVATED,

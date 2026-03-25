@@ -20,7 +20,7 @@ public:
 
   static void copyRegistry(entt::registry &src, entt::registry &dst) {
     for (auto entity : src.view<hf::meta>()) {
-      fmt::print("Copying entity: {}\n", (int)entity);
+      // fmt::print("Copying entity: {}\n", (int)entity);
       auto existing = dst.view<hf::meta>();
       auto copy = dst.create();
       for (auto e : existing) {

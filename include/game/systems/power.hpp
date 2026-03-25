@@ -8,6 +8,11 @@
 /// True if frame_id is not on a power net, or steady load + extra fits production + battery headroom.
 bool frame_network_can_afford_extra_consumption(entt::registry& registry, int frame_id, float extra);
 
+bool frame_on_power_network(entt::registry& registry, int frame_id);
+
+/// Peak draw this component adds in ACTIVATING (matches PowerSystem consumption accounting).
+float component_peak_draw_when_activating(Component &c);
+
 struct NetworkInfo {
   Metadata data;
 

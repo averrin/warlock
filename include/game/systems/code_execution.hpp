@@ -68,7 +68,7 @@ public:
       auto title = spec["name"].get_or<std::string>("");
       blueprints[title] = str;
     }
-    fmt::print("Blueprints: {}\n", blueprints.size());
+    // fmt::print("Blueprints: {}\n", blueprints.size());
   }
 
   sol::state &getState(int id);
@@ -84,5 +84,5 @@ public:
   void cleanupFrame(int frame_id);
 };
 
-/** Rebind component `api` tables from Lua specs (not serialized); call after load and once exec exists. */
+/** Rebind component `api` and attribute `inspector_meta` from Lua specs (not serialized); call after load and once exec exists. */
 void refresh_component_apis(CodeExecutionSystem& exec);

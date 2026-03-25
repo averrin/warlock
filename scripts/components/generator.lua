@@ -5,6 +5,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			description = "",
 			type = AttributeType.STRING,
 			value = "Generator",
@@ -31,6 +32,7 @@ return {
 				range = 0.3,
 				period = 2000.0,
 			},
+			inspector = { precision = 1 },
 		},
 		heat = {
 			title = "Active heat",

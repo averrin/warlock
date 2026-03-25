@@ -1,8 +1,8 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 
-TEST_CASE("code loop: code.get_script returns current script") {
+E2E_TEST(code,"code loop: code.get_script returns current script") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -12,7 +12,7 @@ TEST_CASE("code loop: code.get_script returns current script") {
   REQUIRE(result["script"].is_string());
 }
 
-TEST_CASE("code loop: code.execute returns status/error payload") {
+E2E_TEST(code,"code loop: code.execute returns status/error payload") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());

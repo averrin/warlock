@@ -5,6 +5,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			value = "Refinery",
 		},
 		consumption = {
@@ -29,6 +30,7 @@ return {
 				range = 0.3,
 				period = 650.0,
 			},
+			inspector = { precision = 1 },
 		},
 	},
 	state = ComponentState.DEACTIVATED,

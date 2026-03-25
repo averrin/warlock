@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -9,7 +9,7 @@ using namespace std::chrono_literals;
 
 // ─── Autosave configure ─────────────────────────────────────────────────────
 
-TEST_CASE("state.autosave.status — returns defaults") {
+E2E_TEST(state_editor,"state.autosave.status — returns defaults") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -20,7 +20,7 @@ TEST_CASE("state.autosave.status — returns defaults") {
   CHECK(result.contains("last_saved_at"));
 }
 
-TEST_CASE("state.autosave.configure — requires claim") {
+E2E_TEST(state_editor,"state.autosave.configure — requires claim") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -29,7 +29,7 @@ TEST_CASE("state.autosave.configure — requires claim") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("state.autosave.configure — enables autosave") {
+E2E_TEST(state_editor,"state.autosave.configure — enables autosave") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -48,7 +48,7 @@ TEST_CASE("state.autosave.configure — enables autosave") {
   CHECK(status["interval_seconds"] == 30);
 }
 
-TEST_CASE("state.autosave.configure — clamps interval minimum") {
+E2E_TEST(state_editor,"state.autosave.configure — clamps interval minimum") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -63,7 +63,7 @@ TEST_CASE("state.autosave.configure — clamps interval minimum") {
 
 // ─── env.set_field ──────────────────────────────────────────────────────────
 
-TEST_CASE("env.set_field — requires claim") {
+E2E_TEST(state_editor,"env.set_field — requires claim") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -77,7 +77,7 @@ TEST_CASE("env.set_field — requires claim") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-TEST_CASE("env.set_field — sets temperature") {
+E2E_TEST(state_editor,"env.set_field — sets temperature") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -93,7 +93,7 @@ TEST_CASE("env.set_field — sets temperature") {
   CHECK(env["env"]["temperature"].get<float>() > 40.0f);
 }
 
-TEST_CASE("env.set_field — rejects unknown field") {
+E2E_TEST(state_editor,"env.set_field — rejects unknown field") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -108,7 +108,7 @@ TEST_CASE("env.set_field — rejects unknown field") {
 
 // ─── state.save broadcast ───────────────────────────────────────────────────
 
-TEST_CASE("state.save — broadcasts notify.state.saved") {
+E2E_TEST(state_editor,"state.save — broadcasts notify.state.saved") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -136,4 +136,47 @@ TEST_CASE("state.save — broadcasts notify.state.saved") {
     }
   }
   CHECK(found);
+}
+
+// ─── entities.* (registry inspector) ─────────────────────────────────────────
+
+E2E_TEST(state_editor, "entities.create / entities.list — hierarchy uses relation") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+  client.call("session.claim");
+  client.call("game.start");
+  std::this_thread::sleep_for(200ms);
+  h.tick(5);
+
+  auto list0 = client.call("entities.list");
+  REQUIRE(list0.contains("entities"));
+  int frames_folder = -1;
+  for (const auto& ent : list0["entities"]) {
+    if (!ent.contains("components")) continue;
+    const auto& comps = ent["components"];
+    if (comps.contains("meta") && comps["meta"].contains("name") &&
+        comps["meta"]["name"].get<std::string>() == "Frames") {
+      frames_folder = ent["entity_id"].get<int>();
+      break;
+    }
+  }
+  REQUIRE(frames_folder >= 0);
+
+  auto created = client.call("entities.create", {{"name", "E2E Empty"}, {"parent_entity_id", frames_folder}});
+  int new_id = created["entity_id"].get<int>();
+
+  auto list1 = client.call("entities.list");
+  bool found_child = false;
+  for (const auto& ent : list1["entities"]) {
+    if (ent["entity_id"].get<int>() != new_id) continue;
+    REQUIRE(ent["components"].contains("relation"));
+    int p = ent["components"]["relation"]["parent"].get<int>();
+    CHECK(p == frames_folder);
+    found_child = true;
+    break;
+  }
+  CHECK(found_child);
+
+  client.call("entities.destroy", {{"entity_id", new_id}});
 }

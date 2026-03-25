@@ -6,14 +6,22 @@ type Props = {
   value: number | undefined;
   onChange: (v: number) => void;
   labelWidth?: number;
+  /** When set, non-edit display uses fixed decimal places. */
+  precision?: number;
 };
 
-export function NumberField({ label, value, onChange, labelWidth = 90 }: Props) {
+function formatDisplay(n: number, precision?: number): string {
+  if (precision === undefined) return String(n);
+  return n.toFixed(precision);
+}
+
+export function NumberField({ label, value, onChange, labelWidth = 90, precision }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
   const startEdit = () => {
-    setDraft(String(value ?? 0));
+    const v = value ?? 0;
+    setDraft(precision !== undefined ? v.toFixed(precision) : String(v));
     setEditing(true);
   };
 
@@ -41,7 +49,7 @@ export function NumberField({ label, value, onChange, labelWidth = 90 }: Props) 
         />
       ) : (
         <span onClick={startEdit} style={{ cursor: "pointer", color: "#e5e7eb" }}>
-          {value != null ? value : "-"}
+          {value != null ? formatDisplay(value, precision) : "-"}
         </span>
       )}
     </div>

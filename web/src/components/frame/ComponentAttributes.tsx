@@ -1,13 +1,10 @@
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import type { RpcClient } from "../../rpc/client";
-import type { ComponentDTO } from "../../rpc/types";
+import type { ComponentDTO, FrameDTO, InspectorMeta } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
 import { useRecipeStore } from "../../stores/recipes";
-import { NumberField, SelectField, TextField } from "../ui";
-
-const CONVEYOR_CONNECTOR_NAME = "Conveyor Connector";
-const CONVEYOR_MODE_OPTIONS = ["SEND", "RECEIVE"] as const;
+import { NumberField, TextField } from "../ui";
 
 const targetSelectStyle: CSSProperties = {
   fontSize: 11,
@@ -67,7 +64,7 @@ interface AttributeDTO {
   base_value: string | number | boolean;
   final_value?: string | number | boolean;
   modifiers?: string[];
-  target_filter?: string;
+  inspector?: InspectorMeta;
 }
 
 function isAttributeDTO(v: unknown): v is AttributeDTO {
@@ -94,13 +91,27 @@ function resolveType(val: unknown): "float" | "int" | "bool" | "string" {
   return "string";
 }
 
+function attrNumericFinalOrBase(entry: unknown): number | undefined {
+  if (!isAttributeDTO(entry)) return undefined;
+  const fv = entry.final_value;
+  if (typeof fv === "number" && Number.isFinite(fv)) return fv;
+  const bv = entry.base_value;
+  if (typeof bv === "number" && Number.isFinite(bv)) return bv;
+  if (typeof fv === "string" || typeof bv === "string") {
+    const n = Number(typeof fv === "string" ? fv : bv);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
 type SingleAttributeProps = {
   attrKey: string;
   val: AttributeValue;
+  siblingAttributes: Record<string, AttributeValue>;
   frameId: number;
   componentId: number;
-  componentName: string;
   frameComponents: ComponentDTO[];
+  allFrames: FrameDTO[];
   rpcClient: RpcClient;
   updateAttribute: (
     client: RpcClient,
@@ -309,13 +320,33 @@ function AttributeModifiersInspector({
   );
 }
 
+function clampNum(n: number, lo?: number, hi?: number): number {
+  let x = n;
+  if (lo !== undefined) x = Math.max(lo, x);
+  if (hi !== undefined) x = Math.min(hi, x);
+  return x;
+}
+
+function formatWithPrecision(n: number, precision?: number): string {
+  if (precision === undefined) return String(n);
+  return n.toFixed(precision);
+}
+
+function normalizeColorHex(s: string): string {
+  const t = s.trim();
+  if (t.startsWith("#") && t.length >= 4) return t.slice(0, 7);
+  if (/^[0-9a-fA-F]{6}$/.test(t)) return `#${t}`;
+  return "#000000";
+}
+
 function SingleAttribute({
   attrKey,
   val,
+  siblingAttributes,
   frameId,
   componentId,
-  componentName,
   frameComponents,
+  allFrames,
   rpcClient,
   updateAttribute,
   setAttributeModifiers,
@@ -325,92 +356,330 @@ function SingleAttribute({
   const rawValue = isDTO ? val.base_value : (val as string | number | boolean);
   const finalValue = isDTO ? val.final_value : undefined;
   const modifiers = isDTO ? (val.modifiers ?? []) : [];
+  const insp = isDTO ? val.inspector : undefined;
   const label = isDTO && val.title ? val.title : attrKey;
+  const displayLabel = insp?.label ?? label;
   const type = resolveType(val);
+  const rowLabelColor = insp?.color;
+  const labelEl = (
+    <span
+      style={{
+        minWidth: 90,
+        fontSize: 11,
+        color: rowLabelColor ?? "#9ca3af",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+      }}
+    >
+      {insp?.icon ? (
+        <img src={`/icons/${insp.icon}`} alt="" style={{ width: 14, height: 14, objectFit: "contain" }} />
+      ) : null}
+      {displayLabel}:
+    </span>
+  );
+
+  if (insp?.hidden) return null;
 
   const hasModifierEffect =
     finalValue !== undefined && finalValue !== rawValue;
 
-  const onChange = (newVal: string | number | boolean) =>
+  const ro = !!insp?.readonly;
+  const loBound = insp?.min;
+  const hiBound = insp?.max;
+  const unit = insp?.unit ?? "";
+
+  const onChange = (newVal: string | number | boolean) => {
+    if (ro) return;
+    if (typeof newVal === "number") {
+      void updateAttribute(rpcClient, frameId, componentId, attrKey, clampNum(newVal, loBound, hiBound));
+      return;
+    }
     void updateAttribute(rpcClient, frameId, componentId, attrKey, newVal);
+  };
 
-  const isConveyorModeSelect =
-    componentName === CONVEYOR_CONNECTOR_NAME && attrKey === "mode" && type === "string";
-  const modeStr =
-    typeof rawValue === "string" && rawValue.length > 0 ? rawValue : "SEND";
-  const modeOptions = !(CONVEYOR_MODE_OPTIONS as readonly string[]).includes(modeStr)
-    ? [modeStr, ...CONVEYOR_MODE_OPTIONS]
-    : [...CONVEYOR_MODE_OPTIONS];
-
-  const canEditModifiers = isDTO && type === "float";
+  const canEditModifiers = isDTO && type === "float" && !ro;
   const showModifiersTrigger = canEditModifiers || modifiers.length > 0;
 
-  const targetFilter = isDTO ? val.target_filter : undefined;
-  const isTargetComponentSelect = !!targetFilter && type === "int";
+  const w = insp?.widget;
   const targetIdRaw = typeof rawValue === "number" ? rawValue : Number(rawValue);
   const targetId = Number.isFinite(targetIdRaw) ? Math.trunc(targetIdRaw) : -1;
-  const targetCandidates = frameComponents.filter((c) => {
+
+  const isLinkFrame =
+    w === "link" && type === "int" && (insp?.link_scope ?? "frame") === "frame";
+  const isLinkWorld = w === "link" && type === "int" && insp?.link_scope === "world";
+  const linkFilter = insp?.link_filter;
+
+  const frameLinkCandidates = frameComponents.filter((c) => {
     if (c.id === componentId) return false;
-    if (!targetFilter) return true;
-    return c.type === targetFilter;
+    if (!linkFilter) return true;
+    return c.type === linkFilter;
   });
-  const targetIds = new Set(targetCandidates.map((c) => c.id));
-  const orphanTarget = targetId >= 0 && !targetIds.has(targetId);
+  const frameLinkIds = new Set(frameLinkCandidates.map((c) => c.id));
+  const orphanFrameLink = isLinkFrame && targetId >= 0 && !frameLinkIds.has(targetId);
+
+  const worldLinkCandidates = allFrames.filter((f) => !linkFilter || f.name === linkFilter);
+  const worldLinkIds = new Set(worldLinkCandidates.map((f) => f.entity_id));
+  const orphanWorldLink = isLinkWorld && targetId >= 0 && !worldLinkIds.has(targetId);
+
+  const soleFrameLinkId =
+    !ro && isLinkFrame && frameLinkCandidates.length === 1 ? frameLinkCandidates[0]!.id : null;
+  const soleWorldLinkEntityId =
+    !ro && isLinkWorld && worldLinkCandidates.length === 1 ? worldLinkCandidates[0]!.entity_id : null;
+
+  useEffect(() => {
+    if (soleFrameLinkId !== null && targetId !== soleFrameLinkId) {
+      void updateAttribute(rpcClient, frameId, componentId, attrKey, soleFrameLinkId);
+      return;
+    }
+    if (soleWorldLinkEntityId !== null && targetId !== soleWorldLinkEntityId) {
+      void updateAttribute(rpcClient, frameId, componentId, attrKey, soleWorldLinkEntityId);
+    }
+  }, [
+    soleFrameLinkId,
+    soleWorldLinkEntityId,
+    targetId,
+    rpcClient,
+    frameId,
+    componentId,
+    attrKey,
+    updateAttribute,
+  ]);
+
+  const isSelectWidget = w === "select" && type === "string";
+  const selectOptsRaw = insp?.options ?? [];
+  const selectOpts =
+    typeof rawValue === "string" && rawValue.length > 0 && !selectOptsRaw.includes(rawValue)
+      ? [rawValue, ...selectOptsRaw]
+      : selectOptsRaw.length > 0
+        ? [...selectOptsRaw]
+        : typeof rawValue === "string"
+          ? [rawValue]
+          : [];
+
+  const isProgressWidget = w === "progress" && (type === "float" || type === "int");
+  const refMinKey = insp?.min_attr;
+  const refMaxKey = insp?.max_attr;
+  const refMin =
+    refMinKey && siblingAttributes[refMinKey] !== undefined
+      ? attrNumericFinalOrBase(siblingAttributes[refMinKey])
+      : undefined;
+  const refMax =
+    refMaxKey && siblingAttributes[refMaxKey] !== undefined
+      ? attrNumericFinalOrBase(siblingAttributes[refMaxKey])
+      : undefined;
+  const pMin = refMin ?? insp?.min ?? 0;
+  const pMax = refMax ?? insp?.max ?? 1;
+  const progressValueRaw = typeof rawValue === "number" ? rawValue : Number(rawValue);
+  const progressFinal =
+    finalValue !== undefined
+      ? typeof finalValue === "number"
+        ? finalValue
+        : Number(finalValue)
+      : NaN;
+  const numForProgress = Number.isFinite(progressFinal) ? progressFinal : progressValueRaw;
+  const progressFrac =
+    pMax > pMin && Number.isFinite(numForProgress)
+      ? clampNum((numForProgress - pMin) / (pMax - pMin), 0, 1)
+      : 0;
+
+  const isColorWidget = w === "color" && type === "string";
+  const isListWidget = w === "list" && type === "string";
+
+  let mainControl: ReactNode = null;
+
+  if (isSelectWidget && selectOpts.length > 0) {
+    const modeStr = typeof rawValue === "string" && rawValue.length > 0 ? rawValue : selectOpts[0]!;
+    mainControl = (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
+        {labelEl}
+        <select
+          value={modeStr}
+          onChange={(e) => onChange(e.target.value)}
+          style={targetSelectStyle}
+          disabled={ro}
+        >
+          {selectOpts.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  } else if (isLinkFrame) {
+    mainControl = (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
+        {labelEl}
+        <select
+          value={targetId < 0 ? "" : String(targetId)}
+          onChange={(e) => {
+            const v = e.target.value;
+            onChange(v === "" ? -1 : Number(v));
+          }}
+          style={targetSelectStyle}
+          disabled={ro}
+        >
+          <option value="">None</option>
+          {orphanFrameLink && (
+            <option value={String(targetId)}>#{targetId} (unavailable)</option>
+          )}
+          {frameLinkCandidates.map((c) => (
+            <option key={c.id} value={String(c.id)}>
+              {c.name} (#{c.id})
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  } else if (isLinkWorld) {
+    mainControl = (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
+        {labelEl}
+        <select
+          value={targetId < 0 ? "" : String(targetId)}
+          onChange={(e) => {
+            const v = e.target.value;
+            onChange(v === "" ? -1 : Number(v));
+          }}
+          style={targetSelectStyle}
+          disabled={ro}
+        >
+          <option value="">None</option>
+          {orphanWorldLink && (
+            <option value={String(targetId)}>entity #{targetId} (unavailable)</option>
+          )}
+          {worldLinkCandidates.map((f) => (
+            <option key={f.entity_id} value={String(f.entity_id)}>
+              {f.name} (entity #{f.entity_id})
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  } else if (isProgressWidget) {
+    const prec = insp?.precision;
+    const shown = Number.isFinite(numForProgress)
+      ? formatWithPrecision(numForProgress, prec) + (unit ? ` ${unit}` : "")
+      : "-";
+    mainControl = (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "1px 0", minWidth: 160 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {labelEl}
+          {ro ? (
+            <span style={{ color: "#e5e7eb", fontSize: 11 }}>{shown}</span>
+          ) : (
+            <input
+              type="number"
+              value={Number.isFinite(numForProgress) ? numForProgress : 0}
+              onChange={(e) => {
+                const n = parseFloat(e.target.value);
+                if (!Number.isNaN(n)) onChange(clampNum(n, pMin, pMax));
+              }}
+              style={{ ...targetSelectStyle, width: 88 }}
+            />
+          )}
+        </div>
+        <div
+          style={{
+            height: 6,
+            borderRadius: 3,
+            background: "#1f2937",
+            overflow: "hidden",
+            border: "1px solid #374151",
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${progressFrac * 100}%`,
+              background: rowLabelColor ?? "#3b82f6",
+              transition: "width 0.15s ease",
+            }}
+          />
+        </div>
+      </div>
+    );
+  } else if (isColorWidget) {
+    const hex = normalizeColorHex(typeof rawValue === "string" ? rawValue : "");
+    mainControl = (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
+        {labelEl}
+        <input
+          type="color"
+          value={hex}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={ro}
+          style={{ width: 36, height: 22, padding: 0, border: "1px solid #374151", borderRadius: 3, background: "#0b1220" }}
+        />
+        <span style={{ fontSize: 10, color: "#6b7280" }}>{hex}</span>
+      </div>
+    );
+  } else if (isListWidget) {
+    const parts = (typeof rawValue === "string" ? rawValue : "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    mainControl = (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "1px 0" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          {labelEl}
+          <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, color: "#e5e7eb" }}>
+            {parts.length === 0 ? <li style={{ color: "#6b7280" }}>(empty)</li> : parts.map((p, i) => <li key={i}>{p}</li>)}
+          </ul>
+        </div>
+      </div>
+    );
+  } else if (type === "bool") {
+    mainControl = (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
+        {labelEl}
+        <input
+          type="checkbox"
+          checked={rawValue as boolean}
+          onChange={(e) => onChange(e.target.checked)}
+          disabled={ro}
+        />
+      </div>
+    );
+  } else if (type === "float" || type === "int") {
+    const n = typeof rawValue === "number" ? rawValue : Number(rawValue);
+    const prec = insp?.precision;
+    mainControl = ro ? (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
+        {labelEl}
+        <span style={{ color: "#e5e7eb", fontSize: 11 }}>
+          {Number.isFinite(n) ? formatWithPrecision(n, prec) : "-"}
+          {unit ? ` ${unit}` : ""}
+        </span>
+      </div>
+    ) : (
+      <NumberField
+        label={displayLabel}
+        value={Number.isFinite(n) ? n : 0}
+        precision={type === "float" ? prec : undefined}
+        onChange={(v) => onChange(clampNum(v, loBound, hiBound))}
+      />
+    );
+  } else {
+    mainControl = ro ? (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
+        {labelEl}
+        <span style={{ color: "#e5e7eb", fontSize: 11 }}>{String(rawValue ?? "")}{unit ? ` ${unit}` : ""}</span>
+      </div>
+    ) : (
+      <TextField
+        label={displayLabel}
+        value={rawValue as string}
+        onChange={(v) => onChange(v)}
+      />
+    );
+  }
 
   return (
     <div style={{ display: "grid", gap: 2 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {isConveyorModeSelect ? (
-          <SelectField
-            label={label}
-            value={modeStr}
-            options={modeOptions}
-            onChange={(v) => onChange(v)}
-          />
-        ) : isTargetComponentSelect ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
-            <span style={{ minWidth: 90, fontSize: 11, color: "#9ca3af" }}>{label}:</span>
-            <select
-              value={targetId < 0 ? "" : String(targetId)}
-              onChange={(e) => {
-                const v = e.target.value;
-                onChange(v === "" ? -1 : Number(v));
-              }}
-              style={targetSelectStyle}
-            >
-              <option value="">None</option>
-              {orphanTarget && (
-                <option value={String(targetId)}>#{targetId} (unavailable)</option>
-              )}
-              {targetCandidates.map((c) => (
-                <option key={c.id} value={String(c.id)}>
-                  {c.name} (#{c.id})
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : type === "bool" ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "1px 0" }}>
-            <span style={{ minWidth: 90, fontSize: 11, color: "#9ca3af" }}>{label}:</span>
-            <input
-              type="checkbox"
-              checked={rawValue as boolean}
-              onChange={(e) => onChange(e.target.checked)}
-            />
-          </div>
-        ) : type === "float" || type === "int" ? (
-          <NumberField
-            label={label}
-            value={rawValue as number}
-            onChange={onChange}
-          />
-        ) : (
-          <TextField
-            label={label}
-            value={rawValue as string}
-            onChange={onChange}
-          />
-        )}
+        {mainControl}
 
         {/* Final value indicator when modifiers alter the base */}
         {hasModifierEffect && (
@@ -418,7 +687,10 @@ function SingleAttribute({
             title="Final value after modifiers"
             style={{ fontSize: 10, color: "#60a5fa", whiteSpace: "nowrap" }}
           >
-            → {String(finalValue)}
+            →{" "}
+            {type === "float" && finalValue !== undefined && Number.isFinite(Number(finalValue))
+              ? formatWithPrecision(Number(finalValue), insp?.precision)
+              : String(finalValue)}
           </span>
         )}
         {showModifiersTrigger && (
@@ -481,7 +753,6 @@ function SingleAttribute({
 type Props = {
   frameId: number;
   componentId: number;
-  componentName: string;
   attributes: Record<string, AttributeValue> | undefined;
   rpcClient: RpcClient;
 };
@@ -489,20 +760,22 @@ type Props = {
 export function ComponentAttributes({
   frameId,
   componentId,
-  componentName,
   attributes,
   rpcClient,
 }: Props) {
   const updateComponentAttribute = useGameStore((s) => s.updateComponentAttribute);
   const setComponentAttributeModifiers = useGameStore((s) => s.setComponentAttributeModifiers);
   const controllable = useGameStore((s) => s.isFrameControllable)(frameId);
+  const allFrames = useGameStore((s) => s.frames);
   const frameComponents = useGameStore(
     (s) => s.frames.find((f) => f.id === frameId)?.components ?? [],
   );
 
   if (!attributes) return null;
 
-  const entries = Object.entries(attributes).filter(([key]) => key !== "code");
+  const entries = Object.entries(attributes).filter(
+    ([, val]) => !(isAttributeDTO(val) && val.inspector?.widget === "code"),
+  );
 
   if (entries.length === 0) return null;
 
@@ -517,10 +790,11 @@ export function ComponentAttributes({
           key={key}
           attrKey={key}
           val={val}
+          siblingAttributes={attributes}
           frameId={frameId}
           componentId={componentId}
-          componentName={componentName}
           frameComponents={frameComponents}
+          allFrames={allFrames}
           rpcClient={rpcClient}
           updateAttribute={controllable ? updateComponentAttribute : (async () => {}) as typeof updateComponentAttribute}
           setAttributeModifiers={controllable ? setComponentAttributeModifiers : (async () => {}) as typeof setComponentAttributeModifiers}

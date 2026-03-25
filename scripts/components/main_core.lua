@@ -6,6 +6,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			description = "",
 			type = AttributeType.STRING,
 			value = "Core",
@@ -14,6 +15,7 @@ return {
 			title = "Code",
 			description = "Execution code",
 			type = AttributeType.STRING,
+			inspector = { widget = "code" },
 			value = [[
 return {
   start = function()
@@ -35,7 +37,7 @@ return {
 		},
 		stable = {
 			title = "Stable",
-			description = "Does continue work after power loss",
+			description = "If browned out, automatically starts again when the grid can supply it",
 			type = AttributeType.BOOL,
 			value = true,
 		},

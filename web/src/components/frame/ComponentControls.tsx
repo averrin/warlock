@@ -21,7 +21,7 @@ export function ComponentControls({ frameId, componentId, componentState, rpcCli
   const canAct = claimed && controllable;
 
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 4, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
       <IconButton
         icon="▶"
         size="sm"

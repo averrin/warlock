@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
+#include <game/attributes.hpp>
 #include <game/frame_deposit_query.hpp>
 #include <game/components/resource_patch.hpp>
 #include <game/game_manager.hpp>
@@ -61,7 +62,7 @@ bool frame_has_nexus_spendable_sink(Frame *f, int storage_component_id) {
   if (!f)
     return false;
   for (auto &c : f->components) {
-    if (c->data.get_or<std::string>("type", "") != "Nexus")
+    if (!c->data.has("alive_relays"))
       continue;
     int tid = c->data.get_or<int>("target", -1);
     if (tid < 0)
@@ -77,7 +78,7 @@ void drain_nexus_linked_spendable_storage(
     const std::unordered_map<std::string, ItemDefinition> &item_map) {
   auto &gm = entt::locator<GameManager>::value();
   for (auto &nexus : frame.components) {
-    if (nexus->data.get_or<std::string>("type", "") != "Nexus")
+    if (!nexus->data.has("alive_relays"))
       continue;
     int tid = nexus->data.get_or<int>("target", -1);
     if (tid < 0)
@@ -186,14 +187,14 @@ void ItemsSystem::fixedUpdate() {
     std::shared_ptr<Component> targetConnector = nullptr;
 
     for (auto &c : sourceFrame->components) {
-      if (c->data.get_or<std::string>("type", "") == "Conveyor Connector" &&
+      if (c->data.has("throughput") &&
           c->state == ComponentState::ACTIVE) {
         sourceConnector = c;
         break;
       }
     }
     for (auto &c : targetFrame->components) {
-      if (c->data.get_or<std::string>("type", "") == "Conveyor Connector" &&
+      if (c->data.has("throughput") &&
           c->state == ComponentState::ACTIVE) {
         targetConnector = c;
         break;
@@ -251,7 +252,7 @@ void ItemsSystem::fixedUpdate() {
         }
         if (!otherF) continue;
         for (auto &c : otherF->components) {
-          if (c->data.get_or<std::string>("type", "") != "Conveyor Connector" ||
+          if (!c->data.has("throughput") ||
               c->state != ComponentState::ACTIVE)
             continue;
           t = std::min(t, c->data.get_or<float>("throughput", 1.0f));
@@ -324,7 +325,7 @@ void ItemsSystem::fixedUpdate() {
           if (bFrame) {
             std::shared_ptr<Component> bRecv = nullptr;
             for (auto &c : bFrame->components) {
-              if (c->data.get_or<std::string>("type", "") != "Conveyor Connector" ||
+              if (!c->data.has("throughput") ||
                   c->state != ComponentState::ACTIVE)
                 continue;
               if (c->data.get_or<std::string>("mode", "SEND") == "RECEIVE") {
@@ -461,6 +462,72 @@ void ItemsSystem::fixedUpdate() {
       }
     }
     drain_nexus_linked_spendable_storage(frame, loader->get_items());
+
+    const auto deposits_under_frame =
+        depositItemsUnderFrame(current_state.registry, f, frame);
+    const int deposit_cells_under_frame =
+        depositOverlapCellCountUnderFrame(current_state.registry, f, frame);
+    std::vector<std::string> sorted_deposit_names(deposits_under_frame.begin(),
+                                                  deposits_under_frame.end());
+    std::sort(sorted_deposit_names.begin(), sorted_deposit_names.end());
+    const std::string deposit_items_debug =
+        sorted_deposit_names.empty()
+            ? ""
+            : fmt::format("{}", fmt::join(sorted_deposit_names, ", "));
+    std::string suggested_miner_recipe;
+    if (loader) {
+      for (const auto &r : loader->get_recipes()) {
+        if (std::find(r.availableOn.begin(), r.availableOn.end(), std::string("Miner")) ==
+            r.availableOn.end()) {
+          continue;
+        }
+        for (const auto &out : r.outputs) {
+          if (deposits_under_frame.count(out.item.name)) {
+            suggested_miner_recipe = r.name;
+            break;
+          }
+        }
+        if (!suggested_miner_recipe.empty()) {
+          break;
+        }
+      }
+    }
+    for (auto &mc : frame.components) {
+      if (!mc->data.has("recipe")) {
+        continue;
+      }
+      bool dbg_produces = false;
+      std::string dbg_matched;
+      const std::string dbg_recipe = mc->data.get_or<std::string>("recipe", "");
+      if (!dbg_recipe.empty()) {
+        const auto &all_r = loader->get_recipes();
+        auto dbg_it = std::find_if(all_r.begin(), all_r.end(), [&](const RecipeDefinition &r) {
+          return r.name == dbg_recipe;
+        });
+        if (dbg_it != all_r.end()) {
+          for (const auto &out : dbg_it->outputs) {
+            if (deposits_under_frame.count(out.item.name)) {
+              dbg_produces = true;
+              if (dbg_matched.empty()) {
+                dbg_matched = out.item.name;
+              }
+            }
+          }
+        }
+      }
+      auto set_miner_debug = [&](const std::string &key, AttributeValue v) {
+        auto it = mc->data.attributes.find(key);
+        if (it != mc->data.attributes.end()) {
+          it->second->SetBaseValue(std::move(v));
+        }
+      };
+      set_miner_debug("debug_produces_deposit", dbg_produces);
+      set_miner_debug("debug_deposit_cells", deposit_cells_under_frame);
+      set_miner_debug("debug_matched_output", std::move(dbg_matched));
+      set_miner_debug("debug_deposit_items", deposit_items_debug);
+      set_miner_debug("debug_suggested_recipe", suggested_miner_recipe);
+    }
+
     for (auto &c : frame.components) {
       if (c->data.get_or<std::string>("recipe", "") != "" &&
           c->state == ComponentState::ACTIVE) {
@@ -475,12 +542,10 @@ void ItemsSystem::fixedUpdate() {
                                    });
 
         bool recipe_valid = (recipe != recipe_end);
-        if (recipe_valid && c->data.get<std::string>("type") == "Miner") {
-          auto deposits =
-              depositItemsUnderFrame(current_state.registry, f, frame);
+        if (recipe_valid && c->data.has("recipe")) {
           bool produces_deposit = false;
           for (const auto &out : recipe->outputs) {
-            if (deposits.count(out.item.name)) {
+            if (deposits_under_frame.count(out.item.name)) {
               produces_deposit = true;
               break;
             }

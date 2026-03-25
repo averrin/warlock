@@ -27,9 +27,8 @@ nlohmann::json serializeAttribute(const std::string& key, const Attribute& attr)
     {"final_value", serializeAttributeValue(attr.GetFinalValue())},
     {"modifiers", mods}
   };
-  if (!attr.target_filter.empty()) {
-    j["target_filter"] = attr.target_filter;
-  }
+  if (!attr.inspector_meta.is_null())
+    j["inspector"] = attr.inspector_meta;
   return j;
 }
 
@@ -373,14 +372,13 @@ nlohmann::json computeControlZones(entt::registry& registry) {
     frame_map[frame.data.id] = {e, &frame};
   }
 
-  // Find nexus component(s)
   for (auto& [fid, ef] : frame_map) {
     auto& [entity, frame] = ef;
     for (auto& comp : frame->components) {
       if (!comp) continue;
       if (comp->data.get_or<std::string>("type", "") != "Nexus") continue;
+      if (comp->state != ComponentState::ACTIVE) continue;
 
-      // Nexus found — add its zone
       int radius = comp->data.get_or<int>("control_radius", 40);
       auto [cx, cy] = frameCenter(entity, *frame);
       zones.push_back({
@@ -390,7 +388,6 @@ nlohmann::json computeControlZones(entt::registry& registry) {
         {"source", "nexus"}
       });
 
-      // Parse alive relays
       std::string alive_str = comp->data.get_or<std::string>("alive_relays", "");
       if (alive_str.empty()) continue;
 
@@ -405,10 +402,10 @@ nlohmann::json computeControlZones(entt::registry& registry) {
         if (it == frame_map.end()) continue;
         auto& [relay_entity, relay_frame] = it->second;
 
-        // Find Control Relay component on that frame
         for (auto& rc : relay_frame->components) {
           if (!rc) continue;
           if (rc->data.get_or<std::string>("type", "") != "Control Relay") continue;
+          if (rc->state != ComponentState::ACTIVE) continue;
           int relay_radius = rc->data.get_or<int>("control_radius", 20);
           auto [rx, ry] = frameCenter(relay_entity, *relay_frame);
           zones.push_back({
@@ -424,6 +421,30 @@ nlohmann::json computeControlZones(entt::registry& registry) {
   }
 
   return zones;
+}
+
+namespace {
+
+std::string g_control_zones_sig;
+
+} // namespace
+
+void reset_control_zones_update_cache() { g_control_zones_sig.clear(); }
+
+void remember_control_zones_json(const nlohmann::json& zones) {
+  g_control_zones_sig = zones.dump();
+}
+
+bool take_control_zones_if_changed(entt::registry& registry,
+                                   nlohmann::json* out_zones) {
+  nlohmann::json z = computeControlZones(registry);
+  std::string d = z.dump();
+  if (d == g_control_zones_sig)
+    return false;
+  g_control_zones_sig = std::move(d);
+  if (out_zones)
+    *out_zones = std::move(z);
+  return true;
 }
 
 } // namespace rpc

@@ -1,9 +1,9 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
 
-TEST_CASE("web cutover: frame.move updates frame position") {
+E2E_TEST(web,"web cutover: frame.move updates frame position") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -37,7 +37,7 @@ TEST_CASE("web cutover: frame.move updates frame position") {
   CHECK(frameResult["position"]["y"].get<int>() == 384);
 }
 
-TEST_CASE("web cutover: required read methods return expected shape") {
+E2E_TEST(web,"web cutover: required read methods return expected shape") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -74,7 +74,7 @@ TEST_CASE("web cutover: required read methods return expected shape") {
   }
 }
 
-TEST_CASE("web cutover: game speed control API is wired") {
+E2E_TEST(web,"web cutover: game speed control API is wired") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -99,7 +99,7 @@ TEST_CASE("web cutover: game speed control API is wired") {
   CHECK(paused["paused"].get<bool>() == true);
 }
 
-TEST_CASE("web cutover: env.status exposes chart history keys") {
+E2E_TEST(web,"web cutover: env.status exposes chart history keys") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());

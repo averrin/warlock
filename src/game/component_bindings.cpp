@@ -8,10 +8,111 @@
 #include <game/nexus_api.hpp>
 #include <game/state.hpp>
 #include <game/systems/code_execution.hpp>
+#include <nlohmann/json.hpp>
 #include <sol/sol.hpp>
 #include <sstream>
+#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace {
+
+nlohmann::json sol_object_to_json(sol::object o);
+
+nlohmann::json sol_table_to_json(sol::table t) {
+  std::vector<std::pair<sol::object, sol::object>> pairs;
+  for (const auto &kv : t) {
+    pairs.push_back({kv.first, kv.second});
+  }
+  if (pairs.empty())
+    return nlohmann::json::object();
+
+  bool dense_array = true;
+  std::vector<bool> seen;
+  int max_idx = 0;
+  for (const auto &pr : pairs) {
+    if (pr.first.get_type() != sol::type::number) {
+      dense_array = false;
+      break;
+    }
+    double d = pr.first.as<double>();
+    if (d != std::floor(d) || d < 1.0) {
+      dense_array = false;
+      break;
+    }
+    int idx = static_cast<int>(d);
+    max_idx = std::max(max_idx, idx);
+  }
+  if (dense_array) {
+    if (max_idx != static_cast<int>(pairs.size()))
+      dense_array = false;
+    else {
+      seen.assign(static_cast<size_t>(max_idx) + 1, false);
+      for (const auto &pr : pairs) {
+        int idx = pr.first.as<int>();
+        if (idx < 1 || idx > max_idx) {
+          dense_array = false;
+          break;
+        }
+        seen[static_cast<size_t>(idx)] = true;
+      }
+      if (dense_array) {
+        for (int i = 1; i <= max_idx; ++i) {
+          if (!seen[static_cast<size_t>(i)]) {
+            dense_array = false;
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (dense_array) {
+    std::sort(pairs.begin(), pairs.end(), [](const auto &a, const auto &b) {
+      return a.first.as<int>() < b.first.as<int>();
+    });
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto &pr : pairs)
+      arr.push_back(sol_object_to_json(pr.second));
+    return arr;
+  }
+
+  nlohmann::json obj = nlohmann::json::object();
+  for (const auto &pr : pairs) {
+    std::string key;
+    if (pr.first.get_type() == sol::type::string)
+      key = pr.first.as<std::string>();
+    else if (pr.first.get_type() == sol::type::number)
+      key = std::to_string(pr.first.as<int>());
+    else
+      continue;
+    obj[key] = sol_object_to_json(pr.second);
+  }
+  return obj;
+}
+
+nlohmann::json sol_object_to_json(sol::object o) {
+  switch (o.get_type()) {
+  case sol::type::nil:
+    return nullptr;
+  case sol::type::boolean:
+    return o.as<bool>();
+  case sol::type::number: {
+    double d = o.as<double>();
+    if (d == std::floor(d) &&
+        d >= static_cast<double>(std::numeric_limits<int>::min()) &&
+        d <= static_cast<double>(std::numeric_limits<int>::max()))
+      return static_cast<int>(d);
+    return d;
+  }
+  case sol::type::string:
+    return o.as<std::string>();
+  case sol::type::table:
+    return sol_table_to_json(o.as<sol::table>());
+  default:
+    return nullptr;
+  }
+}
 
 NexusApi g_nexus_api;
 
@@ -60,33 +161,83 @@ DataPacket parse_data_packet_table(sol::table t, int default_source) {
   return p;
 }
 
-} // namespace
+void merge_inspector_meta_from_spec(Component& c, sol::table spec) {
+  sol::table attributes = spec["attributes"];
+  if (!attributes.valid() || attributes.get_type() != sol::type::table)
+    return;
+  for (const auto& pair : attributes) {
+    if (pair.first.get_type() != sol::type::string)
+      continue;
+    std::string key = pair.first.as<std::string>();
+    auto ait = c.data.attributes.find(key);
+    if (ait == c.data.attributes.end() || !ait->second)
+      continue;
+    if (!pair.second.is<sol::table>())
+      continue;
+    sol::table attr_data = pair.second.as<sol::table>();
+    sol::object insp = attr_data["inspector"];
+    if (insp.valid() && insp.get_type() == sol::type::table)
+      ait->second->inspector_meta = sol_table_to_json(insp.as<sol::table>());
+    else
+      ait->second->inspector_meta = nlohmann::json{};
+  }
+}
 
-void refresh_component_apis(CodeExecutionSystem& exec) {
+void apply_injected_attribute_inspectors(Component& c) {
+  if (auto it = c.data.attributes.find("temp");
+      it != c.data.attributes.end() && it->second)
+    it->second->inspector_meta = nlohmann::json{{"precision", 1}};
+  if (auto it = c.data.attributes.find("efficiency");
+      it != c.data.attributes.end() && it->second)
+    it->second->inspector_meta = nlohmann::json{};
+}
+
+void refresh_component_apis_impl(CodeExecutionSystem& exec) {
   auto& st = entt::locator<State>::value();
   for (auto e : st.registry.view<Frame>()) {
     auto& frame = st.registry.get<Frame>(e);
     sol::state& L = exec.getState(frame.data.id);
     for (auto& c : frame.components) {
       if (!c) continue;
-      const std::string type = c->data.get_or<std::string>("type", "");
-      if (type == "Nexus") {
+      if (c->data.has("alive_relays")) {
         c->api = make_nexus_component_api_table(L);
+        try {
+          auto it = exec.sources.find(c->data.name);
+          if (it != exec.sources.end()) {
+            sol::table spec = L.load(it->second).call();
+            merge_inspector_meta_from_spec(*c, spec);
+          }
+        } catch (...) {
+        }
+        apply_injected_attribute_inspectors(*c);
         continue;
       }
       auto it = exec.sources.find(c->data.name);
-      if (it == exec.sources.end()) continue;
+      if (it == exec.sources.end()) {
+        apply_injected_attribute_inspectors(*c);
+        continue;
+      }
       try {
         sol::table spec = L.load(it->second).call();
         sol::object api = spec["api"];
         if (api.valid() && api.get_type() == sol::type::table) {
           c->api = api.as<sol::table>();
         }
+        merge_inspector_meta_from_spec(*c, spec);
       } catch (...) {
-        // Missing or invalid component script — leave api as default
       }
+      apply_injected_attribute_inspectors(*c);
     }
+    if (auto it = frame.data.attributes.find("temp");
+        it != frame.data.attributes.end() && it->second)
+      it->second->inspector_meta = nlohmann::json{{"precision", 1}};
   }
+}
+
+} // namespace
+
+void refresh_component_apis(CodeExecutionSystem& exec) {
+  refresh_component_apis_impl(exec);
 }
 
 // Sol2 bindings for the classes
@@ -234,7 +385,7 @@ void register_bindings(sol::state &lua) {
       [](Frame &frame) -> std::vector<std::shared_ptr<ItemStorage>> {
         auto storages = std::vector<std::shared_ptr<ItemStorage>>{};
         for (auto c : frame.components) {
-          if (c->data.get<std::string>("type") == "Storage") {
+          if (c->storage) {
             storages.push_back(c->storage);
           }
         }
@@ -341,16 +492,20 @@ create_component_from_lua(sol::state &lua, const std::string &lua_source) {
       easing.easing_period = attr_data["easing"]["period"].get<float>();
     }
 
-    std::string target_filter = attr_data["target_filter"].get_or<std::string>("");
-    auto attribute =
-        std::make_shared<Attribute>(title, description, type, value, easing, target_filter);
+    nlohmann::json inspector_meta;
+    sol::object insp = attr_data["inspector"];
+    if (insp.valid() && insp.get_type() == sol::type::table)
+      inspector_meta = sol_table_to_json(insp.as<sol::table>());
+    auto attribute = std::make_shared<Attribute>(title, description, type, value, easing,
+                                                 std::move(inspector_meta));
     component->data.attributes[key] = attribute;
   }
 
   component->data.icon = spec["icon"].get_or<std::string>("");
 
   Attribute temp("Temperature", "Total frame temperature in Celsius",
-                 AttributeType::FLOAT, -1000.0f);
+                 AttributeType::FLOAT, -1000.0f, AttributeEasing(),
+                 nlohmann::json{{"precision", 1}});
   component->data.attributes["temp"] = std::make_shared<Attribute>(temp);
 
   Attribute eff("Efficiency", "Efficiency", AttributeType::FLOAT, 1.0f);
@@ -373,7 +528,7 @@ create_component_from_lua(sol::state &lua, const std::string &lua_source) {
 
   component->api = spec["api"];
 
-  if (component->data.get_or<std::string>("type", "") == "Nexus") {
+  if (component->data.has("alive_relays")) {
     component->api = make_nexus_component_api_table(lua);
   }
 

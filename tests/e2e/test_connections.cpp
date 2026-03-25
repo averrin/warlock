@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 
 // ─── §5 Connection management ─────────────────────────────────────────────────
 
-TEST_CASE("game.state — returns connections array") {
+E2E_TEST(connections,"game.state — returns connections array") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -21,7 +21,7 @@ TEST_CASE("game.state — returns connections array") {
   REQUIRE(state["connections"].is_array());
 }
 
-TEST_CASE("game.state — connections have required DTO fields") {
+E2E_TEST(connections,"game.state — connections have required DTO fields") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -32,7 +32,7 @@ TEST_CASE("game.state — connections have required DTO fields") {
   }
 }
 
-TEST_CASE("connection type is POWER or DATA") {
+E2E_TEST(connections,"connection type is POWER or DATA") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -45,7 +45,7 @@ TEST_CASE("connection type is POWER or DATA") {
   }
 }
 
-TEST_CASE("connection — source and target are integers") {
+E2E_TEST(connections,"connection — source and target are integers") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -57,7 +57,7 @@ TEST_CASE("connection — source and target are integers") {
   }
 }
 
-TEST_CASE("connection — connection id is an integer") {
+E2E_TEST(connections,"connection — connection id is an integer") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());

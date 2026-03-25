@@ -5,6 +5,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			description = "",
 			type = AttributeType.STRING,
 			value = "Data Wireless Receiver",

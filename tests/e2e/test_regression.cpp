@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 
 // ─── §17 Regression tests ─────────────────────────────────────────────────────
 
-TEST_CASE("regression — session can be claimed after previous owner disconnects") {
+E2E_TEST(regression,"regression — session can be claimed after previous owner disconnects") {
   // Tests that disconnecting a client properly releases the session claim
   TestHarness h;
 
@@ -32,7 +32,7 @@ TEST_CASE("regression — session can be claimed after previous owner disconnect
   CHECK(result["ok"] == true);
 }
 
-TEST_CASE("regression — frame.get returns position field") {
+E2E_TEST(regression,"regression — frame.get returns position field") {
   // Ensures that frame DTOs always include position even when transform is missing
   TestHarness h;
   RpcClient client;
@@ -49,7 +49,7 @@ TEST_CASE("regression — frame.get returns position field") {
   REQUIRE(frame["position"].contains("y"));
 }
 
-TEST_CASE("regression — multiple concurrent session.info calls do not crash") {
+E2E_TEST(regression,"regression — multiple concurrent session.info calls do not crash") {
   // Regression for race conditions in session info
   TestHarness h;
 
@@ -73,7 +73,7 @@ TEST_CASE("regression — multiple concurrent session.info calls do not crash") 
   }
 }
 
-TEST_CASE("regression — frame.create then frame.get returns correct data") {
+E2E_TEST(regression,"regression — frame.create then frame.get returns correct data") {
   // Ensures created frame can be retrieved immediately after tick processing
   TestHarness h;
   RpcClient client;
@@ -99,7 +99,7 @@ TEST_CASE("regression — frame.create then frame.get returns correct data") {
   REQUIRE(frame.contains("position"));
 }
 
-TEST_CASE("regression — game.state frame count matches frame.list count") {
+E2E_TEST(regression,"regression — game.state frame count matches frame.list count") {
   // Ensures game.state and frame.list return the same number of frames
   TestHarness h;
   RpcClient client;

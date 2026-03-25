@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 
 // ─── §7 Environment ───────────────────────────────────────────────────────────
 
-TEST_CASE("environment — game.state includes environment object") {
+E2E_TEST(environment,"environment — game.state includes environment object") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -22,7 +22,7 @@ TEST_CASE("environment — game.state includes environment object") {
   REQUIRE(state.contains("environment"));
 }
 
-TEST_CASE("environment — environment has required fields") {
+E2E_TEST(environment,"environment — environment has required fields") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -45,7 +45,7 @@ TEST_CASE("environment — environment has required fields") {
   REQUIRE(env.contains("is_day"));
 }
 
-TEST_CASE("environment — game.tick returns day/time info") {
+E2E_TEST(environment,"environment — game.tick returns day/time info") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -62,7 +62,7 @@ TEST_CASE("environment — game.tick returns day/time info") {
   CHECK(tick["isDay"].is_boolean());
 }
 
-TEST_CASE("state.thermalField — returns rectangular grid") {
+E2E_TEST(environment,"state.thermalField — returns rectangular grid") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());

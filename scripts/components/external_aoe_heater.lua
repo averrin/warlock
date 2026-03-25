@@ -6,6 +6,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			value = "External AO Heater",
 		},
 		consumption = {

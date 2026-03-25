@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 
 // ─── §6 Code execution ────────────────────────────────────────────────────────
 
-TEST_CASE("game.state — started is true after init") {
+E2E_TEST(code,"game.state — started is true after init") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -21,7 +21,7 @@ TEST_CASE("game.state — started is true after init") {
   CHECK(state["started"] == true);
 }
 
-TEST_CASE("game.tick — returns timing info when started") {
+E2E_TEST(code,"game.tick — returns timing info when started") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -36,7 +36,7 @@ TEST_CASE("game.tick — returns timing info when started") {
   REQUIRE(tick.contains("isDay"));
 }
 
-TEST_CASE("game.state — returns frames and connections") {
+E2E_TEST(code,"game.state — returns frames and connections") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -48,7 +48,7 @@ TEST_CASE("game.state — returns frames and connections") {
   REQUIRE(state["connections"].is_array());
 }
 
-TEST_CASE("game.state — includes environment when game started") {
+E2E_TEST(code,"game.state — includes environment when game started") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());

@@ -1,10 +1,10 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 
 #include <string>
 
-TEST_CASE("items.list — returns non-empty, sorted, and has name/id") {
+E2E_TEST(items,"items.list — returns non-empty, sorted, and has name/id") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());

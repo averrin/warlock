@@ -340,6 +340,14 @@ export function connectionWiringGeometryOk(
   return true;
 }
 
+export function frameHasCoreForDataConnections(frame: {
+  components?: readonly { name: string; type?: string }[];
+}): boolean {
+  return (frame.components ?? []).some(
+    (c) => c.type === "Core" || c.name === "Core" || c.name === "Main Core",
+  );
+}
+
 /** Sort connections for stable parallel offsets (same pair). */
 export function sortConnectionsForPair(conns: readonly ConnectionLike[]): ConnectionLike[] {
   return [...conns].sort((a, b) => {

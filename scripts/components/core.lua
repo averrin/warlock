@@ -6,6 +6,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			description = "",
 			type = AttributeType.STRING,
 			value = "Core",
@@ -14,6 +15,7 @@ return {
 			title = "Code",
 			description = "Execution code",
 			type = AttributeType.STRING,
+			inspector = { widget = "code" },
 			value = [[
 return {
   start = function()

@@ -6,6 +6,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			description = "",
 			type = AttributeType.STRING,
 			value = "Battery",
@@ -27,6 +28,7 @@ return {
 			description = "Stored charge",
 			type = AttributeType.INT,
 			value = 5000,
+			inspector = { widget = "progress", min = 0, max_attr = "capacity" },
 		},
 		discharge = {
 			title = "Discharge",

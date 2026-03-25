@@ -158,8 +158,17 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
   if (isFrozen) borderColor = "#3b82f6";
   else if (isOverheat) borderColor = "#f97316";
 
-  const codeAttrRaw = component.attributes?.["code"];
-  const hasCodeAttr = codeAttrRaw !== undefined;
+  let codeAttrKey: string | null = null;
+  let codeAttrRaw: unknown;
+  for (const [k, v] of Object.entries(component.attributes ?? {})) {
+    const dto = v as { inspector?: { widget?: string } };
+    if (dto && typeof dto === "object" && dto.inspector?.widget === "code") {
+      codeAttrKey = k;
+      codeAttrRaw = v;
+      break;
+    }
+  }
+  const hasCodeAttr = codeAttrKey !== null;
   const isPropulsion = component.name === "Propulsion" || component.type === "Propulsion";
 
   const openLuaDef = (e: React.MouseEvent) => {
@@ -171,12 +180,13 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
   };
 
   const openCodeAttr = () => {
+    if (codeAttrKey === null) return;
     openComponentCodeEditor(
       {
         mode: "attribute",
         frameId,
         componentId: component.id,
-        attrKey: "code",
+        attrKey: codeAttrKey,
         initialCode: extractCodeString(codeAttrRaw),
       },
       `📝 ${component.name} #${component.id} — code`,
@@ -282,7 +292,6 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
           <ComponentAttributes
             frameId={frameId}
             componentId={component.id}
-            componentName={component.name}
             attributes={component.attributes as Record<string, unknown> | undefined}
             rpcClient={rpcClient}
           />

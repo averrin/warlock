@@ -6,6 +6,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			description = "",
 			type = AttributeType.STRING,
 			value = "Charger",
@@ -33,7 +34,7 @@ return {
 			description = "Component to operate on",
 			type = AttributeType.INT,
 			value = -1,
-			target_filter = "Battery",
+			inspector = { widget = "link", link_scope = "frame", link_filter = "Battery" },
 		},
 		heat = {
 			title = "Active heat",

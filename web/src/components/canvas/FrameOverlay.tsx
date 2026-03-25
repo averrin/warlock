@@ -2,7 +2,13 @@ import { forwardRef, useImperativeHandle, useRef, useCallback, useLayoutEffect, 
 import { FrameCard, type PlacedFrame, type WiringState } from "./FrameCard";
 import type { ConnectionDTO } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
-import { CELL, connectionWiringGeometryOk, frameCenterFromTopLeft, FRAME_CELL_SIZES } from "./connectionGeometry";
+import {
+  CELL,
+  connectionWiringGeometryOk,
+  frameCenterFromTopLeft,
+  FRAME_CELL_SIZES,
+  frameHasCoreForDataConnections,
+} from "./connectionGeometry";
 
 type ConnectionMedium = "WIRE" | "WIRELESS" | "BEAM";
 
@@ -113,7 +119,7 @@ function frameMeetsConnectionRequirements(
   }
   if (type === "DATA" || type === "POE") {
     if ((frame.components ?? []).some((c) => c.name === "Data Relay")) return true;
-    return (frame.components ?? []).some((c) => c.name === "Core");
+    return frameHasCoreForDataConnections(frame);
   }
   return true;
 }

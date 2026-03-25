@@ -23,4 +23,8 @@ nlohmann::json serializeCanvasBadges(const Frame& frame, const PowerInfo* powerI
 nlohmann::json serializeEnvironment(const Environment& env);
 nlohmann::json computeControlZones(entt::registry& registry);
 
+void reset_control_zones_update_cache();
+void remember_control_zones_json(const nlohmann::json& zones);
+bool take_control_zones_if_changed(entt::registry& registry, nlohmann::json* out_zones);
+
 } // namespace rpc

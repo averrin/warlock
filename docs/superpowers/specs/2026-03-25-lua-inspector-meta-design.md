@@ -110,7 +110,7 @@ These apply to any widget (or to attributes with no widget, as standalone modifi
 | `min` | number | Lower bound (validation + progress bar) |
 | `max` | number | Upper bound |
 | `label` | string | Overrides `title` for display in the inspector |
-| `color` | string | CSS color applied to the attribute row/label |
+| `color` | string | CSS color applied to the attribute row/label/progressbar |
 | `icon` | string | Icon name (game-icons.net) shown next to the label |
 
 ## C++ Changes

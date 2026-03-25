@@ -5,6 +5,7 @@ return {
 	attributes = {
 		type = {
 			title = "Type",
+			inspector = { readonly = true },
 			description = "",
 			type = AttributeType.STRING,
 			value = "Conveyor Connector",
@@ -38,6 +39,7 @@ return {
 			description = "SEND or RECEIVE",
 			type = AttributeType.STRING,
 			value = "SEND",
+			inspector = { widget = "select", options = { "SEND", "RECEIVE" } },
 		},
 		throughput = {
 			title = "Throughput",
@@ -50,7 +52,7 @@ return {
 			description = "Component to operate on",
 			type = AttributeType.INT,
 			value = -1,
-			target_filter = "Storage",
+			inspector = { widget = "link", link_scope = "frame", link_filter = "Storage" },
 		},
 		filter = {
 			title = "Filter",

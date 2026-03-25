@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include "e2e_catch.hpp"
 #include "harness.hpp"
 #include "rpc_client.hpp"
 #include "helpers.hpp"
@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 
 // ─── §8 Events / notifications ────────────────────────────────────────────────
 
-TEST_CASE("event — client can connect and receive session.info") {
+E2E_TEST(events,"event — client can connect and receive session.info") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -21,7 +21,7 @@ TEST_CASE("event — client can connect and receive session.info") {
   CHECK(result.contains("clients"));
 }
 
-TEST_CASE("event — multiple clients can connect simultaneously") {
+E2E_TEST(events,"event — multiple clients can connect simultaneously") {
   TestHarness h;
   RpcClient c1, c2, c3;
   c1.connect(h.ws_url());
@@ -36,7 +36,7 @@ TEST_CASE("event — multiple clients can connect simultaneously") {
   CHECK(result["clients"].get<int>() >= 3);
 }
 
-TEST_CASE("event — drain_events returns empty initially") {
+E2E_TEST(events,"event — drain_events returns empty initially") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -50,7 +50,7 @@ TEST_CASE("event — drain_events returns empty initially") {
   CHECK(events.size() >= 0);
 }
 
-TEST_CASE("event — session.claim broadcasts no error to other clients") {
+E2E_TEST(events,"event — session.claim broadcasts no error to other clients") {
   TestHarness h;
   RpcClient owner, observer;
   owner.connect(h.ws_url());
@@ -66,7 +66,7 @@ TEST_CASE("event — session.claim broadcasts no error to other clients") {
   CHECK(!result["claimed_by"].is_null());
 }
 
-TEST_CASE("event — frame.create triggers frame list growth") {
+E2E_TEST(events,"event — frame.create triggers frame list growth") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -84,7 +84,7 @@ TEST_CASE("event — frame.create triggers frame list growth") {
   CHECK(after_count > before_count);
 }
 
-TEST_CASE("event — game.state is consistent across multiple calls") {
+E2E_TEST(events,"event — game.state is consistent across multiple calls") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -96,7 +96,7 @@ TEST_CASE("event — game.state is consistent across multiple calls") {
   CHECK(state1["frames"].size() == state2["frames"].size());
 }
 
-TEST_CASE("event — concurrent calls from same client are handled") {
+E2E_TEST(events,"event — concurrent calls from same client are handled") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -121,7 +121,7 @@ TEST_CASE("event — concurrent calls from same client are handled") {
   CHECK(r3.contains("frames"));
 }
 
-TEST_CASE("event — notify (no id) does not produce a response") {
+E2E_TEST(events,"event — notify (no id) does not produce a response") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
