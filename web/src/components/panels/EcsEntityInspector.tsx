@@ -503,7 +503,7 @@ function EntityRow({
           </span>
           <Badge label={`#${entity.entity_id}`} variant="id" />
           {isFolder ? (
-            <Badge label="folder" />
+            <Badge label="folder" variant="custom" />
           ) : frameDataId != null ? (
             <Badge label={`frame #${frameDataId}`} variant="id" />
           ) : null}
@@ -532,26 +532,41 @@ function EntityRow({
       </div>
       {expanded && (
         <>
-          <div style={{ paddingLeft: 16 + depth * 14, paddingBottom: 6, display: "grid", gap: 2 }}>
-            {frameDataId != null && (
-              <GameFrameComponentsSection
-                entity={entity}
-                frameDataId={frameDataId}
-                rpcClient={rpcClient}
-                fetchEntities={fetchEntities}
-              />
-            )}
-            {componentNames.map((name) => (
-              <EcsComponentEditor
-                key={name}
+          {!isFolder && (componentNames.length > 0 || frameDataId != null || claimed) && (
+            <div
+              style={{
+                border: "1px solid #334155",
+                borderRadius: 6,
+                padding: "6px 8px",
+                margin: `4px 4px 4px ${4 + depth * 14}px`,
+                display: "grid",
+                gap: 2,
+              }}
+            >
+              {frameDataId != null && (
+                <GameFrameComponentsSection
+                  entity={entity}
+                  frameDataId={frameDataId}
+                  rpcClient={rpcClient}
+                  fetchEntities={fetchEntities}
+                />
+              )}
+              {componentNames.map((name) => (
+                <EcsComponentEditor
+                  key={name}
+                  entityId={entity.entity_id}
+                  componentName={name}
+                  data={entity.components[name]!}
+                  rpcClient={rpcClient}
+                />
+              ))}
+              <AddRegistryComponentRow
                 entityId={entity.entity_id}
-                componentName={name}
-                data={entity.components[name]!}
+                existingNames={componentNames}
                 rpcClient={rpcClient}
               />
-            ))}
-            <AddRegistryComponentRow entityId={entity.entity_id} existingNames={componentNames} rpcClient={rpcClient} />
-          </div>
+            </div>
+          )}
           {children.map((ch) => (
             <EntityRow
               key={ch.entity_id}
