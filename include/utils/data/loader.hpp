@@ -34,7 +34,6 @@ template <typename S>
 void clearIfRegistryStore(const std::shared_ptr<S> &store) {
   if constexpr (std::is_same_v<S, RegistryStore>) {
     store->registry.clear();
-    store->spendable_pool.clear();
   }
 }
 } // namespace loader_detail
@@ -88,13 +87,10 @@ public:
     return container.stores.size() > 0;
   }
 
-  void saveStateToFile(
-      RegistryContainer &container, std::string path,
-      const std::map<std::string, int64_t> &spendable_pool) {
+  void saveStateToFile(RegistryContainer &container, std::string path) {
     std::shared_ptr<RegistryStore> store = container.create("state", path);
     store->initEmpty();
     RegistryContainer::copyRegistry(container.registry, store->registry);
-    store->spendable_pool = spendable_pool;
     store->attributes["saved_at"] = getCurrentDateTime();
     auto file =
         fs::relative(store->path, entt::monostate<"path"_hs>{}).string();

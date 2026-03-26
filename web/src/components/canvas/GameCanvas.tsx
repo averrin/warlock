@@ -3021,6 +3021,7 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
           framesEnabled={blueprintSupported}
           onSelect={(pick: CanvasCreatePick) => {
             if (pick.kind === "frame") {
+              if (!pick.affordable) return;
               enterFramePlacementMode(pick.blueprint, pick.frameSizeKey);
             } else if (pick.kind === "patch") {
               setSurfacePaint(null);

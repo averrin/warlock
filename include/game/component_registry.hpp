@@ -26,6 +26,7 @@
   X(Frame,                     "Frame")               \
   X(Connection,                "Connection")          \
   X(Environment,               "Environment")         \
+  X(SpendablePool,             "SpendablePool")       \
   X(wl::transform,             "transform")           \
   X(wl::relation,              "relation")            \
   X(ResourcePatch,             "ResourcePatch")       \

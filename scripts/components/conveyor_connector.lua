@@ -63,6 +63,7 @@ return {
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
+	spendable_cost = { ["Electronic Parts"] = 10 },
 	require = { "Storage" },
 	api = {
 		setTarget = function(self, storage)

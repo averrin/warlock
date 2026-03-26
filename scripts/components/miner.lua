@@ -60,6 +60,7 @@ return {
 	},
 	state = ComponentState.DEACTIVATED,
 	size = ComponentSize.M,
+	spendable_cost = { ["Electronic Parts"] = 25 },
 	require = { "Power Wire Connector" },
 	api = {},
 }

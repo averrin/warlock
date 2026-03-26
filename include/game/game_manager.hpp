@@ -45,8 +45,7 @@ public:
   void loadData();
   void saveData();
 
-  /** Global spendable currency (persisted in the state save file). */
-  const std::map<std::string, int64_t> &spendablePool() const { return spendable_pool_; }
+  std::map<std::string, int64_t> spendablePool() const;
   void addSpendable(const std::string &name, int64_t delta);
   bool tryConsumeSpendable(const std::map<std::string, int> &cost, std::string &err);
   entt::entity addFrame(std::string name);
@@ -70,7 +69,7 @@ public:
   const std::string& lastSavedAt() const { return last_saved_at_; }
 
 private:
-  std::map<std::string, int64_t> spendable_pool_;
+  void ensureEconomyEntity(entt::registry &reg, WellKnownEntities &wk);
   void ensureSpendableKeysFromItems();
   void emitSpendablePool();
 

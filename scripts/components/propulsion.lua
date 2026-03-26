@@ -32,6 +32,7 @@ return {
 	},
 	state = ComponentState.DEACTIVATED,
 	size = ComponentSize.S,
+	spendable_cost = { ["Electronic Parts"] = 10 },
 	api = {
 		move = function(frame, direction)
 			local comp = frame:getComponentByType("Propulsion")

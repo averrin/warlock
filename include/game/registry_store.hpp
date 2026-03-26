@@ -221,23 +221,38 @@ class RegistryStore : public Store {
     } else {
       load_v2(ar);
     }
-    if (file_version >= 3) {
-      ar(spendable_pool);
-    } else {
-      spendable_pool.clear();
+    if (file_version == 3) {
+      std::map<std::string, int64_t> legacy_spendable;
+      ar(legacy_spendable);
+      apply_legacy_spendable_to_registry(std::move(legacy_spendable));
     }
   }
 
   template <class Archive> void save(Archive &ar) const {
     ar(cereal::base_class<Store>(this));
     save_v2(ar);
-    ar(spendable_pool);
+  }
+
+  void apply_legacy_spendable_to_registry(std::map<std::string, int64_t> legacy) {
+    entt::entity econ = entt::null;
+    for (auto e : registry.view<SpendablePool>()) {
+      econ = e;
+      break;
+    }
+    if (econ == entt::null) {
+      econ = registry.create();
+      hf::meta m;
+      m.name = "Economy";
+      m.id = "ECONOMY";
+      registry.emplace<hf::meta>(econ, m);
+      registry.emplace<SpendablePool>(econ, SpendablePool{std::move(legacy)});
+      return;
+    }
+    registry.get<SpendablePool>(econ).amounts = std::move(legacy);
   }
 
 public:
   entt::registry registry;
-  /** Global spendable currency amounts (serialized with state; format v3+). */
-  std::map<std::string, int64_t> spendable_pool;
 
   using Store::Store;
 };

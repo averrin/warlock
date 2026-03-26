@@ -20,6 +20,7 @@ return {
 	},
 	state = ComponentState.DEACTIVATED,
 	size = ComponentSize.S,
+	spendable_cost = { ["Electronic Parts"] = 10 },
 	api = {
 		scan = function(frame)
 			return frameWorld:scanAdjacent(frame.data.id)

@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import type { FrameDTO, ComponentDTO } from "../../rpc/types";
-import { STATE_COLORS, EFFECT_LABELS } from "../ui";
+import { STATE_COLORS, EFFECT_LABELS, formatComponentSlotsLine } from "../ui";
 import { CELL } from "./connectionGeometry";
 import "./FrameCard.css";
 
@@ -174,6 +174,7 @@ export const FrameCard = memo(function FrameCard({
 
   const storage = useMemo(() => aggregateStorage(components), [components]);
   const effects = useMemo(() => collectEffects(components), [components]);
+  const slotsLine = useMemo(() => formatComponentSlotsLine(frame), [frame]);
 
   // Build class names
   let className = "frame-card";
@@ -257,6 +258,12 @@ export const FrameCard = memo(function FrameCard({
               {POWER_LABELS[badges.power] ?? badges.power}
             </span>
           )}
+        </div>
+      )}
+
+      {slotsLine && (
+        <div className="frame-card__slots" title="Component size slots (used / max)">
+          Slots {slotsLine}
         </div>
       )}
 

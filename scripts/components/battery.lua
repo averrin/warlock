@@ -69,6 +69,7 @@ return {
 	},
 	state = ComponentState.DEACTIVATED,
 	size = ComponentSize.M,
+	spendable_cost = { ["Electronic Parts"] = 25 },
 	api = {
 		getStatus = function(self)
 			return self.data.attributes["status"]:GetFinalValue()

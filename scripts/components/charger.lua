@@ -45,6 +45,7 @@ return {
 	},
 	state = ComponentState.DEACTIVATED,
 	size = ComponentSize.S,
+	spendable_cost = { ["Electronic Parts"] = 10 },
 	require = { "Battery" },
 	api = {
 		test = "yes",

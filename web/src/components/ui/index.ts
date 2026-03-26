@@ -7,3 +7,4 @@ export * from "./NumberField";
 export * from "./TextField";
 export * from "./SelectField";
 export * from "./TransformEditor";
+export * from "./componentSlots";

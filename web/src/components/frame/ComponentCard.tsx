@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import type { RpcClient } from "../../rpc/client";
 import type { ComponentDTO, DataLinkBufferDTO } from "../../rpc/types";
-import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS } from "../ui";
+import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS, componentSizeOptionsAllowed } from "../ui";
 import { useGameStore } from "../../stores/game";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { ComponentControls } from "./ComponentControls";
@@ -145,6 +145,12 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
   const [expanded, setExpanded] = useState(false);
   const setComponentSize = useGameStore((s) => s.setComponentSize);
   const setComponentMaterial = useGameStore((s) => s.setComponentMaterial);
+  const frameForSlots = useGameStore((s) => s.frames.find((f) => f.id === frameId));
+  const componentSizeOptions = componentSizeOptionsAllowed(
+    frameForSlots?.component_slots,
+    component.size ?? "S",
+    COMPONENT_SIZES,
+  );
   const openComponentCodeEditor = useWindowLayoutStore((s) => s.openComponentCodeEditor);
 
   const stateColor = STATE_COLORS[component.state] ?? "#1f2937";
@@ -277,7 +283,7 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
             <SelectField
               label="Size"
               value={component.size ?? "S"}
-              options={COMPONENT_SIZES}
+              options={componentSizeOptions}
               onChange={(v) => void setComponentSize(rpcClient, frameId, component.id, v)}
               labelWidth={50}
             />

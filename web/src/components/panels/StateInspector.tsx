@@ -3,7 +3,8 @@ import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
 import { usePatchStore, Patch, type PatchType } from "../../stores/patches";
 import type { ConnectionDTO, FrameDTO, PowerNetworkDTO } from "../../rpc/types";
-import { CollapsibleSection, NumberField, TransformEditor, inputStyle, smallBtnStyle } from "../ui";
+import { CollapsibleSection, NumberField, TransformEditor, FRAME_SIZES, inputStyle, smallBtnStyle } from "../ui";
+import { canAfford, formatCostLine, FRAME_SIZE_COSTS } from "../../game/economy";
 import { FramePanel } from "../frame";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { EntitiesSection } from "./EcsEntityInspector";
@@ -43,11 +44,13 @@ function EnvironmentSection({ rpcClient }: { rpcClient: RpcClient }) {
 
 function FramesSection({ rpcClient, filter }: { rpcClient: RpcClient; filter: string }) {
   const frames = useGameStore((s) => s.frames);
+  const spendablePool = useGameStore((s) => s.spendablePool);
   const selectedFrameId = useGameStore((s) => s.selectedFrameId);
   const createFrameAt = useGameStore((s) => s.createFrameAt);
   const openPinnedMiniInspectorForFrame = useWindowLayoutStore((s) => s.openPinnedMiniInspectorForFrame);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("New Frame");
+  const [newSize, setNewSize] = useState<string>("S");
   const [expandedFrames, setExpandedFrames] = useState<Record<number, 0 | 1 | 2>>({});
   const pendingExpandFrameId = useWindowLayoutStore((s) => s.pendingStateInspectorExpandFrameId);
   const clearPendingExpand = useWindowLayoutStore((s) => s.clearPendingStateInspectorExpand);
@@ -127,20 +130,41 @@ function FramesSection({ rpcClient, filter }: { rpcClient: RpcClient; filter: st
         })}
       </div>
       {creating ? (
-        <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4, alignItems: "center" }}>
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             style={{ ...inputStyle, width: 120 }}
           />
+          <select
+            value={newSize}
+            onChange={(e) => setNewSize(e.target.value)}
+            style={{ ...inputStyle, width: 200, fontSize: 11 }}
+          >
+            {FRAME_SIZES.map((sz) => {
+              const c = FRAME_SIZE_COSTS[sz] ?? {};
+              return (
+                <option key={sz} value={sz} disabled={!canAfford(spendablePool, c)}>
+                  {sz} — {formatCostLine(c)}
+                </option>
+              );
+            })}
+          </select>
           <button
             type="button"
             style={smallBtnStyle}
+            disabled={!canAfford(spendablePool, FRAME_SIZE_COSTS[newSize] ?? {})}
+            title={
+              !canAfford(spendablePool, FRAME_SIZE_COSTS[newSize] ?? {})
+                ? "Insufficient resources for this frame size"
+                : undefined
+            }
             onClick={() => {
-              createFrameAt(rpcClient, newName, 0, 0);
+              void createFrameAt(rpcClient, newName, 0, 0, newSize);
               setCreating(false);
               setNewName("New Frame");
+              setNewSize("S");
             }}
           >
             Create

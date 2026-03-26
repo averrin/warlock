@@ -19,6 +19,7 @@ return {
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
+	spendable_cost = { ["Electronic Parts"] = 10 },
 	api = {
 		setLoad = function(component, value)
 			if value < 0 then

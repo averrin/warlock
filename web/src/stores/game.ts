@@ -130,7 +130,7 @@ interface GameStore {
   refreshEnvStatus: (client: RpcClient) => Promise<void>;
   refreshPowerNetworks: (client: RpcClient) => Promise<void>;
   fetchSpeedState: (client: RpcClient) => Promise<void>;
-  createFrameAt: (client: RpcClient, name: string, x: number, y: number) => Promise<void>;
+  createFrameAt: (client: RpcClient, name: string, x: number, y: number, size?: string) => Promise<void>;
   moveFrame: (client: RpcClient, frameId: number, x: number, y: number) => Promise<void>;
   activateFrame: (client: RpcClient, frameId: number) => Promise<void>;
   deactivateFrame: (client: RpcClient, frameId: number) => Promise<void>;
@@ -435,8 +435,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return { selectedFrameIds: next, selectedFrameId: primary };
     }),
 
-  createFrameAt: async (client, name, x, y) => {
-    await client.call("frame.create", { name, position: { x, y } });
+  createFrameAt: async (client, name, x, y, size) => {
+    const params: Record<string, unknown> = { name, position: { x, y } };
+    if (size) params.size = size;
+    await client.call("frame.create", params);
     await get().fetchInitialState(client);
   },
 

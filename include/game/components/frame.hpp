@@ -7,6 +7,7 @@
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
 
+#include <array>
 #include <deque>
 
 #include <game/attributes.hpp>
@@ -131,6 +132,12 @@ struct Environment {
 
   std::map<int, std::deque<float>> temperatures = {};
   std::map<std::string, std::deque<float>> named_history = {};
+};
+
+struct SpendablePool {
+  std::map<std::string, int64_t> amounts;
+  void field_save(FieldOutputArchive &ar) const { FIELD(ar, amounts); }
+  void field_load(FieldInputArchive &ar) { FIELD(ar, amounts); }
 };
 
 enum class ComponentMaterial {
@@ -396,15 +403,6 @@ struct Frame {
   FrameSize size = FrameSize::M;
   ComponentMaterial material = ComponentMaterial::STEEL;
 
-  std::map<FrameSize, std::map<ComponentSize, unsigned int>> limits = {
-      {FrameSize::XS, {{ComponentSize::S, 1}}},
-      {FrameSize::S, {{ComponentSize::S, 8}, {ComponentSize::M, 1}}},
-      {FrameSize::M, {{ComponentSize::S, 16}, {ComponentSize::M, 2}}},
-      {FrameSize::L,
-       {{ComponentSize::S, 32}, {ComponentSize::M, 4}, {ComponentSize::L, 1}}},
-      {FrameSize::G,
-       {{ComponentSize::S, 32}, {ComponentSize::M, 8}, {ComponentSize::L, 4}}}};
-
   /// Runtime only — not serialized; used for propulsion subcell movement interpolation.
   bool move_tween_active = false;
   float move_tween_elapsed = 0.f;
@@ -513,6 +511,51 @@ struct Frame {
     }
   }
 };
+
+inline unsigned int component_slot_limit(FrameSize fs, ComponentSize cs) {
+  static const std::map<FrameSize, std::map<ComponentSize, unsigned int>> table = {
+      {FrameSize::XS, {{ComponentSize::S, 1}}},
+      {FrameSize::S, {{ComponentSize::S, 8}, {ComponentSize::M, 1}}},
+      {FrameSize::M, {{ComponentSize::S, 16}, {ComponentSize::M, 6}, {ComponentSize::L, 2}}},
+      {FrameSize::L,
+       {{ComponentSize::S, 32}, {ComponentSize::M, 4}, {ComponentSize::L, 1}}},
+      {FrameSize::G,
+       {{ComponentSize::S, 32}, {ComponentSize::M, 8}, {ComponentSize::L, 4}}}};
+  auto fi = table.find(fs);
+  if (fi == table.end())
+    return 0;
+  auto ci = fi->second.find(cs);
+  if (ci == fi->second.end())
+    return 0;
+  return ci->second;
+}
+
+inline std::array<unsigned int, 3> component_counts_by_size(const Frame &f) {
+  std::array<unsigned int, 3> counts{};
+  for (const auto &c : f.components) {
+    if (!c)
+      continue;
+    auto i = static_cast<unsigned>(c->size);
+    if (i < 3)
+      counts[i]++;
+  }
+  return counts;
+}
+
+inline bool component_counts_within_limits(FrameSize fs,
+                                           const std::array<unsigned int, 3> &counts) {
+  for (unsigned i = 0; i < 3; ++i) {
+    if (counts[i] > component_slot_limit(fs, static_cast<ComponentSize>(i)))
+      return false;
+  }
+  return true;
+}
+
+inline bool frame_has_slot_for_component_size(const Frame &f, ComponentSize cs) {
+  auto counts = component_counts_by_size(f);
+  auto i = static_cast<unsigned>(cs);
+  return counts[i] < component_slot_limit(f.size, cs);
+}
 
 enum class ConnectionType {
   POWER,
