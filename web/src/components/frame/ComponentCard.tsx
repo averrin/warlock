@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import type { RpcClient } from "../../rpc/client";
 import type { ComponentDTO, DataLinkBufferDTO } from "../../rpc/types";
-import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS, componentSizeOptionsAllowed } from "../ui";
+import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS, componentSizeOptionsAllowed, CardExpandControl } from "../ui";
 import { useGameStore } from "../../stores/game";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { ComponentControls } from "./ComponentControls";
@@ -14,48 +14,6 @@ type Props = {
   frameId: number;
   rpcClient: RpcClient;
 };
-
-// Same 2-slot schema as FramePanel LevelControls, but 2-state only.
-// Collapsed: [ ][▸]   Expanded: [ ][◂]  — right slot only, ◂ lands under cursor after expanding.
-function CardExpandControl({
-  expanded,
-  onToggle,
-}: {
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const btn: CSSProperties = {
-    border: "1px solid #334155",
-    borderRadius: 4,
-    width: 20,
-    height: 20,
-    background: "#020617",
-    color: "#9ca3af",
-    cursor: "pointer",
-    fontSize: 11,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    flexShrink: 0,
-  };
-
-  return (
-    <div style={{ display: "flex", gap: 2, alignItems: "center", flexShrink: 0 }}>
-      {/* LEFT slot: always empty placeholder to keep right slot position stable */}
-      <div style={{ width: 20, height: 20, flexShrink: 0 }} />
-      {/* RIGHT slot: ▸ collapsed → ◂ expanded (same pixel position — ◂ under cursor after expand) */}
-      <button
-        type="button"
-        style={btn}
-        title={expanded ? "Collapse" : "Expand"}
-        onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      >
-        {expanded ? "◂" : "▸"}
-      </button>
-    </div>
-  );
-}
 
 const DATA_LINK_PREVIEW = 200;
 

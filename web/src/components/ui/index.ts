@@ -8,3 +8,4 @@ export * from "./TextField";
 export * from "./SelectField";
 export * from "./TransformEditor";
 export * from "./componentSlots";
+export * from "./CardExpandControl";
