@@ -4,7 +4,13 @@ import type { ComponentDTO, EcsEntityDTO } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
 import { useConnectionStore } from "../../stores/connection";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
-import { CollapsibleSection, NumberField, TextField, smallBtnStyle } from "../ui";
+import { CollapsibleSection, NumberField, TextField, smallBtnStyle, Badge, IconButton, CardExpandControl } from "../ui";
+
+function isFolderEntity(entity: EcsEntityDTO): boolean {
+  const meta = entity.components.meta;
+  if (typeof meta !== "object" || meta === null) return false;
+  return (meta as Record<string, unknown>).id === "FOLDER";
+}
 
 const ECS_REGISTRY_COMPONENT_OPTIONS = [
   "meta",
@@ -465,6 +471,7 @@ function EntityRow({
 
   const children = (childLists.get(entity.entity_id) ?? []).filter((c) => visibleIds.has(c.entity_id));
   const canDeleteEntity = claimed && entity.label !== "Environment";
+  const isFolder = isFolderEntity(entity);
 
   return (
     <div style={{ borderBottom: "1px solid #1f2937" }}>
@@ -472,73 +479,56 @@ function EntityRow({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: 6,
           padding: "4px 4px",
           paddingLeft: 4 + depth * 14,
           fontSize: 11,
+          cursor: "pointer",
           borderLeft: entityColor ? `3px solid ${entityColor}` : "3px solid transparent",
           background: expanded && entityColor ? `${entityColor}10` : undefined,
         }}
+        onClick={() => setExpanded((v) => !v)}
       >
+        {/* Click target: everything left of the action buttons */}
         <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            cursor: "pointer",
-            minWidth: 0,
-          }}
-          onClick={() => setExpanded((v) => !v)}
+          style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}
         >
-          <span style={{ color: "#6b7280", fontSize: 10 }}>{expanded ? "\u25BC" : "\u25B6"}</span>
           {iconFile ? (
-            <img
-              src={`/icons/${iconFile}`}
-              alt=""
-              style={{ width: 16, height: 16, objectFit: "contain", flexShrink: 0 }}
-            />
+            <img src={`/icons/${iconFile}`} alt="" style={{ width: 16, height: 16, objectFit: "contain", flexShrink: 0 }} />
           ) : entityColor ? (
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: entityColor,
-                flexShrink: 0,
-              }}
-            />
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: entityColor, flexShrink: 0 }} />
           ) : null}
-          <span style={{ color: "#60a5fa", fontFamily: "ui-monospace, monospace" }}>
-            {entity.entity_id}
-          </span>
-          <span style={{ color: entityColor || "#e5e7eb", fontWeight: 500 }}>
+          <span style={{ color: entityColor || "#e5e7eb", fontWeight: 500, minWidth: 0 }}>
             {entity.label || "(unnamed)"}
           </span>
-          <span style={{ color: "#6b7280", fontSize: 10 }}>
-            [{componentNames.length} components{frameDataId != null ? ` · game frame #${frameDataId}` : ""}]
-          </span>
+          <Badge label={`#${entity.entity_id}`} variant="id" />
+          {isFolder ? (
+            <Badge label="folder" />
+          ) : frameDataId != null ? (
+            <Badge label={`frame #${frameDataId}`} variant="id" />
+          ) : null}
         </div>
+        {/* Action buttons — stop propagation so clicks don't toggle expand */}
         {claimed && (
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              style={smallBtnStyle}
+            <IconButton
+              icon="⊕"
+              size="sm"
+              title="Add child entity"
               onClick={() => void createEmptyEntity(rpcClient, { parent_entity_id: entity.entity_id, name: "Child" })}
-            >
-              + Child
-            </button>
+            />
             {canDeleteEntity && (
-              <button
-                type="button"
-                style={{ ...smallBtnStyle, color: "#ef4444" }}
+              <IconButton
+                icon="✕"
+                size="sm"
+                variant="danger"
+                title="Delete entity"
                 onClick={() => void destroyEntityByEid(rpcClient, entity.entity_id)}
-              >
-                Delete
-              </button>
+              />
             )}
           </div>
         )}
+        <CardExpandControl expanded={expanded} onToggle={() => setExpanded((v) => !v)} />
       </div>
       {expanded && (
         <>
