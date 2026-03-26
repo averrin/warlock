@@ -109,8 +109,8 @@ void removeEntityFromParentChildren(entt::registry& reg, entt::entity ent) {
 }
 
 bool isProtectedWellKnown(entt::entity ent, const WellKnownEntities& wk) {
-  return ent == wk.environment || ent == wk.frames_folder || ent == wk.connections_folder ||
-         ent == wk.patches_folder;
+  return ent == wk.environment || ent == wk.economy || ent == wk.frames_folder ||
+         ent == wk.connections_folder || ent == wk.patches_folder;
 }
 
 void emplaceComponentByName(entt::registry& reg, entt::entity ent, const std::string& name) {
@@ -152,6 +152,10 @@ void emplaceComponentByName(entt::registry& reg, entt::entity ent, const std::st
     if (!reg.all_of<Environment>(ent)) reg.emplace<Environment>(ent);
     return;
   }
+  if (name == "SpendablePool") {
+    if (!reg.all_of<SpendablePool>(ent)) reg.emplace<SpendablePool>(ent);
+    return;
+  }
   if (name == "transform") {
     if (!reg.all_of<wl::transform>(ent)) reg.emplace<wl::transform>(ent);
     return;
@@ -176,6 +180,9 @@ void removeComponentByName(entt::registry& reg, entt::entity ent, const std::str
   }
   if (name == "Environment") {
     throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Cannot remove Environment component"};
+  }
+  if (name == "SpendablePool") {
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Cannot remove SpendablePool component"};
   }
   if (name == "relation") {
     if (!reg.all_of<wl::relation>(ent)) return;
@@ -511,6 +518,13 @@ void registerStateHandlers(Server& server) {
       if (registry.all_of<ResourcePatch>(ent)) {
         auto& c = registry.get<ResourcePatch>(ent);
         comps["ResourcePatch"] = {{"patch_type", c.patch_type}, {"item_name", c.item_name}, {"obstacle", c.obstacle}, {"cell_count", static_cast<int>(c.cells.size())}};
+      }
+      // SpendablePool
+      if (registry.all_of<SpendablePool>(ent)) {
+        auto& c = registry.get<SpendablePool>(ent);
+        nlohmann::json amounts_obj = nlohmann::json::object();
+        for (auto& [k, v] : c.amounts) amounts_obj[k] = v;
+        comps["SpendablePool"] = {{"amounts", amounts_obj}};
       }
       // proto tag
       if (registry.all_of<entt::tag<"proto"_hs>>(ent)) {
