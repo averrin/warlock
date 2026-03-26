@@ -153,8 +153,7 @@ void emplaceComponentByName(entt::registry& reg, entt::entity ent, const std::st
     return;
   }
   if (name == "SpendablePool") {
-    if (!reg.all_of<SpendablePool>(ent)) reg.emplace<SpendablePool>(ent);
-    return;
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Use economy APIs for SpendablePool"};
   }
   if (name == "transform") {
     if (!reg.all_of<wl::transform>(ent)) reg.emplace<wl::transform>(ent);
