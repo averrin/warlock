@@ -512,23 +512,39 @@ static std::chrono::steady_clock::time_point g_nexus_lib_hb_last;
 static constexpr auto kLibraryHeartbeatInterval = std::chrono::milliseconds(3000);
 static constexpr auto kLibraryHeartbeatTimeout = std::chrono::seconds(10);
 
+static void set_status_attr(Component& c, const std::string& key, const std::string& val) {
+  auto it = c.data.attributes.find(key);
+  if (it != c.data.attributes.end() && it->second)
+    it->second->SetBaseValue(val);
+}
+
+static int g_nexus_lib_receivers = 0; // updated by reception function
+
 static void process_nexus_library_heartbeats(entt::registry &registry) {
   const auto now = std::chrono::steady_clock::now();
-  if (g_nexus_lib_hb_last.time_since_epoch().count() != 0 &&
-      now - g_nexus_lib_hb_last < kLibraryHeartbeatInterval)
-    return;
+  bool should_send = g_nexus_lib_hb_last.time_since_epoch().count() == 0 ||
+                     now - g_nexus_lib_hb_last >= kLibraryHeartbeatInterval;
 
   for (auto e : registry.view<Frame>()) {
     auto &fr = registry.get<Frame>(e);
     for (auto &comp : fr.components) {
       if (!comp) continue;
       if (comp->data.get_or<std::string>("type", "") != "Nexus") continue;
-      if (comp->state != ComponentState::ACTIVE) continue;
+      if (comp->state != ComponentState::ACTIVE) {
+        set_status_attr(*comp, "library_broadcast", "Inactive");
+        continue;
+      }
 
       auto lib_it = comp->data.attributes.find("library");
-      if (lib_it == comp->data.attributes.end() || !lib_it->second) continue;
+      if (lib_it == comp->data.attributes.end() || !lib_it->second) {
+        set_status_attr(*comp, "library_broadcast", "No library code");
+        continue;
+      }
       auto lib_code = std::get<std::string>(lib_it->second->GetBaseValue());
-      if (lib_code.empty()) continue;
+      if (lib_code.empty()) {
+        set_status_attr(*comp, "library_broadcast", "Empty library");
+        continue;
+      }
 
       // Find data connector (reuse same target_data logic as relay reception)
       std::shared_ptr<Component> dc;
@@ -546,17 +562,32 @@ static void process_nexus_library_heartbeats(entt::registry &registry) {
           }
         }
       }
-      if (!dc || dc->counterpart_id < 0) continue;
+      if (!dc) {
+        set_status_attr(*comp, "library_broadcast", "No data connector");
+        continue;
+      }
+      if (dc->counterpart_id < 0) {
+        set_status_attr(*comp, "library_broadcast", "Data wire not connected");
+        continue;
+      }
 
-      DataPacket pkt;
-      pkt.source = fr.data.id;
-      pkt.destination = -1;
-      pkt.headers["hb"] = "LIBRARY_HEARTBEAT";
-      pkt.body = lib_code;
-      data_link_send_packet(dc, std::move(pkt));
+      if (should_send) {
+        DataPacket pkt;
+        pkt.source = fr.data.id;
+        pkt.destination = -1;
+        pkt.headers["hb"] = "LIBRARY_HEARTBEAT";
+        pkt.body = lib_code;
+        data_link_send_packet(dc, std::move(pkt));
+      }
+
+      int n = g_nexus_lib_receivers;
+      set_status_attr(*comp, "library_broadcast",
+                      n > 0 ? fmt::format("Broadcasting to {} core{}", n, n == 1 ? "" : "s")
+                             : "Broadcasting (no receivers)");
     }
   }
-  g_nexus_lib_hb_last = now;
+  if (should_send)
+    g_nexus_lib_hb_last = now;
 }
 
 static void process_advanced_core_library_reception(entt::registry &registry) {
@@ -570,12 +601,19 @@ static void process_advanced_core_library_reception(entt::registry &registry) {
       ++it;
   }
 
+  int receiver_count = 0;
+
   for (auto e : registry.view<Frame>()) {
     auto &fr = registry.get<Frame>(e);
     for (auto &comp : fr.components) {
       if (!comp) continue;
       if (comp->data.get_or<std::string>("type", "") != "Core") continue;
       if (!comp->data.has("memory")) continue; // Advanced Core only
+
+      if (comp->state != ComponentState::ACTIVE) {
+        set_status_attr(*comp, "library_status", "Inactive");
+        continue;
+      }
 
       // Find a Data Connector on this frame
       std::shared_ptr<Component> dc;
@@ -585,7 +623,10 @@ static void process_advanced_core_library_reception(entt::registry &registry) {
           break;
         }
       }
-      if (!dc) continue;
+      if (!dc) {
+        set_status_attr(*comp, "library_status", "No data connector");
+        continue;
+      }
 
       constexpr int kDrainCap = 64;
       int n = 0;
@@ -599,8 +640,19 @@ static void process_advanced_core_library_reception(entt::registry &registry) {
           break; // Don't consume non-library packets
         }
       }
+
+      // Set status based on whether we have a fresh library
+      auto lib_it = g_core_library.find(comp->data.id);
+      if (lib_it != g_core_library.end()) {
+        receiver_count++;
+        set_status_attr(*comp, "library_status", "Library active");
+      } else {
+        set_status_attr(*comp, "library_status", "No heartbeat");
+      }
     }
   }
+
+  g_nexus_lib_receivers = receiver_count;
 }
 
 } // namespace

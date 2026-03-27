@@ -38,6 +38,13 @@ return {
 			inspector = { widget = "memory" },
 			value = "{}",
 		},
+		library_status = {
+			title = "Library link",
+			description = "Nexus library heartbeat status (updated by engine)",
+			type = AttributeType.STRING,
+			value = "—",
+			inspector = { readonly = true },
+		},
 		consumption = {
 			title = "Consumption",
 			description = "Power consumption",
