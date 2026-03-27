@@ -1,15 +1,14 @@
 FetchContent_Declare(
   lua
-  GIT_REPOSITORY https://github.com/lua/lua.git
-  GIT_TAG v${LUA_VERSION}
+  URL "https://github.com/lua/lua/archive/refs/tags/v${LUA_VERSION}.tar.gz"
   )
 FetchContent_MakeAvailable(lua)
-file(GLOB LUA_SOURCE "${lua_SOURCE_DIR}/src/*.c")
-list(REMOVE_ITEM LUA_SOURCE "${lua_SOURCE_DIR}/src/lua.c")
-list(REMOVE_ITEM LUA_SOURCE "${lua_SOURCE_DIR}/src/luac.c")
+file(GLOB LUA_SOURCE "${lua_SOURCE_DIR}/*.c")
+list(REMOVE_ITEM LUA_SOURCE "${lua_SOURCE_DIR}/lua.c")
+list(REMOVE_ITEM LUA_SOURCE "${lua_SOURCE_DIR}/luac.c")
 
 list(APPEND DEPS_SOURCES ${LUA_SOURCE})
-target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${lua_SOURCE_DIR}/src")
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${lua_SOURCE_DIR}")
 
 target_link_libraries(${EXE_NAME} PRIVATE
   # lua

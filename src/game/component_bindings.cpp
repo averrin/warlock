@@ -69,7 +69,7 @@ nlohmann::json sol_table_to_json(sol::table t) {
   }
   if (dense_array) {
     std::sort(pairs.begin(), pairs.end(), [](const auto &a, const auto &b) {
-      return (a.first.as<int>()) < (b.first.as<int>());
+      return a.first.template as<int>() < b.first.template as<int>();
     });
     nlohmann::json arr = nlohmann::json::array();
     for (const auto &pr : pairs)
