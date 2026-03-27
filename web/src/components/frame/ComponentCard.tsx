@@ -1,7 +1,7 @@
-import { useRef, useState, type CSSProperties } from "react";
+import { useCallback, useRef, useState, type CSSProperties } from "react";
 import type { RpcClient } from "../../rpc/client";
 import type { ComponentDTO, DataLinkBufferDTO } from "../../rpc/types";
-import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS, componentSizeOptionsAllowed, CardExpandControl, fmtId, copyToClipboard } from "../ui";
+import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS, componentSizeOptionsAllowed, CardExpandControl, fmtId, copyToClipboard, NumberField, TextField } from "../ui";
 import { useGameStore } from "../../stores/game";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { ComponentControls } from "./ComponentControls";
@@ -97,6 +97,118 @@ function extractCodeString(val: unknown): string {
     return typeof bv === "string" ? bv : "";
   }
   return "";
+}
+
+function MemoryTableEditor({
+  frameId,
+  componentId,
+  jsonStr,
+  rpcClient,
+}: {
+  frameId: number;
+  componentId: number;
+  jsonStr: string;
+  rpcClient: RpcClient;
+}) {
+  const updateComponentAttribute = useGameStore((s) => s.updateComponentAttribute);
+  const [newKey, setNewKey] = useState("");
+  const [newVal, setNewVal] = useState("");
+
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(jsonStr || "{}");
+  } catch {
+    data = {};
+  }
+
+  const save = useCallback(
+    (updated: Record<string, unknown>) => {
+      void updateComponentAttribute(rpcClient, frameId, componentId, "memory", JSON.stringify(updated));
+    },
+    [rpcClient, frameId, componentId, updateComponentAttribute],
+  );
+
+  const entries = Object.entries(data);
+  const box: CSSProperties = {
+    fontSize: 11,
+    fontFamily: "ui-monospace, monospace",
+    background: "#0f172a",
+    border: "1px solid #334155",
+    borderRadius: 4,
+    padding: 8,
+    display: "grid",
+    gap: 4,
+    color: "#cbd5e1",
+  };
+  const label: CSSProperties = { color: "#94a3b8", fontSize: 10, textTransform: "uppercase" as const, letterSpacing: "0.04em" };
+  const delBtn: CSSProperties = {
+    border: "1px solid #7f1d1d",
+    background: "#1c0a0a",
+    color: "#ef4444",
+    borderRadius: 3,
+    cursor: "pointer",
+    fontSize: 10,
+    padding: "0 4px",
+  };
+
+  return (
+    <div style={box}>
+      <div style={label}>Memory</div>
+      {entries.length === 0 && <div style={{ color: "#64748b" }}>Empty</div>}
+      {entries.map(([k, v]) => (
+        <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ color: "#60a5fa", minWidth: 60 }}>{k}</span>
+          <span style={{ flex: 1, wordBreak: "break-all" }}>{typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
+          <button
+            type="button"
+            style={delBtn}
+            onClick={() => {
+              const next = { ...data };
+              delete next[k];
+              save(next);
+            }}
+          >
+            x
+          </button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+        <input
+          type="text"
+          placeholder="key"
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          style={{ width: 80, fontSize: 11, background: "#0b1220", border: "1px solid #374151", borderRadius: 3, color: "#e5e7eb", padding: "1px 4px" }}
+        />
+        <input
+          type="text"
+          placeholder="value"
+          value={newVal}
+          onChange={(e) => setNewVal(e.target.value)}
+          style={{ flex: 1, fontSize: 11, background: "#0b1220", border: "1px solid #374151", borderRadius: 3, color: "#e5e7eb", padding: "1px 4px" }}
+        />
+        <button
+          type="button"
+          style={{ border: "1px solid #1d4ed8", background: "#0f1f35", color: "#60a5fa", borderRadius: 3, cursor: "pointer", fontSize: 10, padding: "0 6px" }}
+          onClick={() => {
+            if (!newKey.trim()) return;
+            const next = { ...data };
+            // Try to parse value as number or boolean
+            let parsed: unknown = newVal;
+            if (newVal === "true") parsed = true;
+            else if (newVal === "false") parsed = false;
+            else if (newVal !== "" && !isNaN(Number(newVal))) parsed = Number(newVal);
+            next[newKey.trim()] = parsed;
+            save(next);
+            setNewKey("");
+            setNewVal("");
+          }}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function CopyLocatorMenu({ component }: { component: ComponentDTO }) {
@@ -221,6 +333,16 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
     }
   }
   const hasCodeAttr = codeAttrKey !== null;
+
+  let memoryAttrRaw: string | null = null;
+  for (const [, v] of Object.entries(component.attributes ?? {})) {
+    const dto = v as { inspector?: { widget?: string }; base_value?: unknown };
+    if (dto && typeof dto === "object" && dto.inspector?.widget === "memory") {
+      memoryAttrRaw = typeof dto.base_value === "string" ? dto.base_value : "{}";
+      break;
+    }
+  }
+
   const isPropulsion = component.name === "Propulsion" || component.type === "Propulsion";
 
   const openLuaDef = (e: React.MouseEvent) => {
@@ -373,6 +495,14 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
             >
               📝 Edit Instance Code
             </button>
+          )}
+          {memoryAttrRaw !== null && (
+            <MemoryTableEditor
+              frameId={frameId}
+              componentId={component.id}
+              jsonStr={memoryAttrRaw}
+              rpcClient={rpcClient}
+            />
           )}
           {component.storage && (
             <StoragePanelWithSubscription frameId={frameId} componentId={component.id} mode="full" rpcClient={rpcClient} />

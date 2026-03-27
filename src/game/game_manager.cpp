@@ -29,6 +29,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <game/systems/environment.hpp>
 #include <game/systems/items.hpp>
 #include <game/systems/power.hpp>
+#include <game/systems/code_execution.hpp>
 #include <game/data_link.hpp>
 #include <game/systems/thermal.hpp>
 #include <game/systems/tweening.hpp>
@@ -500,6 +501,103 @@ static void enforce_control_relay_nexus_registration(
             static_cast<int>(prev),
             static_cast<int>(comp->state),
             comp->error});
+      }
+    }
+  }
+}
+
+// ---- Nexus library heartbeat (Nexus → Advanced Cores) ----
+
+static std::chrono::steady_clock::time_point g_nexus_lib_hb_last;
+static constexpr auto kLibraryHeartbeatInterval = std::chrono::milliseconds(3000);
+static constexpr auto kLibraryHeartbeatTimeout = std::chrono::seconds(10);
+
+static void process_nexus_library_heartbeats(entt::registry &registry) {
+  const auto now = std::chrono::steady_clock::now();
+  if (g_nexus_lib_hb_last.time_since_epoch().count() != 0 &&
+      now - g_nexus_lib_hb_last < kLibraryHeartbeatInterval)
+    return;
+
+  for (auto e : registry.view<Frame>()) {
+    auto &fr = registry.get<Frame>(e);
+    for (auto &comp : fr.components) {
+      if (!comp) continue;
+      if (comp->data.get_or<std::string>("type", "") != "Nexus") continue;
+      if (comp->state != ComponentState::ACTIVE) continue;
+
+      auto lib_it = comp->data.attributes.find("library");
+      if (lib_it == comp->data.attributes.end() || !lib_it->second) continue;
+      auto lib_code = std::get<std::string>(lib_it->second->GetBaseValue());
+      if (lib_code.empty()) continue;
+
+      // Find data connector (reuse same target_data logic as relay reception)
+      std::shared_ptr<Component> dc;
+      if (auto it = comp->data.attributes.find("target_data");
+          it != comp->data.attributes.end() && it->second &&
+          it->second->GetType() == AttributeType::INT) {
+        int tid = std::get<int>(it->second->GetFinalValue());
+        if (tid >= 0) dc = find_component_by_id(tid);
+      }
+      if (!dc) {
+        for (auto &c : fr.components) {
+          if (c && c->data.get_or<std::string>("type", "") == "Data Connector") {
+            dc = c;
+            break;
+          }
+        }
+      }
+      if (!dc || dc->counterpart_id < 0) continue;
+
+      DataPacket pkt;
+      pkt.source = fr.data.id;
+      pkt.destination = -1;
+      pkt.headers["hb"] = "LIBRARY_HEARTBEAT";
+      pkt.body = lib_code;
+      data_link_send_packet(dc, std::move(pkt));
+    }
+  }
+  g_nexus_lib_hb_last = now;
+}
+
+static void process_advanced_core_library_reception(entt::registry &registry) {
+  const auto now = std::chrono::steady_clock::now();
+
+  // Expire stale entries
+  for (auto it = g_core_library.begin(); it != g_core_library.end();) {
+    if (now - it->second.second >= kLibraryHeartbeatTimeout)
+      it = g_core_library.erase(it);
+    else
+      ++it;
+  }
+
+  for (auto e : registry.view<Frame>()) {
+    auto &fr = registry.get<Frame>(e);
+    for (auto &comp : fr.components) {
+      if (!comp) continue;
+      if (comp->data.get_or<std::string>("type", "") != "Core") continue;
+      if (!comp->data.has("memory")) continue; // Advanced Core only
+
+      // Find a Data Connector on this frame
+      std::shared_ptr<Component> dc;
+      for (auto &c : fr.components) {
+        if (c && c->data.get_or<std::string>("type", "") == "Data Connector") {
+          dc = c;
+          break;
+        }
+      }
+      if (!dc) continue;
+
+      constexpr int kDrainCap = 64;
+      int n = 0;
+      while (n++ < kDrainCap && !dc->data_packet_inbox.empty()) {
+        auto &front = dc->data_packet_inbox.front();
+        auto hb_it = front.headers.find("hb");
+        if (hb_it != front.headers.end() && hb_it->second == "LIBRARY_HEARTBEAT") {
+          g_core_library[comp->data.id] = {front.body, now};
+          dc->data_packet_inbox.pop_front();
+        } else {
+          break; // Don't consume non-library packets
+        }
       }
     }
   }
@@ -1015,6 +1113,18 @@ void GameManager::start() {
     exec->executeCoreFunction(e.component, e.function_name);
   });
 
+  emitter.connect<component_state_changed>(
+    std::function<void(component_state_changed&, const event_emitter&)>(
+      [this](component_state_changed& event, const event_emitter&) {
+        if (exec) {
+          exec->dispatchStateChange(event.frame_id, event.component_id,
+                                    event.component_name, event.prev_state,
+                                    event.new_state, event.reason);
+        }
+      }
+    )
+  );
+
   emitter.connect<add_component>([this](const auto &e, const auto &em) {
     auto &lua_st = entt::locator<sol::state>::value();
     ComponentSize sz =
@@ -1188,6 +1298,8 @@ void GameManager::serve() {
       process_relay_heartbeats(current_state.registry);
       enforce_control_relay_nexus_registration(
           current_state.registry, emitter, g_control_relay_nexus_pending);
+      process_nexus_library_heartbeats(current_state.registry);
+      process_advanced_core_library_reception(current_state.registry);
     }
 
     if (entt::locator<rpc::Server>::has_value()) {

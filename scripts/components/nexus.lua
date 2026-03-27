@@ -59,6 +59,13 @@ return {
 			type = AttributeType.STRING,
 			value = "",
 		},
+		library = {
+			title = "Library",
+			description = "Shared Lua library code, broadcast to Advanced Cores via heartbeat",
+			type = AttributeType.STRING,
+			inspector = { widget = "code" },
+			value = "-- Shared library\nreturn {}\n",
+		},
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.L,
