@@ -42,7 +42,7 @@ E2E_TEST(economy, "entities.list — SpendablePool amounts contain expected keys
 
   // Keys defined in config.lua spendable_pool table
   CHECK(amounts.contains("Frame Parts"));
-  CHECK(amounts.contains("Ultralight"));
+  CHECK(amounts.contains("Ultralight Structures"));
   CHECK(amounts.contains("Electronic Parts"));
   CHECK(amounts.contains("Science Packs"));
   CHECK(amounts.contains("Repair Packs"));

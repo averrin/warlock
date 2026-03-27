@@ -44,7 +44,7 @@ public:
   uint64_t tick_count() const { return tick_count_; }
   void serve();
 
-  void loadData();
+  void loadData(bool forceFromInit = false);
   void saveData();
 
   std::map<std::string, int64_t> spendablePool() const;

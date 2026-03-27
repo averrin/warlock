@@ -847,6 +847,20 @@ void registerStateHandlers(Server& server) {
     return {{"status", "queued"}};
   });
 
+  // New Game — reload state from init, discarding current save
+  server.router().on("state.new_game", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    gm.enqueueCommand([&gm, &server]() {
+      gm.loadData(true); // forceFromInit = true, skips save file
+      gm.saveData();
+      server.broadcast("notify.game.started", nlohmann::json::object());
+    });
+    logWebAction(server, "state.new_game", "queued");
+    return {{"status", "queued"}};
+  });
+
   server.router().on("state.slots.delete", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
     requireClaim(server, ctx);
     std::string name = params.at("name").get<std::string>();
@@ -984,6 +998,44 @@ void registerStateHandlers(Server& server) {
     fs::remove(init_dir / (name + ".meta.json"), ec);
     server.broadcast("notify.init.changed", nlohmann::json::object());
     logWebAction(server, "state.init.delete", "ok", {{"name", name}});
+    return {{"ok", true}};
+  });
+
+  // Reset the built-in init state — rebuild from Lua config with fresh spendables
+  server.router().on("state.init.reset_builtin", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
+    requireClaim(server, ctx);
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto &lua = entt::locator<sol::state>::value();
+    auto init_state_files = lua["settings"]["init_states"].get<std::vector<std::string>>();
+    if (init_state_files.empty())
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "No init states configured"};
+    auto& loader = entt::locator<Loader>::value();
+    auto target = PATH / fs::path(init_state_files[0]);
+    // Load the existing init state
+    auto fresh = std::make_shared<State>();
+    if (fs::exists(target)) {
+      loader.load<State>(*fresh, {target.string()});
+    }
+    // Find or create the Economy entity and reset SpendablePool from config.lua
+    entt::entity economy = entt::null;
+    for (auto e : fresh->registry.view<SpendablePool>()) {
+      economy = e;
+      break;
+    }
+    if (economy == entt::null) {
+      economy = fresh->registry.create();
+      hf::meta m; m.name = "Economy"; m.id = "ECONOMY";
+      fresh->registry.emplace<hf::meta>(economy, m);
+      fresh->registry.emplace<SpendablePool>(economy);
+    }
+    auto& sp = fresh->registry.get<SpendablePool>(economy);
+    sp.amounts.clear();
+    sol::optional<std::map<std::string, int64_t>> pool_cfg = lua["settings"]["spendable_pool"];
+    if (pool_cfg) sp.amounts = *pool_cfg;
+    // Save it back
+    loader.saveStateToFile(*fresh, target.string());
+    server.broadcast("notify.init.changed", nlohmann::json::object());
+    logWebAction(server, "state.init.reset_builtin", "ok");
     return {{"ok", true}};
   });
 

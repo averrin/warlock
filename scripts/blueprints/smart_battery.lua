@@ -23,7 +23,7 @@ return {
     info = meter.api.getPowerInfo(meter);
     charger = locator(frame, ".Charger");
     bat = locator(frame, ".Battery");
-    if bat.api.getCharge(bat) <= bat.api.getCapacity(bat)
+    if bat.api.getCharge(bat) < bat.api.getCapacity(bat)
       and info.production - info.consumption > charger.api.getConsumption(charger)
       and thermo.api.getComponentTemperature(bat) < 80 then
       charger.activate();

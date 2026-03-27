@@ -1,11 +1,11 @@
 export type SpendableCost = Record<string, number>;
 
 export const FRAME_SIZE_COSTS: Record<string, SpendableCost> = {
-  XS: { Ultralight: 10 },
+  XS: { "Ultralight Structures": 10 },
   S: { "Frame Parts": 25 },
   M: { "Frame Parts": 50 },
   L: { "Frame Parts": 100 },
-  G: { "Frame Parts": 50, Ultralight: 50 },
+  G: { "Frame Parts": 50, "Ultralight Structures": 50 },
 };
 
 export function mergeCosts(a: SpendableCost, b: SpendableCost): SpendableCost {

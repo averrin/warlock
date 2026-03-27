@@ -11,10 +11,13 @@ settings = {
 	current_state = "save/current.state",
 	spendable_pool = {
 		["Frame Parts"]      = 1000,
-		["Ultralight"]       = 1000,
+		["Ultralight Structures"]       = 1000,
 		["Electronic Parts"] = 1000,
 		["Science Packs"]    = 1000,
 		["Repair Packs"]     = 1000,
+		["Advanced Chips"]    = 1000,
+		["Next Gen Composits"]     = 1000,
+		["Holographic Chips"]     = 1000,
 	},
 }
 

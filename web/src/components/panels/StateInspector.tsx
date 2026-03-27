@@ -686,6 +686,28 @@ function InitStatesSection({ rpcClient }: { rpcClient: RpcClient }) {
       </div>
       {error && <div style={{ color: "#ef4444", fontSize: 11, marginBottom: 4 }}>{error}</div>}
       {initStates.length === 0 && <div style={{ color: "#6b7280", fontSize: 11 }}>No init states yet.</div>}
+      <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+        <button
+          type="button"
+          style={{ ...smallBtnStyle, flex: 1 }}
+          disabled={busy != null}
+          onClick={() => void handle(async () => {
+            await rpcClient.call("state.init.reset_builtin");
+          }, "reset-builtin")}
+        >
+          Reset Init
+        </button>
+        <button
+          type="button"
+          style={{ ...smallBtnStyle, flex: 1, color: "#f59e0b" }}
+          disabled={busy != null}
+          onClick={() => void handle(async () => {
+            await rpcClient.call("state.new_game");
+          }, "new-game")}
+        >
+          New Game
+        </button>
+      </div>
       {initStates.map((init) => (
         <div
           key={init.name}

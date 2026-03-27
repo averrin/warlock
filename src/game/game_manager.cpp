@@ -518,7 +518,7 @@ GameManager::GameManager() {
 
 GameManager::~GameManager() {}
 
-void GameManager::loadData() {
+void GameManager::loadData(bool forceFromInit) {
   auto p = log.parent;
   log.setParent(nullptr);
   log.setAsync(true);
@@ -573,8 +573,8 @@ void GameManager::loadData() {
     log.var("State Path", current_state.stores.front()->path.string());
   };
 
-  if (!fs::exists(state_path)) {
-    log.info("No save file; creating from init");
+  if (forceFromInit || !fs::exists(state_path)) {
+    log.info(forceFromInit ? "Forced new game from init" : "No save file; creating from init");
     rebuildFromInit();
   } else {
     log.info("Loading current state");

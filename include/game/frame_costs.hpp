@@ -9,7 +9,7 @@ namespace warlock {
 inline std::map<std::string, int> frame_cost_for_size(FrameSize sz) {
   switch (sz) {
   case FrameSize::XS:
-    return {{"Ultralight", 10}};
+    return {{"Ultralight Structures", 10}};
   case FrameSize::S:
     return {{"Frame Parts", 25}};
   case FrameSize::M:
@@ -17,7 +17,7 @@ inline std::map<std::string, int> frame_cost_for_size(FrameSize sz) {
   case FrameSize::L:
     return {{"Frame Parts", 100}};
   case FrameSize::G:
-    return {{"Frame Parts", 50}, {"Ultralight", 50}};
+    return {{"Frame Parts", 50}, {"Ultralight Structures", 50}};
   default:
     return {};
   }
