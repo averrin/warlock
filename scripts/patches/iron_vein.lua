@@ -5,11 +5,11 @@ return {
   item = "Iron Ore",
   color = { r = 140, g = 120, b = 110, a = 100 },
   generation = {
-    min_width = 10,
-    max_width = 20,
-    min_height = 10,
-    max_height = 20,
-    fill_probability = 0.45,
-    smoothing_rounds = 3,
+    min_width = 30,
+    max_width = 50,
+    min_height = 3,
+    max_height = 5,
+    fill_probability = 0.65,
+    smoothing_rounds = 2,
   }
 }
