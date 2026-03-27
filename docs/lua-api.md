@@ -90,12 +90,13 @@ return {
 
 ### Built-in injected attributes
 
-Every component automatically receives two extra attributes after creation:
+Every component automatically receives these extra attributes after creation:
 
-| Key          | Type  | Description                                      |
-|--------------|-------|--------------------------------------------------|
-| `temp`       | FLOAT | Current component temperature in °C (read-only) |
-| `efficiency` | FLOAT | 0–1 efficiency factor (set by systems)           |
+| Key            | Type  | Description                                      |
+|----------------|-------|--------------------------------------------------|
+| `temp`         | FLOAT | Current component temperature in °C (read-only) |
+| `efficiency`   | FLOAT | 0–1 efficiency factor (set by systems)           |
+| `counterpart`  | INT   | Connected counterpart component ID, -1 if none (read-only) |
 
 ---
 
@@ -135,15 +136,24 @@ intentionally ignored when calling from the UI.
 
 ## 3. Global Variables
 
-These are always set in the Lua state before any script or API function runs:
+### Blueprint globals
+
+These are set in the Lua state for blueprint code execution:
 
 | Name          | Type          | Description                              |
 |---------------|---------------|------------------------------------------|
 | `frame`       | Frame         | The frame that owns the executing code   |
+| `oracle`      | Oracle        | Reserved; currently empty                |
+
+### API-only variables
+
+These are available **only** inside component API definitions (the `api = {}`
+table in component spec files), **not** in blueprint code:
+
+| Name          | Type          | Description                              |
+|---------------|---------------|------------------------------------------|
 | `environment` | Environment   | World environment (temperature, time…)   |
 | `frameWorld`  | FrameWorld    | World interaction — see Section 9        |
-| `nexus`       | NexusApi      | UI feedback — see Section 10             |
-| `oracle`      | Oracle        | Reserved; currently empty                |
 
 ### Environment fields (read-only)
 
@@ -151,11 +161,12 @@ These are always set in the Lua state before any script or API function runs:
 environment.temperature   -- float: ambient °C
 environment.minutes       -- int:   minutes elapsed today (0–1440)
 environment.days          -- int:   total days elapsed
-environment.isDay         -- bool:  true between dawn and dusk
-environment.sun           -- float: solar intensity 0–1
-environment.airFlow       -- float: wind speed (affects cooling)
-environment.radioactivity -- float: radioactivity level
 ```
+
+### UI access
+
+The Nexus component's `api` table provides UI feedback methods (see Section 10).
+There is no global `nexus` variable — access it through the Nexus component.
 
 ---
 
@@ -253,63 +264,62 @@ comp.data.description -- string
 comp.data.attributes  -- map<string, Attribute>
 comp.state            -- ComponentState enum value
 comp.size             -- ComponentSize enum value
-comp.material         -- ComponentMaterial enum value
-comp.storage          -- ItemStorage | nil
 ```
 
-### State control
+### State control (dot notation)
 
 ```lua
-comp:activate()    -- DEACTIVATED/ERROR → ACTIVATING → ACTIVE
-comp:deactivate()  -- ACTIVE → DEACTIVATING → DEACTIVATED
-comp:repair()      -- ERROR/BROKEN → DEACTIVATED (clears error)
+comp.activate()    -- DEACTIVATED/ERROR → ACTIVATING → ACTIVE
+comp.deactivate()  -- ACTIVE → DEACTIVATING → DEACTIVATED
+comp.repair()      -- ERROR/BROKEN → DEACTIVATED (clears error)
 ```
 
 `activate()` and `deactivate()` return `true` if the transition was accepted,
-`false` if the component is passive or already in a terminal state.
+`false` if the component is passive or already in a terminal state. These are
+called with **dot notation** — no `self` or colon needed.
 
-### Counterpart IDs
+### Counterpart
 
-Some system-managed components (e.g. connectors) store a linked partner:
+Connector components store a linked partner ID in the `counterpart` attribute:
 
 ```lua
-comp:getCounterpart()   -- int: counterpart component id, or -1
+local cp_id = attr(comp, "counterpart")  -- int: counterpart id, or -1
 ```
 
 ---
 
 ## 7. Data Links (send / receive)
 
-Components that are connected via Data Wire or Data Wireless links can exchange
-raw strings or structured packets.
+Data link methods are injected into every component's `api` table by the engine.
+Use **dot notation** through `comp.api`:
 
 ### Sending
 
 ```lua
 -- Raw string
-comp:sendRaw("hello")
+comp.api.sendRaw("hello")
 
 -- Structured packet
-comp:send({
+comp.api.send({
   destination = other_comp.data.id,  -- optional: target component id (-1 = broadcast)
   body        = "payload string",
   headers     = { topic = "sensor", priority = "high" },
 })
 
 -- Inject directly into own inbox (testing / self-loop)
-comp:injectRaw("debug")
-comp:injectPacket({ destination = comp.data.id, body = "test" })
+comp.api.injectRaw("debug")
+comp.api.injectPacket({ destination = comp.data.id, body = "test" })
 ```
 
 ### Receiving
 
 ```lua
 -- Read one raw message (nil if inbox empty)
-local msg = comp:readRaw()
+local msg = comp.api.readRaw()
 if msg then print("got: " .. msg) end
 
 -- Read one structured packet
-local pkt = comp:read()
+local pkt = comp.api.read()
 if pkt then
   print(pkt.source)       -- int: sender component id
   print(pkt.destination)  -- int: intended recipient
@@ -318,23 +328,24 @@ if pkt then
 end
 
 -- Check queue depth without consuming
-local depth = comp:queueDepthRaw()
-local pkts  = comp:queueDepthPacket()
+local depth = comp.api.queueDepthRaw()
+local pkts  = comp.api.queueDepthPacket()
 ```
 
 ---
 
 ## 8. Item Storage API
 
-Components with `storage ~= nil` can hold item stacks.
+Storage methods are injected into the `api` table of components that have an
+attached ItemStorage. Use dot notation through `comp.api`:
 
 ```lua
-local st = comp.storage         -- ItemStorage
-st.slotsCount                   -- int: total slot count
-st.slots                        -- ItemSlot[]
+comp.api.slotsCount()               -- int: total slot count
+comp.api.slots()                    -- ItemSlot[]
+comp.api.getStorage()               -- the raw ItemStorage object
 
 -- Look up a stack by item name
-local stack = st:getStackByItem("Iron Ore")
+local stack = comp.api.getStackByItem("Iron Ore")
 if stack then
   print(stack.amount)
   print(stack.item.name)
@@ -343,22 +354,30 @@ if stack then
 end
 
 -- Take a stack out (by slot id)
-local taken = st:take(slot.id)
+local taken = comp.api.take(slot.id)
 
 -- Transfer between storages
-src:transferTo(dst, stack)
-dst:transferFrom(src, stack)
+comp.api.transferTo(dst_storage, stack)
+comp.api.transferFrom(src_storage, stack)
+```
+
+The raw `ItemStorage` object (from `comp.api.getStorage()` or
+`frame:getStorages()`) still supports colon-call methods for direct use:
+
+```lua
+local storages = frame:getStorages()  -- ItemStorage[]
+for _, st in ipairs(storages) do
+  local stack = st:getStackByItem("Iron Ore")
+  st:transferTo(other_storage, stack)
+end
 ```
 
 ---
 
 ## 9. World API (frameWorld)
 
-The `frameWorld` global provides world-level actions. Use dot notation with
-explicit self: `frameWorld.method(frameWorld, ...)`.
-
-These functions are intentionally **not** exposed as plain globals —
-use the component APIs that wrap them instead:
+`frameWorld` is available **only inside component API definitions** — it is not
+a global in blueprint code. Component APIs wrap it for safe, scoped access:
 
 | Component                  | Wrapper method         | Underlying call           |
 |----------------------------|------------------------|---------------------------|
@@ -366,30 +385,26 @@ use the component APIs that wrap them instead:
 | Lidar                      | `lidar.api.scan(f)`    | `frameWorld.scanAdjacent` |
 | Near Field Communicator    | `nfc.api.getConnectedFrames(f)` | `frameWorld.nfcFrames` |
 
-### Direct access (when building new components)
+### Inside component API definitions
+
+In the `api = {}` table of a component spec file, `frameWorld` is captured as
+a local upvalue:
 
 ```lua
--- Move a frame one grid step (instant, legacy)
-frameWorld.moveFrame(frameWorld, frame.data.id, "N")
-
--- Move with custom step, speed, and power cost (preferred)
--- direction: "N" | "S" | "E" | "W"
--- step_px:   pixels per move (subcellStep() = 25px, cellStep() = 75px)
--- speed:     visual tween speed (higher = faster); 0 = snap
--- power:     extra power draw for the burst; move rejected if grid browns out
-frameWorld.moveFrame(frameWorld, frame.data.id, "E", subcellStep(), 1.0, 25.0)
-
--- Scan adjacent cells; returns a table of obstacle descriptors
-local obstacles = frameWorld.scanAdjacent(frameWorld, frame.data.id)
-
--- Get nearby frames within NFC range (maxDistance in grid cells; 0 = unlimited)
-local neighbors = frameWorld.nfcFrames(frameWorld, frame.data.id, 5)
-for _, f in ipairs(neighbors) do
-  print(f.data.name)
-end
+-- propulsion.lua (api section)
+api = {
+  move = function(frame, direction)
+    local comp = locator(frame, "type:Propulsion")
+    local spd = attr(comp, "speed") or 1.0
+    return frameWorld.moveFrame(frameWorld, frame.data.id, direction,
+                                subcellStep(), spd, 0.0)
+  end,
+}
 ```
 
 ### Step size constants
+
+These are global and available everywhere:
 
 ```lua
 subcellStep()   -- 25.0 px — smallest step; matches XS frame unit
@@ -400,27 +415,29 @@ cellStep()      -- 75.0 px — one full grid cell
 
 ## 10. UI API (nexus)
 
+The Nexus component's `api` table provides UI feedback. Access it through the
+Nexus component on the frame:
+
 ```lua
+local nex = locator(frame, ".Nexus")
+
 -- Toast notification (visible to the player)
-showToast("Overheating!", "warning")   -- type: "info" | "warning" | "error"
+nex.api.showToast("Overheating!", "warning")  -- type: "info" | "warning" | "error"
 
 -- Map markers (persists until removed)
-setMapMarker(x, y, "Depot", "#ff0000")
-removeMapMarker("Depot")
-clearMapMarkers()
+nex.api.setMapMarker(x, y, "Depot", "#ff0000")
+nex.api.removeMapMarker("Depot")
+nex.api.clearMapMarkers()
 
 -- Read current markers
-local markers = nexus.getMapMarkers(nexus)
-for _, m in ipairs(markers) do
-  print(m.label, m.x, m.y)
-end
+local markers = nex.api.getMapMarkers()
 
 -- HUD indicator (top bar)
-setGlobalIndicator("heat", "Frame Heat", "72°C", "#ff6600")
+nex.api.setGlobalIndicator("heat", "Frame Heat", "72°C", "#ff6600")
 
 -- Mouse position (world coordinates)
-local mx = nexus.getMouseX(nexus)
-local my = nexus.getMouseY(nexus)
+local mx = nex.api.getMouseX()
+local my = nex.api.getMouseY()
 ```
 
 ---
@@ -493,14 +510,15 @@ return {
   -- Called once when the frame is first activated
   start = function()
     bat = locator(frame, ".Battery")
-    bat:activate()
+    bat.activate()
   end,
 
   -- Called every game tick while ACTIVE
   update = function()
     local charge = bat.api.getCharge(bat)
     if charge < 100 then
-      showToast("Low battery!", "warning")
+      local nex = locator(frame, ".Nexus")
+      if nex then nex.api.showToast("Low battery!", "warning") end
     end
   end,
 
@@ -516,9 +534,10 @@ return {
 
 ### Blueprint code globals
 
-Inside `code`, the same globals as component API functions apply (`frame`,
-`environment`, `frameWorld`, `nexus`). Local variables persist between calls
-within the same session (but not across saves).
+Inside `code`, only `frame` and `oracle` are available as globals. Use
+component APIs to access world state (`frameWorld`), environment data, and
+UI functions. Local variables persist between calls within the same session
+(but not across saves).
 
 ---
 
@@ -527,7 +546,7 @@ within the same session (but not across saves).
 ### Move a frame north when active
 
 ```lua
--- propulsion.lua (api section)
+-- propulsion.lua (api section — frameWorld is available as upvalue)
 move = function(frame, direction)
   local comp = locator(frame, "type:Propulsion")
   local spd      = attr(comp, "speed") or 1.0
@@ -550,7 +569,8 @@ end,
 local thermo = locator(frame, ".Temperature Sensor")
 local t = thermo.api.getComponentTemperature(bat)
 if t and t > 80 then
-  showToast("Battery overheating: " .. t .. "°C", "warning")
+  local nex = locator(frame, ".Nexus")
+  if nex then nex.api.showToast("Battery overheating: " .. t .. "°C", "warning") end
 end
 ```
 
@@ -559,10 +579,10 @@ end
 ```lua
 -- In a blueprint update():
 local wire = locator(frame, ".Data Connector")
-local pkt = wire:read()
+local pkt = wire.api.read()
 if pkt then
   -- Forward to another component by id
-  wire:send({
+  wire.api.send({
     destination = pkt.destination,
     body = pkt.body,
     headers = pkt.headers,
@@ -578,7 +598,7 @@ table.sort(batteries, function(a, b)
   return (attr(a, "charge") or 0) > (attr(b, "charge") or 0)
 end)
 if #batteries > 0 then
-  batteries[1]:activate()
+  batteries[1].activate()
 end
 ```
 
@@ -598,7 +618,8 @@ system would allow components to subscribe to events:
 -- hypothetical future API
 onStateChange(comp, function(old, new)
   if new == ComponentState.ACTIVE then
-    showToast("Motor started", "info")
+    local nex = locator(frame, ".Nexus")
+    if nex then nex.api.showToast("Motor started", "info") end
   end
 end)
 ```
@@ -645,11 +666,9 @@ method on a remote frame's component. A named message bus would enable
 frame-to-frame coordination without physical connections:
 
 ```lua
--- Send
-nexus.publish("depot.request", { item = "Iron Ore", amount = 10 })
-
--- Receive (in another blueprint)
-local msg = nexus.receive("depot.request")
+-- hypothetical
+local nex = locator(frame, ".Nexus")
+nex.api.publish("depot.request", { item = "Iron Ore", amount = 10 })
 ```
 
 ### F. `locator` integer overload

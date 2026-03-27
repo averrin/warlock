@@ -38,12 +38,6 @@ return {
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
 	require = { "Core" },
-	api = {
-		sendRaw = function(component, s)
-			component:sendRaw(s)
-		end,
-		send = function(component, s)
-			component:send(s)
-		end,
-	},
+	-- send/sendRaw injected by engine into comp.api
+	api = {},
 }

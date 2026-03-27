@@ -86,3 +86,6 @@ public:
 
 /** Rebind component `api` and attribute `inspector_meta` from Lua specs (not serialized); call after load and once exec exists. */
 void refresh_component_apis(CodeExecutionSystem& exec);
+
+/** Sync counterpart_id into the "counterpart" attribute on every data-connector component. Call after recompute_data_link_counterparts(). */
+void sync_all_counterpart_attributes();

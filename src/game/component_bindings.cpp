@@ -8,6 +8,7 @@
 #include <game/nexus_api.hpp>
 #include <game/state.hpp>
 #include <game/systems/code_execution.hpp>
+#include <game/well_known_entities.hpp>
 #include <nlohmann/json.hpp>
 #include <sol/sol.hpp>
 #include <sstream>
@@ -192,19 +193,145 @@ void apply_injected_attribute_inspectors(Component& c) {
     it->second->inspector_meta = nlohmann::json{};
 }
 
+// Inject data-link methods into a component's api table.
+void inject_data_link_api(sol::state_view L, sol::table api, std::shared_ptr<Component> c) {
+  api["sendRaw"] = [c](const std::string &s) {
+    data_link_send_raw(c, s);
+  };
+  api["send"] = [c, &L](sol::table packet_tbl) {
+    auto p = parse_data_packet_table(packet_tbl, c->data.id);
+    data_link_send_packet(c, std::move(p));
+  };
+  api["injectRaw"] = [c](const std::string &s) {
+    data_link_inject_raw(c, s);
+  };
+  api["injectPacket"] = [c, &L](sol::table packet_tbl) {
+    auto p = parse_data_packet_table(packet_tbl, c->data.id);
+    data_link_inject_packet(c, std::move(p));
+  };
+  api["readRaw"] = [c]() -> sol::optional<std::string> {
+    if (c->data_raw_inbox.empty())
+      return sol::nullopt;
+    std::string s = std::move(c->data_raw_inbox.front());
+    c->data_raw_inbox.pop_front();
+    return s;
+  };
+  api["read"] = [c](sol::this_state st) -> sol::optional<sol::table> {
+    if (c->data_packet_inbox.empty())
+      return sol::nullopt;
+    DataPacket p = std::move(c->data_packet_inbox.front());
+    c->data_packet_inbox.pop_front();
+    sol::state_view Lv(st);
+    sol::table t = Lv.create_table();
+    t["source"] = p.source;
+    t["destination"] = p.destination;
+    sol::table headers = Lv.create_table();
+    for (const auto &kv : p.headers)
+      headers[kv.first] = kv.second;
+    t["headers"] = headers;
+    t["body"] = p.body;
+    return t;
+  };
+  api["queueDepthRaw"] = [c]() {
+    return static_cast<int>(c->data_raw_inbox.size());
+  };
+  api["queueDepthPacket"] = [c]() {
+    return static_cast<int>(c->data_packet_inbox.size());
+  };
+}
+
+// Inject storage methods into a component's api table.
+void inject_storage_api(sol::state_view L, sol::table api, std::shared_ptr<Component> c) {
+  if (!c->storage) return;
+  auto s = c->storage;
+  api["getStorage"] = [s]() { return s; };
+  api["slots"] = [s]() -> decltype(auto) { return (s->slots); };
+  api["slotsCount"] = [s]() { return s->slotsCount; };
+  api["take"] = [s](int stackId) {
+    return s->take(stackId);
+  };
+  api["getStackByItem"] = [s](const std::string &item) {
+    return s->getStackByItem(item);
+  };
+  api["transferTo"] = [s](std::shared_ptr<ItemStorage> target,
+                          std::shared_ptr<ItemStack> stack) {
+    return s->transferTo(target, stack);
+  };
+  api["transferFrom"] = [s](std::shared_ptr<ItemStorage> source,
+                            std::shared_ptr<ItemStack> stack) {
+    return s->transferFrom(source, stack);
+  };
+}
+
+} // namespace
+
+void sync_counterpart_attribute_impl(Component& c) {
+  auto it = c.data.attributes.find("counterpart");
+  if (it != c.data.attributes.end() && it->second) {
+    it->second->SetBaseValue(c.counterpart_id);
+  } else {
+    auto a = std::make_shared<Attribute>(
+        "Counterpart", "Connected counterpart component ID",
+        AttributeType::INT, c.counterpart_id, AttributeEasing(),
+        nlohmann::json{{"readonly", true}});
+    c.data.attributes["counterpart"] = a;
+  }
+}
+
+namespace {
+
+// Load a component spec with frameWorld and environment available as upvalues.
+// The source is wrapped so that closures capture these as locals, keeping them
+// out of the global Lua namespace (blueprint code cannot see them).
+sol::table load_component_spec(sol::state& L, const std::string& source) {
+  auto& wk = entt::locator<WellKnownEntities>::value();
+  auto& st = entt::locator<State>::value();
+  auto frameWorld = entt::locator<FrameWorld>::value();
+
+  // Temporarily set globals so the upvalue-capture preamble can grab them.
+  L.set("_fw", frameWorld);
+  bool has_env = wk.environment != entt::null &&
+                 st.registry.valid(wk.environment) &&
+                 st.registry.all_of<Environment>(wk.environment);
+  if (has_env)
+    L.set("_env", st.registry.get<Environment>(wk.environment));
+  else
+    L.set("_env", sol::nil);
+
+  // Preamble: capture into locals so the returned api closures keep references.
+  std::string wrapped =
+      "local frameWorld = _fw; local environment = _env; _fw = nil; _env = nil\n" +
+      source;
+  sol::table spec = L.load(wrapped).call();
+
+  // Clean up temporaries (preamble already nils them, but be safe).
+  L.set("_fw", sol::nil);
+  L.set("_env", sol::nil);
+
+  return spec;
+}
+
 void refresh_component_apis_impl(CodeExecutionSystem& exec) {
   auto& st = entt::locator<State>::value();
   for (auto e : st.registry.view<Frame>()) {
     auto& frame = st.registry.get<Frame>(e);
     sol::state& L = exec.getState(frame.data.id);
+    sol::state_view Lv(L);
     for (auto& c : frame.components) {
       if (!c) continue;
+
+      // Sync counterpart attribute.
+      sync_counterpart_attribute_impl(*c);
+
       if (c->data.has("alive_relays")) {
         c->api = make_nexus_component_api_table(L);
+        // Still inject data-link and storage into the nexus api table.
+        inject_data_link_api(Lv, c->api, c);
+        inject_storage_api(Lv, c->api, c);
         try {
           auto it = exec.sources.find(c->data.name);
           if (it != exec.sources.end()) {
-            sol::table spec = L.load(it->second).call();
+            sol::table spec = load_component_spec(L, it->second);
             merge_inspector_meta_from_spec(*c, spec);
           }
         } catch (...) {
@@ -214,15 +341,29 @@ void refresh_component_apis_impl(CodeExecutionSystem& exec) {
       }
       auto it = exec.sources.find(c->data.name);
       if (it == exec.sources.end()) {
+        // No script source — create a bare api table with injected methods.
+        if (!c->api.valid() || c->api.get_type() != sol::type::table) {
+          c->api = Lv.create_table();
+        }
+        inject_data_link_api(Lv, c->api, c);
+        inject_storage_api(Lv, c->api, c);
         apply_injected_attribute_inspectors(*c);
         continue;
       }
       try {
-        sol::table spec = L.load(it->second).call();
+        sol::table spec = load_component_spec(L, it->second);
         sol::object api = spec["api"];
         if (api.valid() && api.get_type() == sol::type::table) {
           c->api = api.as<sol::table>();
+        } else {
+          c->api = Lv.create_table();
         }
+        // Inject base methods (data-link, storage) — spec api methods take
+        // precedence because they were set first; we only fill in keys that
+        // the spec didn't define.
+        sol::table api_tbl = c->api;
+        inject_data_link_api(Lv, api_tbl, c);
+        inject_storage_api(Lv, api_tbl, c);
         merge_inspector_meta_from_spec(*c, spec);
       } catch (...) {
       }
@@ -235,6 +376,16 @@ void refresh_component_apis_impl(CodeExecutionSystem& exec) {
 }
 
 } // namespace
+
+void sync_all_counterpart_attributes() {
+  auto& st = entt::locator<State>::value();
+  for (auto e : st.registry.view<Frame>()) {
+    auto& frame = st.registry.get<Frame>(e);
+    for (auto& c : frame.components) {
+      if (c) sync_counterpart_attribute_impl(*c);
+    }
+  }
+}
 
 void refresh_component_apis(CodeExecutionSystem& exec) {
   refresh_component_apis_impl(exec);
@@ -276,7 +427,8 @@ void register_bindings(sol::state &lua) {
 
   lua.new_usertype<Environment>("Environment", "temperature",
                                 &Environment::temperature, "minutes",
-                                &Environment::minutes);
+                                &Environment::minutes, "days",
+                                &Environment::days);
 
   // AttributeEasing struct
   lua.new_usertype<AttributeEasing>(
@@ -302,66 +454,26 @@ void register_bindings(sol::state &lua) {
       &Metadata::description, "attributes", &Metadata::attributes);
 
   auto oracle = entt::locator<Oracle>::value();
-  auto frameWorld = entt::locator<FrameWorld>::value();
   lua.new_usertype<Component>(
       "Component", "data", &Component::data, "api", &Component::api, "state",
       &Component::state, "size", &Component::size, "require",
-      &Component::require, "conflict", &Component::conflict, "activate",
-      &Component::activate, "deactivate", &Component::deactivate, "storage",
-      &Component::storage, "sendRaw",
-      [](std::shared_ptr<Component> self, const std::string &s) {
-        data_link_send_raw(self, s);
-      },
-      "send",
-      [](std::shared_ptr<Component> self, sol::table packet_tbl) {
-        auto p = parse_data_packet_table(packet_tbl, self->data.id);
-        data_link_send_packet(self, std::move(p));
-      },
-      "injectRaw",
-      [](std::shared_ptr<Component> self, const std::string &s) {
-        data_link_inject_raw(self, s);
-      },
-      "injectPacket",
-      [](std::shared_ptr<Component> self, sol::table packet_tbl) {
-        auto p = parse_data_packet_table(packet_tbl, self->data.id);
-        data_link_inject_packet(self, std::move(p));
-      },
-      "readRaw",
-      [](std::shared_ptr<Component> self) -> sol::optional<std::string> {
-        if (self->data_raw_inbox.empty())
-          return sol::nullopt;
-        std::string s = std::move(self->data_raw_inbox.front());
-        self->data_raw_inbox.pop_front();
-        return s;
-      },
-      "read",
-      [](std::shared_ptr<Component> self,
-         sol::this_state st) -> sol::optional<sol::table> {
-        if (self->data_packet_inbox.empty())
-          return sol::nullopt;
-        DataPacket p = std::move(self->data_packet_inbox.front());
-        self->data_packet_inbox.pop_front();
-        sol::state_view L(st);
-        sol::table t = L.create_table();
-        t["source"] = p.source;
-        t["destination"] = p.destination;
-        sol::table headers = L.create_table();
-        for (const auto &kv : p.headers)
-          headers[kv.first] = kv.second;
-        t["headers"] = headers;
-        t["body"] = p.body;
-        return t;
-      },
-      "getCounterpart",
-      [](const std::shared_ptr<Component> &self) { return self->counterpart_id; },
-      "queueDepthRaw",
-      [](const std::shared_ptr<Component> &self) {
-        return static_cast<int>(self->data_raw_inbox.size());
-      },
-      "queueDepthPacket",
-      [](const std::shared_ptr<Component> &self) {
-        return static_cast<int>(self->data_packet_inbox.size());
-      });
+      &Component::require, "conflict", &Component::conflict,
+      // activate/deactivate/repair — dot-notation closures (no self required).
+      "activate", sol::readonly_property([](Component& self) {
+        // Return a closure that captures a pointer to the component.
+        // The Component lives inside a shared_ptr owned by the Frame, so the
+        // pointer remains valid for the frame's lifetime.
+        Component* p = &self;
+        return sol::as_function([p]() { return p->activate(); });
+      }),
+      "deactivate", sol::readonly_property([](Component& self) {
+        Component* p = &self;
+        return sol::as_function([p]() { return p->deactivate(); });
+      }),
+      "repair", sol::readonly_property([](Component& self) {
+        Component* p = &self;
+        return sol::as_function([p]() { return p->repair(); });
+      }));
   lua.new_usertype<NetworkInfo>(
       "NetworkInfo", "production", &NetworkInfo::production, "consumption",
       &NetworkInfo::consumption, "accumulated", &NetworkInfo::accumulated,
@@ -429,7 +541,8 @@ void register_bindings(sol::state &lua) {
           }),
       "subcellStep", []() { return FrameWorld::subcellStep(); },
       "cellStep", []() { return FrameWorld::cellStep(); }, "nfcFrames", &FrameWorld::nfcFrames);
-  lua.set("frameWorld", frameWorld);
+  // frameWorld is NOT set as a global — it is scoped to component API
+  // definitions via load_component_spec().
 
   lua.new_usertype<NexusApi>(
       "NexusApi",
@@ -442,8 +555,7 @@ void register_bindings(sol::state &lua) {
       "getMouseX", &NexusApi::getMouseX,
       "getMouseY", &NexusApi::getMouseY
   );
-
-  lua.set("nexus", &g_nexus_api);
+  // nexus is NOT set as a global — access it through the Nexus component's api.
 
   // =========================================================================
   // Convenience helpers — cleaner dot-notation API for component scripts
@@ -552,38 +664,14 @@ end
   // blueprint scripts can reason about distances without hardcoding pixel values.
   lua.set_function("subcellStep", []() { return FrameWorld::subcellStep(); });
   lua.set_function("cellStep", []() { return FrameWorld::cellStep(); });
-  // NOTE: moveFrame / scanAdjacent / nfcFrames are intentionally NOT exposed as
-  // globals.  Access them through the dedicated component APIs:
-  //   Propulsion.api.move(frame, dir)
-  //   Lidar.api.scan(frame)
-  //   NearFieldCommunicator.api.getConnectedFrames(frame)
-  // Low-level access is still possible via the `frameWorld` usertype if needed.
-
-  // Standalone nexus wrappers — no object prefix needed.
-  lua.set_function("showToast", [](std::string msg, std::string type) {
-    g_nexus_api.showToast(std::move(msg), std::move(type));
-  });
-  lua.set_function("setMapMarker", [](float x, float y, std::string label, std::string color) {
-    g_nexus_api.setMapMarker(x, y, std::move(label), std::move(color));
-  });
-  lua.set_function("clearMapMarkers", []() { g_nexus_api.clearMapMarkers(); });
-  lua.set_function("removeMapMarker", [](std::string label) {
-    g_nexus_api.removeMapMarker(std::move(label));
-  });
-  lua.set_function("setGlobalIndicator",
-    [](std::string key, std::string label, std::string value, std::string color) {
-      g_nexus_api.setGlobalIndicator(std::move(key), std::move(label),
-                                     std::move(value), std::move(color));
-    });
 }
 
 // Function to create a Component from a Lua file
 std::shared_ptr<Component>
 create_component_from_lua(sol::state &lua, const std::string &lua_source) {
-  // fmt::print("Lua source: {}\n", lua_source);
   auto component = std::make_shared<Component>();
 
-  sol::table spec = lua.load(lua_source).call();
+  sol::table spec = load_component_spec(lua, lua_source);
 
   component->data.id = Metadata::newId();
   component->data.name = spec["name"].get_or<std::string>("");
@@ -641,6 +729,13 @@ create_component_from_lua(sol::state &lua, const std::string &lua_source) {
 
   Attribute eff("Efficiency", "Efficiency", AttributeType::FLOAT, 1.0f);
   component->data.attributes["efficiency"] = std::make_shared<Attribute>(eff);
+
+  // counterpart attribute (populated later by data-link system)
+  auto cp_attr = std::make_shared<Attribute>(
+      "Counterpart", "Connected counterpart component ID",
+      AttributeType::INT, -1, AttributeEasing(),
+      nlohmann::json{{"readonly", true}});
+  component->data.attributes["counterpart"] = cp_attr;
 
   // Set state
   component->state = spec["state"].get_or(ComponentState::DEACTIVATED);

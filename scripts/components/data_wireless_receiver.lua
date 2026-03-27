@@ -32,12 +32,6 @@ return {
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
 	require = { "Core" },
-	api = {
-		readRaw = function(component)
-			return component:readRaw()
-		end,
-		read = function(component)
-			return component:read()
-		end,
-	},
+	-- read/readRaw injected by engine into comp.api
+	api = {},
 }

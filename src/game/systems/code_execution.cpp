@@ -123,13 +123,8 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
     return;
   }
 
-  // get Environment
-  auto &wk = entt::locator<WellKnownEntities>::value();
-  if (wk.environment != entt::null && current_state.registry.valid(wk.environment) &&
-      current_state.registry.all_of<Environment>(wk.environment)) {
-    auto &environment = current_state.registry.get<Environment>(wk.environment);
-    getState(fid).set("environment", environment);
-  }
+  // environment is NOT set as a global — it is scoped to component API
+  // definitions only.  Blueprint code uses component APIs to access it.
 
   getState(fid).set("frame", frame_ptr);
 
@@ -230,6 +225,7 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
 
 void CodeExecutionSystem::fixedUpdate() {
   recompute_data_link_counterparts();
+  sync_all_counterpart_attributes();
 
   auto &current_state = entt::locator<State>::value();
 
