@@ -17,8 +17,6 @@
 #include <cmath>
 #include <limits>
 
-namespace {
-
 nlohmann::json sol_object_to_json(sol::object o);
 
 nlohmann::json sol_table_to_json(sol::table t) {
@@ -114,6 +112,30 @@ nlohmann::json sol_object_to_json(sol::object o) {
     return nullptr;
   }
 }
+
+// Convert nlohmann::json to a Lua value (inverse of sol_table_to_json / sol_object_to_json).
+sol::object json_to_lua(sol::state_view L, const nlohmann::json& j) {
+  if (j.is_null()) return sol::make_object(L, sol::nil);
+  if (j.is_boolean()) return sol::make_object(L, j.get<bool>());
+  if (j.is_number_integer()) return sol::make_object(L, j.get<int>());
+  if (j.is_number_float()) return sol::make_object(L, j.get<double>());
+  if (j.is_string()) return sol::make_object(L, j.get<std::string>());
+  if (j.is_array()) {
+    sol::table t = L.create_table();
+    int idx = 1;
+    for (const auto& el : j) t[idx++] = json_to_lua(L, el);
+    return t;
+  }
+  if (j.is_object()) {
+    sol::table t = L.create_table();
+    for (auto it = j.begin(); it != j.end(); ++it)
+      t[it.key()] = json_to_lua(L, it.value());
+    return t;
+  }
+  return sol::make_object(L, sol::nil);
+}
+
+namespace {
 
 NexusApi g_nexus_api;
 

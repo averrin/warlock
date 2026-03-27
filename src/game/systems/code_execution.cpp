@@ -11,6 +11,19 @@
 #include <utils/entt.hpp>
 #include <utils/entt_lua.hpp>
 
+// Shared map: comp_id → { library_code, last_heartbeat_time }.
+// Written by game_manager (reception), read here (injection).
+std::unordered_map<int, std::pair<std::string, std::chrono::steady_clock::time_point>> g_core_library;
+
+// Cache compiled library per component to avoid recompiling every tick.
+// Key = comp_id, value = { source_hash, compiled_table }.
+static std::unordered_map<int, std::pair<size_t, sol::table>> s_compiled_libs;
+
+static bool is_advanced_core(const Component& c) {
+  return c.data.get_or<std::string>("type", "") == "Core" &&
+         c.data.has("memory");
+}
+
 void CodeExecutionSystem::emitLog(const std::string& source,
                                   const std::string& status,
                                   const nlohmann::json& args) const {
@@ -128,6 +141,53 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
 
   getState(fid).set("frame", frame_ptr);
 
+  // --- Advanced Core: inject memory table and lib global ---
+  const bool adv_core = is_advanced_core(*c);
+  if (adv_core) {
+    // Inject memory
+    auto mem_it = c->data.attributes.find("memory");
+    if (mem_it != c->data.attributes.end() && mem_it->second) {
+      auto json_str = std::get<std::string>(mem_it->second->GetBaseValue());
+      try {
+        auto j = nlohmann::json::parse(json_str);
+        getState(fid).set("memory", json_to_lua(getState(fid), j));
+      } catch (...) {
+        getState(fid).set("memory", getState(fid).create_table());
+      }
+    } else {
+      getState(fid).set("memory", getState(fid).create_table());
+    }
+
+    // Inject lib (or nil if heartbeat timed out)
+    auto lib_it = g_core_library.find(comp_id);
+    if (lib_it != g_core_library.end()) {
+      auto& [lib_code, _tp] = lib_it->second;
+      auto code_hash = std::hash<std::string>{}(lib_code);
+      auto cache_it = s_compiled_libs.find(comp_id);
+      if (cache_it == s_compiled_libs.end() || cache_it->second.first != code_hash) {
+        auto res = getState(fid).safe_script(lib_code, sol::script_pass_on_error);
+        if (res.valid()) {
+          sol::object obj = res;
+          if (obj.get_type() == sol::type::table) {
+            s_compiled_libs[comp_id] = {code_hash, obj.as<sol::table>()};
+            getState(fid).set("lib", obj);
+          } else {
+            getState(fid).set("lib", obj);
+            s_compiled_libs.erase(comp_id);
+          }
+        } else {
+          getState(fid).set("lib", sol::nil);
+          s_compiled_libs.erase(comp_id);
+        }
+      } else {
+        getState(fid).set("lib", cache_it->second.second);
+      }
+    } else {
+      getState(fid).set("lib", sol::nil);
+      s_compiled_libs.erase(comp_id);
+    }
+  }
+
   // Cache compiled script — only recompile when not cached
   if (compiled_scripts_.find(comp_id) == compiled_scripts_.end()) {
     if (!c->data.has("code")) {
@@ -221,6 +281,18 @@ void CodeExecutionSystem::executeCoreFunction(std::shared_ptr<Component> c,
       {"new_state", static_cast<int>(c->state)}
     });
   }
+
+  // --- Advanced Core: serialize memory back to attribute ---
+  if (adv_core) {
+    sol::object mem_obj = getState(fid)["memory"];
+    if (mem_obj.valid() && mem_obj.get_type() == sol::type::table) {
+      auto j = sol_table_to_json(mem_obj.as<sol::table>());
+      auto mem_it = c->data.attributes.find("memory");
+      if (mem_it != c->data.attributes.end() && mem_it->second) {
+        mem_it->second->SetBaseValue(j.dump());
+      }
+    }
+  }
 }
 
 void CodeExecutionSystem::fixedUpdate() {
@@ -237,6 +309,54 @@ void CodeExecutionSystem::fixedUpdate() {
       }
       if (c->data.get<std::string>("type") == "Core") {
         executeCoreFunction(c, "update");
+      }
+    }
+  }
+}
+
+void CodeExecutionSystem::dispatchStateChange(
+    int frame_id, int component_id,
+    const std::string& component_name,
+    int prev_state, int new_state,
+    const std::string& reason) {
+  Frame* frame_ptr = findFrameById(frame_id);
+  if (!frame_ptr) return;
+
+  for (auto& c : frame_ptr->components) {
+    if (!c || c->state != ComponentState::ACTIVE) continue;
+    if (!is_advanced_core(*c)) continue;
+
+    auto sit = compiled_scripts_.find(c->data.id);
+    if (sit == compiled_scripts_.end()) continue;
+
+    sol::object fn_obj = sit->second["onStateChange"];
+    if (!fn_obj.valid() || !fn_obj.is<sol::function>()) continue;
+
+    // Inject memory before callback
+    auto mem_it = c->data.attributes.find("memory");
+    if (mem_it != c->data.attributes.end() && mem_it->second) {
+      auto json_str = std::get<std::string>(mem_it->second->GetBaseValue());
+      try {
+        auto j = nlohmann::json::parse(json_str);
+        getState(frame_id).set("memory", json_to_lua(getState(frame_id), j));
+      } catch (...) {
+        getState(frame_id).set("memory", getState(frame_id).create_table());
+      }
+    }
+
+    sol::protected_function fn(fn_obj.as<sol::function>());
+    auto result = fn(component_id, component_name, prev_state, new_state, reason);
+    if (!result.valid()) {
+      sol::error err = result;
+      fmt::print("Lua onStateChange error: {}\n", err.what());
+    }
+
+    // Serialize memory back
+    sol::object mem_obj = getState(frame_id)["memory"];
+    if (mem_obj.valid() && mem_obj.get_type() == sol::type::table) {
+      auto j = sol_table_to_json(mem_obj.as<sol::table>());
+      if (mem_it != c->data.attributes.end() && mem_it->second) {
+        mem_it->second->SetBaseValue(j.dump());
       }
     }
   }

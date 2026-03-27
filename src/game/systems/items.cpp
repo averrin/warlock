@@ -586,7 +586,12 @@ void ItemsSystem::fixedUpdate() {
           }
 
           auto entity = c->data.id;
-          double timecost = recipe->timeCost * 1000;
+          float production_rate = 1.0f;
+          if (c->data.attributes.count("production_rate")) {
+            production_rate = std::max(0.01f,
+                std::get<float>(c->data.attributes["production_rate"]->GetFinalValue()));
+          }
+          double timecost = (recipe->timeCost * 1000) / production_rate;
           lastExecutionTime[entity] += targetInterval;
 
           if (lastExecutionTime[entity] >= timecost) {

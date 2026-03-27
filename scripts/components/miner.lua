@@ -20,6 +20,18 @@ return {
 			type = AttributeType.STRING,
 			value = "",
 		},
+		production_rate = {
+			title = "Production Rate",
+			description = "Recipe speed multiplier",
+			type = AttributeType.FLOAT,
+			value = 1.0,
+			easing = {
+				type = AttributeEasingType.SIN,
+				range = 0.4,
+				period = 20000.0,
+			},
+			inspector = { precision = 2 },
+		},
 		heat = {
 			title = "Heat",
 			description = "Heat produced",
