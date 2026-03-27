@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
   int rpcPort = program.get<int>("--rpc-port");
 
   auto seed = time(NULL);
-  auto path = get_selfpath();
+  auto path = resolve_content_root(get_selfpath());
   entt::monostate<"id"_hs>{} = -1;
   entt::monostate<"path"_hs>{} = path;
   entt::monostate<"debug"_hs>{} = !nodebug;

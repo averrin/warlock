@@ -1,5 +1,8 @@
 #include <game/spendable.hpp>
+#include <game/frame_costs.hpp>
+#include <array>
 #include <sol/sol.hpp>
+#include <vector>
 
 namespace warlock {
 
@@ -36,10 +39,38 @@ std::map<std::string, int> component_script_spendable_cost(sol::state &lua,
   return parse_spendable_cost_table(spec);
 }
 
+ComponentSize component_script_size(sol::state &lua, const std::string &source) {
+  sol::table spec = lua.load(source).call();
+  return spec["size"].get_or(ComponentSize::S);
+}
+
+bool blueprint_fits_component_slots(sol::state &lua, CodeExecutionSystem &exec, sol::table bp_spec,
+                                    std::string &err) {
+  FrameSize fs = bp_spec["size"].get_or(FrameSize::S);
+  std::array<unsigned int, 3> counts{};
+  auto names = bp_spec["components"].get_or<std::vector<std::string>>({});
+  for (const auto &cn : names) {
+    if (exec.sources.count(cn) == 0) {
+      err = "Unknown component in blueprint: " + cn;
+      return false;
+    }
+    ComponentSize sz = component_script_size(lua, exec.getScript(cn));
+    unsigned idx = static_cast<unsigned>(sz);
+    counts[idx]++;
+    if (counts[idx] > component_slot_limit(fs, sz)) {
+      err = "Blueprint exceeds component size slots for this frame size";
+      return false;
+    }
+  }
+  return true;
+}
+
 std::map<std::string, int> blueprint_spendable_total(sol::state &lua,
                                                      CodeExecutionSystem &exec,
                                                      sol::table bp_spec) {
   auto out = parse_spendable_cost_table(bp_spec);
+  FrameSize fs = bp_spec["size"].get_or(FrameSize::S);
+  out = merge_spendable_maps(out, frame_cost_for_size(fs));
   sol::optional<sol::table> comps = bp_spec["components"];
   if (!comps)
     return out;

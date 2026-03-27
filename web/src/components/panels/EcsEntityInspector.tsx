@@ -4,7 +4,16 @@ import type { ComponentDTO, EcsEntityDTO } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
 import { useConnectionStore } from "../../stores/connection";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
-import { CollapsibleSection, NumberField, TextField, smallBtnStyle, Badge, IconButton, CardExpandControl } from "../ui";
+import {
+  CollapsibleSection,
+  DictEditor,
+  NumberField,
+  TextField,
+  smallBtnStyle,
+  Badge,
+  IconButton,
+  CardExpandControl,
+} from "../ui";
 
 function isFolderEntity(entity: EcsEntityDTO): boolean {
   const meta = entity.components.meta;
@@ -26,7 +35,13 @@ const ECS_REGISTRY_COMPONENT_OPTIONS = [
   "proto",
 ] as const;
 
-const NON_REMOVABLE_ECS = new Set(["Frame", "Connection", "ResourcePatch", "Environment"]);
+const NON_REMOVABLE_ECS = new Set([
+  "Frame",
+  "Connection",
+  "ResourcePatch",
+  "Environment",
+  "SpendablePool",
+]);
 
 type FieldEditorProps = {
   entityId: number;
@@ -34,13 +49,20 @@ type FieldEditorProps = {
   field: string;
   value: unknown;
   rpcClient: RpcClient;
+  rpcPrefix?: string;
 };
 
-function FieldEditor({ entityId, component, field, value, rpcClient }: FieldEditorProps) {
+function FieldEditor({ entityId, component, field, value, rpcClient, rpcPrefix = "entities" }: FieldEditorProps) {
   const setEntityField = useGameStore((s) => s.setEntityField);
   const handleChange = useCallback(
-    (v: unknown) => void setEntityField(rpcClient, entityId, component, field, v),
-    [rpcClient, entityId, component, field, setEntityField],
+    (v: unknown) => {
+      if (rpcPrefix === "entities") {
+        void setEntityField(rpcClient, entityId, component, field, v);
+      } else {
+        void rpcClient.call(`${rpcPrefix}.set_field`, { entity_id: entityId, component, field, value: v });
+      }
+    },
+    [rpcClient, rpcPrefix, entityId, component, field, setEntityField],
   );
 
   if (typeof value === "boolean") {
@@ -86,24 +108,71 @@ function FieldEditor({ entityId, component, field, value, rpcClient }: FieldEdit
   );
 }
 
+function SpendablePoolEditor({
+  entityId,
+  data,
+  rpcClient,
+  rpcPrefix = "entities",
+}: {
+  entityId: number;
+  data: Record<string, unknown>;
+  rpcClient: RpcClient;
+  rpcPrefix?: string;
+}) {
+  const setEntityField = useGameStore((s) => s.setEntityField);
+  const raw = data.amounts;
+  const amounts: Record<string, number> =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw)
+      ? Object.fromEntries(
+          Object.entries(raw as Record<string, unknown>).map(([k, v]) => [
+            k,
+            typeof v === "number" ? v : Number(v) || 0,
+          ]),
+        )
+      : {};
+
+  const handleChange = (key: string, value: unknown) => {
+    if (rpcPrefix === "entities") {
+      void setEntityField(rpcClient, entityId, "SpendablePool", key, value);
+    } else {
+      void rpcClient.call(`${rpcPrefix}.set_field`, { entity_id: entityId, component: "SpendablePool", field: key, value });
+    }
+  };
+
+  return (
+    <CollapsibleSection title="SpendablePool" defaultOpen={false}>
+      <DictEditor
+        data={amounts}
+        onChangeEntry={handleChange}
+      />
+    </CollapsibleSection>
+  );
+}
+
 function EcsComponentEditor({
   entityId,
   componentName,
   data,
   rpcClient,
+  rpcPrefix = "entities",
 }: {
   entityId: number;
   componentName: string;
   data: Record<string, unknown> | boolean;
   rpcClient: RpcClient;
+  rpcPrefix?: string;
 }) {
   const claimed = useConnectionStore((s) => s.claimed);
   const removeRegistryComponent = useGameStore((s) => s.removeRegistryComponent);
-  const canRemoveEcs = claimed && !NON_REMOVABLE_ECS.has(componentName);
+  const canRemoveEcs = claimed && !NON_REMOVABLE_ECS.has(componentName) && rpcPrefix === "entities";
 
   const handleRemove = (ev: MouseEvent) => {
     ev.stopPropagation();
-    void removeRegistryComponent(rpcClient, entityId, componentName);
+    if (rpcPrefix === "entities") {
+      void removeRegistryComponent(rpcClient, entityId, componentName);
+    } else {
+      void rpcClient.call(`${rpcPrefix}.component.remove`, { entity_id: entityId, component: componentName });
+    }
   };
 
   if (typeof data === "boolean" || Object.keys(data as object).length === 0) {
@@ -118,6 +187,14 @@ function EcsComponentEditor({
             Remove
           </button>
         )}
+      </div>
+    );
+  }
+
+  if (componentName === "SpendablePool" && typeof data === "object" && data !== null && !Array.isArray(data)) {
+    return (
+      <div style={{ marginBottom: 4 }}>
+        <SpendablePoolEditor entityId={entityId} data={data as Record<string, unknown>} rpcClient={rpcClient} rpcPrefix={rpcPrefix} />
       </div>
     );
   }
@@ -138,6 +215,7 @@ function EcsComponentEditor({
                   field={field}
                   value={value}
                   rpcClient={rpcClient}
+                  rpcPrefix={rpcPrefix}
                 />
               ))}
             </div>
@@ -153,13 +231,51 @@ function EcsComponentEditor({
   );
 }
 
+function parseOptionalEntityId(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
+  if (typeof v === "string" && /^-?\d+$/.test(v.trim())) return parseInt(v.trim(), 10);
+  return null;
+}
+
 function parseRelationLoose(comp: unknown): { parent: number; childIds: number[] } | null {
   if (typeof comp !== "object" || comp === null) return null;
   const r = comp as Record<string, unknown>;
-  if (typeof r.parent !== "number") return null;
+  if (!("parent" in r) && !("children" in r)) return null;
+  const parent = parseOptionalEntityId(r.parent) ?? -1;
   const ch = r.children;
-  const childIds = Array.isArray(ch) ? ch.filter((x): x is number => typeof x === "number") : [];
-  return { parent: r.parent, childIds };
+  const childIds = Array.isArray(ch)
+    ? ch.map(parseOptionalEntityId).filter((x): x is number => x !== null)
+    : [];
+  return { parent, childIds };
+}
+
+function buildParentOfChildMap(entities: EcsEntityDTO[]): Map<number, number> {
+  const byId = new Map<number, EcsEntityDTO>();
+  for (const e of entities) {
+    const id = parseOptionalEntityId(e.entity_id);
+    if (id !== null) byId.set(id, e);
+  }
+  const childToParent = new Map<number, number>();
+  for (const e of entities) {
+    const eid = parseOptionalEntityId(e.entity_id);
+    if (eid === null) continue;
+    const rel = parseRelationLoose(e.components.relation);
+    if (!rel) continue;
+    const p = rel.parent;
+    if (p >= 0 && byId.has(p) && eid !== p) childToParent.set(eid, p);
+  }
+  for (const e of entities) {
+    const pid = parseOptionalEntityId(e.entity_id);
+    if (pid === null) continue;
+    const rel = parseRelationLoose(e.components.relation);
+    if (!rel) continue;
+    for (const cid of rel.childIds) {
+      if (!byId.has(cid) || cid === pid) continue;
+      if (!childToParent.has(cid)) childToParent.set(cid, pid);
+    }
+  }
+  return childToParent;
 }
 
 function entityMatchesFilter(e: EcsEntityDTO, lower: string): boolean {
@@ -173,13 +289,7 @@ function entityMatchesFilter(e: EcsEntityDTO, lower: string): boolean {
 
 function computeVisibleEntityIds(entities: EcsEntityDTO[], filterLower: string): Set<number> {
   if (!filterLower) return new Set(entities.map((x) => x.entity_id));
-  const byId = new Map(entities.map((e) => [e.entity_id, e]));
-  const parents = new Map<number, number>();
-  for (const e of entities) {
-    const rel = parseRelationLoose(e.components.relation);
-    const p = rel?.parent ?? -1;
-    if (p >= 0 && byId.has(p)) parents.set(e.entity_id, p);
-  }
+  const parents = buildParentOfChildMap(entities);
   const childMap = buildChildLists(entities);
   const childLists = new Map<number, number[]>();
   for (const [pid, ch] of childMap) {
@@ -214,18 +324,24 @@ function computeVisibleEntityIds(entities: EcsEntityDTO[], filterLower: string):
 }
 
 function buildChildLists(entities: EcsEntityDTO[]): Map<number, EcsEntityDTO[]> {
-  const byId = new Map(entities.map((e) => [e.entity_id, e]));
-  const lists = new Map<number, EcsEntityDTO[]>();
+  const byId = new Map<number, EcsEntityDTO>();
   for (const e of entities) {
-    const rel = parseRelationLoose(e.components.relation);
-    if (!rel) continue;
-    const p = rel.parent;
-    if (p < 0 || !byId.has(p) || e.entity_id === p) continue;
-    if (!lists.has(p)) lists.set(p, []);
-    lists.get(p)!.push(e);
+    const id = parseOptionalEntityId(e.entity_id);
+    if (id !== null) byId.set(id, e);
+  }
+  const lists = new Map<number, EcsEntityDTO[]>();
+  for (const [childId, parentId] of buildParentOfChildMap(entities)) {
+    const child = byId.get(childId);
+    if (!child) continue;
+    if (!lists.has(parentId)) lists.set(parentId, []);
+    lists.get(parentId)!.push(child);
   }
   for (const [, ch] of lists) {
-    ch.sort((a, b) => a.entity_id - b.entity_id);
+    ch.sort((a, b) => {
+      const ai = parseOptionalEntityId(a.entity_id) ?? 0;
+      const bi = parseOptionalEntityId(b.entity_id) ?? 0;
+      return ai - bi;
+    });
   }
   return lists;
 }
@@ -248,17 +364,19 @@ function AddRegistryComponentRow({
   entityId,
   existingNames,
   rpcClient,
+  rpcPrefix = "entities",
 }: {
   entityId: number;
   existingNames: string[];
   rpcClient: RpcClient;
+  rpcPrefix?: string;
 }) {
   const claimed = useConnectionStore((s) => s.claimed);
   const addRegistryComponent = useGameStore((s) => s.addRegistryComponent);
   const [pick, setPick] = useState("");
   const existing = new Set(existingNames);
   const options = ECS_REGISTRY_COMPONENT_OPTIONS.filter((n) => !existing.has(n));
-  if (!claimed || options.length === 0) return null;
+  if (!claimed || options.length === 0 || rpcPrefix !== "entities") return null;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, alignItems: "center" }}>
       <select
@@ -447,6 +565,7 @@ function EntityRow({
   visibleIds,
   fetchEntities,
   filterSignature,
+  rpcPrefix = "entities",
 }: {
   entity: EcsEntityDTO;
   rpcClient: RpcClient;
@@ -455,11 +574,30 @@ function EntityRow({
   visibleIds: Set<number>;
   fetchEntities: (c: RpcClient) => Promise<void>;
   filterSignature: string;
+  rpcPrefix?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const claimed = useConnectionStore((s) => s.claimed);
   const createEmptyEntity = useGameStore((s) => s.createEmptyEntity);
   const destroyEntityByEid = useGameStore((s) => s.destroyEntityByEid);
+
+  const handleCreateChild = async () => {
+    if (rpcPrefix === "entities") {
+      await createEmptyEntity(rpcClient, { parent_entity_id: entity.entity_id, name: "Child" });
+    } else {
+      await rpcClient.call(`${rpcPrefix}.create`, { name: "Child", parent_entity_id: entity.entity_id });
+      await fetchEntities(rpcClient);
+    }
+  };
+
+  const handleDestroy = async () => {
+    if (rpcPrefix === "entities") {
+      await destroyEntityByEid(rpcClient, entity.entity_id);
+    } else {
+      await rpcClient.call(`${rpcPrefix}.destroy`, { entity_id: entity.entity_id });
+      await fetchEntities(rpcClient);
+    }
+  };
 
   useEffect(() => {
     if (filterSignature.length > 0) setExpanded(true);
@@ -515,7 +653,7 @@ function EntityRow({
               icon="⊕"
               size="sm"
               title="Add child entity"
-              onClick={() => void createEmptyEntity(rpcClient, { parent_entity_id: entity.entity_id, name: "Child" })}
+              onClick={() => void handleCreateChild()}
             />
             {canDeleteEntity && (
               <IconButton
@@ -523,7 +661,7 @@ function EntityRow({
                 size="sm"
                 variant="danger"
                 title="Delete entity"
-                onClick={() => void destroyEntityByEid(rpcClient, entity.entity_id)}
+                onClick={() => void handleDestroy()}
               />
             )}
           </div>
@@ -558,12 +696,14 @@ function EntityRow({
                   componentName={name}
                   data={entity.components[name]!}
                   rpcClient={rpcClient}
+                  rpcPrefix={rpcPrefix}
                 />
               ))}
               <AddRegistryComponentRow
                 entityId={entity.entity_id}
                 existingNames={componentNames}
                 rpcClient={rpcClient}
+                rpcPrefix={rpcPrefix}
               />
             </div>
           )}
@@ -577,6 +717,7 @@ function EntityRow({
               visibleIds={visibleIds}
               fetchEntities={fetchEntities}
               filterSignature={filterSignature}
+              rpcPrefix={rpcPrefix}
             />
           ))}
         </>
@@ -588,18 +729,31 @@ function EntityRow({
 type Props = {
   rpcClient: RpcClient;
   filter: string;
+  rpcPrefix?: string;
 };
 
-export function EntitiesSection({ rpcClient, filter }: Props) {
-  const ecsEntities = useGameStore((s) => s.ecsEntities);
-  const fetchEntities = useGameStore((s) => s.fetchEntities);
+export function EntitiesSection({ rpcClient, filter, rpcPrefix = "entities" }: Props) {
+  const ecsEntitiesGame = useGameStore((s) => s.ecsEntities);
+  const fetchEntitiesGame = useGameStore((s) => s.fetchEntities);
   const createEmptyEntity = useGameStore((s) => s.createEmptyEntity);
   const claimed = useConnectionStore((s) => s.claimed);
   const [loading, setLoading] = useState(false);
+  const [localEntities, setLocalEntities] = useState<EcsEntityDTO[]>([]);
+
+  const isGameEntities = rpcPrefix === "entities";
+  const ecsEntities = isGameEntities ? ecsEntitiesGame : localEntities;
+
+  const fetchEntities = isGameEntities
+    ? fetchEntitiesGame
+    : async (c: RpcClient) => {
+        const res = await c.call(`${rpcPrefix}.list`, {}) as { entities: EcsEntityDTO[] };
+        setLocalEntities(res.entities ?? []);
+      };
 
   useEffect(() => {
     void fetchEntities(rpcClient);
-  }, [rpcClient, fetchEntities]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rpcClient, rpcPrefix]);
 
   const filterLower = filter.trim().toLowerCase();
 
@@ -649,12 +803,18 @@ export function EntitiesSection({ rpcClient, filter }: Props) {
         >
           {loading ? "Loading\u2026" : "Refresh"}
         </button>
-        <span style={{ fontSize: 10, color: "#6b7280" }}>Live sync ~400ms after state / env updates</span>
+        {isGameEntities && (
+          <span style={{ fontSize: 10, color: "#6b7280" }}>Live sync ~400ms after state / env updates</span>
+        )}
         {claimed && (
           <button
             type="button"
             style={smallBtnStyle}
-            onClick={() => void createEmptyEntity(rpcClient, { name: "Entity" })}
+            onClick={() =>
+              isGameEntities
+                ? void createEmptyEntity(rpcClient, { name: "Entity" })
+                : void rpcClient.call(`${rpcPrefix}.create`, { name: "Entity" }).then(() => fetchEntities(rpcClient))
+            }
           >
             + Empty root entity
           </button>
@@ -676,6 +836,7 @@ export function EntitiesSection({ rpcClient, filter }: Props) {
               visibleIds={visibleIds}
               fetchEntities={fetchEntities}
               filterSignature={filterLower}
+              rpcPrefix={rpcPrefix}
             />
           ))}
         </div>

@@ -8,6 +8,7 @@ import { canAfford, formatCostLine, FRAME_SIZE_COSTS } from "../../game/economy"
 import { FramePanel } from "../frame";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { EntitiesSection } from "./EcsEntityInspector";
+import { useSaveSlotsStore } from "../../stores/saveSlots";
 
 type Props = {
   rpcClient: RpcClient;
@@ -562,6 +563,162 @@ function PatchesAndSurfacesSection({ rpcClient, filter }: { rpcClient: RpcClient
   );
 }
 
+// ─── Save Slots ──────────────────────────────────────────────────────────────
+
+function SaveSlotsSection({ rpcClient }: { rpcClient: RpcClient }) {
+  const slots = useSaveSlotsStore((s) => s.slots);
+  const fetchSlots = useSaveSlotsStore((s) => s.fetchSlots);
+  const saveSlot = useSaveSlotsStore((s) => s.saveSlot);
+  const loadSlot = useSaveSlotsStore((s) => s.loadSlot);
+  const deleteSlot = useSaveSlotsStore((s) => s.deleteSlot);
+  const [newName, setNewName] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void fetchSlots(rpcClient);
+  }, [rpcClient, fetchSlots]);
+
+  const handle = async (fn: () => Promise<void>, key: string) => {
+    setBusy(key);
+    setError(null);
+    try { await fn(); } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+  };
+
+  return (
+    <CollapsibleSection title={`💾 Save Slots (${slots.length})`} defaultOpen={false}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+        <input
+          type="text"
+          placeholder="Slot name…"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        <button
+          type="button"
+          style={smallBtnStyle}
+          disabled={!newName.trim() || busy != null}
+          onClick={() => handle(() => saveSlot(rpcClient, newName.trim()).then(() => setNewName("")), "save-new")}
+        >
+          Save
+        </button>
+      </div>
+      {error && <div style={{ color: "#ef4444", fontSize: 11, marginBottom: 4 }}>{error}</div>}
+      {slots.length === 0 && <div style={{ color: "#6b7280", fontSize: 11 }}>No save slots yet.</div>}
+      {slots.map((slot) => (
+        <div
+          key={slot.name}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", borderBottom: "1px solid #1f2937", fontSize: 11 }}
+        >
+          <span style={{ flex: 1, color: "#e5e7eb" }}>{slot.name}</span>
+          <span style={{ color: "#6b7280", fontSize: 10, flexShrink: 0 }}>{slot.saved_at}</span>
+          <button
+            type="button"
+            style={smallBtnStyle}
+            disabled={busy != null}
+            onClick={() => handle(() => loadSlot(rpcClient, slot.name), `load-${slot.name}`)}
+          >
+            Load
+          </button>
+          <button
+            type="button"
+            style={{ ...smallBtnStyle, color: "#ef4444" }}
+            disabled={busy != null}
+            onClick={() => handle(() => deleteSlot(rpcClient, slot.name), `del-${slot.name}`)}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </CollapsibleSection>
+  );
+}
+
+// ─── Init States ─────────────────────────────────────────────────────────────
+
+function InitStatesSection({ rpcClient }: { rpcClient: RpcClient }) {
+  const initStates = useSaveSlotsStore((s) => s.initStates);
+  const fetchInitStates = useSaveSlotsStore((s) => s.fetchInitStates);
+  const saveCurrentAsInit = useSaveSlotsStore((s) => s.saveCurrentAsInit);
+  const deleteInit = useSaveSlotsStore((s) => s.deleteInit);
+  const openInit = useSaveSlotsStore((s) => s.openInit);
+  const focusPanel = useWindowLayoutStore((s) => s.focusPanel);
+  const [newName, setNewName] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    void fetchInitStates(rpcClient);
+  }, [rpcClient, fetchInitStates]);
+
+  const [error, setError] = useState<string | null>(null);
+  const handle = async (fn: () => Promise<void>, key: string) => {
+    setBusy(key);
+    setError(null);
+    try { await fn(); } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+  };
+
+  const handleOpen = async (name: string) => {
+    await handle(async () => {
+      await openInit(rpcClient, name);
+      focusPanel("InitEntityEditor");
+    }, `open-${name}`);
+  };
+
+  return (
+    <CollapsibleSection title={`🗂 Init States (${initStates.length})`} defaultOpen={false}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+        <input
+          type="text"
+          placeholder="Init name…"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        <button
+          type="button"
+          style={smallBtnStyle}
+          disabled={!newName.trim() || busy != null}
+          onClick={() => handle(() => saveCurrentAsInit(rpcClient, newName.trim()).then(() => setNewName("")), "save-init")}
+        >
+          Snapshot
+        </button>
+      </div>
+      {error && <div style={{ color: "#ef4444", fontSize: 11, marginBottom: 4 }}>{error}</div>}
+      {initStates.length === 0 && <div style={{ color: "#6b7280", fontSize: 11 }}>No init states yet.</div>}
+      {initStates.map((init) => (
+        <div
+          key={init.name}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 0", borderBottom: "1px solid #1f2937", fontSize: 11 }}
+        >
+          <span style={{ flex: 1, color: "#e5e7eb" }}>
+            {init.name}
+            {init.builtin && <span style={{ color: "#6b7280", marginLeft: 4 }}>(built-in)</span>}
+          </span>
+          <button
+            type="button"
+            style={smallBtnStyle}
+            disabled={busy != null}
+            onClick={() => void handleOpen(init.name)}
+          >
+            Edit
+          </button>
+          {!init.builtin && (
+            <button
+              type="button"
+              style={{ ...smallBtnStyle, color: "#ef4444" }}
+              disabled={busy != null}
+              onClick={() => void handle(() => deleteInit(rpcClient, init.name), `del-${init.name}`)}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      ))}
+    </CollapsibleSection>
+  );
+}
+
 // ─── Main StateInspector ─────────────────────────────────────────────────────
 
 export function StateInspector({ rpcClient }: Props) {
@@ -592,6 +749,8 @@ export function StateInspector({ rpcClient }: Props) {
       <PowerNetworksSection />
       <PatchesAndSurfacesSection rpcClient={rpcClient} filter={filter} />
       <EntitiesSection rpcClient={rpcClient} filter={filter} />
+      <SaveSlotsSection rpcClient={rpcClient} />
+      <InitStatesSection rpcClient={rpcClient} />
     </div>
   );
 }

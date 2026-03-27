@@ -837,6 +837,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (e.entity_id !== entityId) return e;
         const comp = e.components[component];
         if (typeof comp !== "object" || comp === null) return e;
+        if (component === "SpendablePool") {
+          const prev = comp as Record<string, unknown>;
+          const prevAmounts =
+            typeof prev.amounts === "object" && prev.amounts !== null && !Array.isArray(prev.amounts)
+              ? (prev.amounts as Record<string, number>)
+              : {};
+          const num = typeof value === "number" ? value : Number(value);
+          return {
+            ...e,
+            components: {
+              ...e.components,
+              SpendablePool: {
+                ...prev,
+                amounts: { ...prevAmounts, [field]: Number.isFinite(num) ? num : 0 },
+              },
+            },
+          };
+        }
         return {
           ...e,
           components: {

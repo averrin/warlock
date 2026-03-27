@@ -4,6 +4,7 @@ import { useConnectionStore } from "../../stores/connection";
 import { useGameStore } from "../../stores/game";
 import { useSceneStore } from "../../stores/scene";
 import { useSaveStore } from "../../stores/saveState";
+import { useSaveSlotsStore } from "../../stores/saveSlots";
 
 type Props = {
   rpcClient: RpcClient;
@@ -28,10 +29,13 @@ export function StatusBar({ rpcClient }: Props) {
 
   const [intervalInput, setIntervalInput] = useState(String(autosaveInterval));
 
+  const initSaveSlots = useSaveSlotsStore((s) => s.init);
+
   useEffect(() => {
     initSave(rpcClient);
     fetchStatus(rpcClient);
-  }, [rpcClient, initSave, fetchStatus]);
+    initSaveSlots(rpcClient);
+  }, [rpcClient, initSave, fetchStatus, initSaveSlots]);
 
   useEffect(() => {
     setIntervalInput(String(autosaveInterval));

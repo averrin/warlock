@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { blueprintTotalCost, canAfford, formatCostLine } from "../../game/economy";
+import {
+  blueprintTotalCost,
+  canAfford,
+  formatCostLine,
+  type SpendableCost,
+} from "../../game/economy";
 import type { RpcClient } from "../../rpc/client";
 import { useGameStore } from "../../stores/game";
+import { CostBadges } from "./CostBadges";
 import { Picker, type PickerItem, type PickerSection } from "./Picker";
 import type { PatchType } from "../../stores/patches";
 
@@ -11,7 +17,13 @@ export type CanvasCreatePick =
   | { kind: "surface" }
   | { kind: "marker" };
 
-type BlueprintRow = { name: string; size: string; costLine: string; affordable: boolean };
+type BlueprintRow = {
+  name: string;
+  size: string;
+  cost: SpendableCost;
+  costLine: string;
+  affordable: boolean;
+};
 
 type Props = {
   isOpen: boolean;
@@ -51,6 +63,7 @@ export function CanvasCreatePicker({
             return {
               name,
               size: src.match(/FrameSize\.(\w+)/)?.[1] ?? "M",
+              cost: total,
               costLine: formatCostLine(total),
               affordable: canAfford(spendablePool, total),
             };
@@ -66,7 +79,31 @@ export function CanvasCreatePicker({
     if (framesEnabled && frameRows.length > 0) {
       const frameItems: PickerItem<CanvasCreatePick>[] = frameRows.map((row) => ({
         id: `frame-${row.name}`,
-        label: `${row.name} (${row.size}) — ${row.costLine}${row.affordable ? "" : " (insufficient)"}`,
+        label: `${row.name} (${row.size}) ${row.costLine}`,
+        keywords: [row.name, row.size, row.costLine],
+        showType: false,
+        disabled: !row.affordable,
+        className: row.affordable ? undefined : "picker-row-unaffordable",
+        content: (
+          <div
+            style={{
+              display: "flex",
+              flex: 1,
+              minWidth: 0,
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: "6px 10px",
+            }}
+          >
+            <span style={{ fontWeight: 500, color: "#f8fafc" }}>{row.name}</span>
+            <span style={{ color: "#64748b", fontSize: 13 }}>({row.size})</span>
+            <span style={{ color: "#475569" }}>—</span>
+            <CostBadges cost={row.cost} pool={spendablePool} />
+            {!row.affordable && (
+              <span style={{ fontSize: 11, color: "#f87171", fontWeight: 600 }}>Can't afford</span>
+            )}
+          </div>
+        ),
         data: {
           kind: "frame" as const,
           blueprint: row.name,
@@ -99,7 +136,7 @@ export function CanvasCreatePicker({
       });
     }
     return out;
-  }, [frameRows, framesEnabled, patchTypes]);
+  }, [frameRows, framesEnabled, patchTypes, spendablePool]);
 
   return (
     <Picker

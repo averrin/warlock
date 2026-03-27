@@ -54,17 +54,14 @@ E2E_TEST(concurrency,"concurrency — rapid sequential calls are handled correct
     }));
   }
 
-  // All should return "queued" status
-  for (auto& f : futures) {
-    auto result = f.get();
-    REQUIRE(result.contains("status"));
-    CHECK(result["status"] == "queued");
+  for (int i = 0; i < 10; i++) {
+    auto result = futures[i].get();
+    REQUIRE(result.contains("name"));
+    CHECK(result["name"].get<std::string>() == "ConcurrentFrame" + std::to_string(i));
   }
 
-  // Give the game loop time to process all commands
-  h.tick(20);
+  h.tick(5);
 
-  // At least some frames should have been created
   auto list = client.call("frame.list");
   CHECK(list["frames"].size() >= 10);
 }

@@ -12,7 +12,7 @@ inline void assert_frame_dto(const json& frame) {
   REQUIRE(frame.contains("name"));
   REQUIRE(frame["name"].is_string());
   REQUIRE(frame.contains("size"));
-  CHECK(std::set<std::string>{"S","M","L","G"}.count(frame["size"].get<std::string>()));
+  CHECK(std::set<std::string>{"S","M","L","G","XS"}.count(frame["size"].get<std::string>()));
   REQUIRE(frame.contains("material"));
   REQUIRE(frame.contains("position"));
   REQUIRE(frame["position"].contains("x"));
@@ -20,6 +20,13 @@ inline void assert_frame_dto(const json& frame) {
   REQUIRE(frame.contains("temperature"));
   REQUIRE(frame.contains("components"));
   REQUIRE(frame["components"].is_array());
+  REQUIRE(frame.contains("component_slots"));
+  REQUIRE(frame["component_slots"].is_object());
+  for (const char *k : {"S", "M", "L"}) {
+    REQUIRE(frame["component_slots"].contains(k));
+    REQUIRE(frame["component_slots"][k].contains("used"));
+    REQUIRE(frame["component_slots"][k].contains("max"));
+  }
   REQUIRE(frame.contains("effects"));
 }
 

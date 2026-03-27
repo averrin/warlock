@@ -1,12 +1,17 @@
 import "react-cmdk/dist/cmdk.css";
 import "./picker.css";
 import CommandPalette, { filterItems, getItemIndex } from "react-cmdk";
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 export type PickerItem<T = unknown> = {
   id: string;
   label: string;
+  content?: ReactNode;
+  keywords?: string[];
+  showType?: boolean;
+  className?: string;
+  disabled?: boolean;
   data: T;
 };
 
@@ -40,14 +45,23 @@ export function Picker<T>({
   const [search, setSearch] = useState("");
 
   const structuredItems = useMemo(() => {
-    const makeListItem = (item: PickerItem<T>) => ({
-      id: item.id,
-      children: item.label,
-      onClick: () => {
-        onSelect(item.data);
-        onClose();
-      },
-    });
+    const makeListItem = (item: PickerItem<T>) => {
+      const children = item.content ?? item.label;
+      const keywords =
+        item.keywords ?? (item.content != null ? [item.label] : undefined);
+      return {
+        id: item.id,
+        children,
+        ...(keywords ? { keywords } : {}),
+        showType: item.showType ?? true,
+        className: item.className,
+        disabled: item.disabled,
+        onClick: () => {
+          onSelect(item.data);
+          onClose();
+        },
+      };
+    };
 
     if (sections) {
       return sections.map((section) => ({

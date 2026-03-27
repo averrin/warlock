@@ -599,6 +599,14 @@ void GameManager::loadData() {
   log.stop("Loading State");
   startJob->progress += 5;
 
+  // Ensure directories exist for save slots, backups, and init states
+  {
+    std::error_code ec;
+    fs::create_directories(PATH / "save" / "slots", ec);
+    fs::create_directories(PATH / "save" / "backup", ec);
+    fs::create_directories(PATH / "data" / "init", ec);
+  }
+
   log.start("Loading Patch Types");
   auto& patch_loader = entt::locator<PatchLoader>::emplace();
   fs::path patches_path = PATH / "scripts" / "patches";
@@ -700,6 +708,35 @@ void GameManager::saveData() {
 
   log.setAsync(false);
   log.setParent(p);
+}
+
+bool GameManager::autoBackup() {
+  auto state_path = currentStatePath();
+
+  if (!fs::exists(state_path)) return false;
+
+  auto backup_dir = state_path.parent_path().parent_path() / "backup";
+  std::error_code ec;
+  fs::create_directories(backup_dir, ec);
+
+  auto now = std::chrono::system_clock::now();
+  auto t = std::chrono::system_clock::to_time_t(now);
+  std::ostringstream oss;
+  oss << std::put_time(std::gmtime(&t), "%Y%m%dT%H%M%SZ");
+  auto backup_path = backup_dir / ("backup_" + oss.str() + ".state");
+
+  fs::copy_file(state_path, backup_path, fs::copy_options::overwrite_existing, ec);
+  if (ec) {
+    log.warn("autoBackup: failed to copy {} → {}: {}", state_path.string(), backup_path.string(), ec.message());
+    return false;
+  }
+  return true;
+}
+
+fs::path GameManager::currentStatePath() const {
+  auto &lua = entt::locator<sol::state>::value();
+  fs::path PATH = entt::monostate<"path"_hs>{};
+  return PATH / fs::path(lua["settings"]["current_state"].get<std::string>());
 }
 
 void GameManager::ensureEconomyEntity(entt::registry &reg, WellKnownEntities &wk) {

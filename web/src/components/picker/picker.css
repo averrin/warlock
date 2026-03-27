@@ -54,3 +54,8 @@
   background: var(--cmdk-bg) !important;
   border-color: var(--cmdk-border) !important;
 }
+
+.command-palette-list-item.picker-row-unaffordable {
+  opacity: 0.88 !important;
+  cursor: not-allowed !important;
+}

@@ -493,21 +493,31 @@ export function groupMoveAvoidsWireIntersections(
   if (obstacleCells && obstacleCells.size > 0) {
     for (const seg of wireSegments) {
       if (!moves.has(seg.source) && !moves.has(seg.target)) continue;
-      for (const key of obstacleCells) {
-        const [ix, iy] = key.split(",").map(Number);
-        if (
-          segmentIntersectsAxisAlignedRect(
-            seg.x1,
-            seg.y1,
-            seg.x2,
-            seg.y2,
-            ix * CELL,
-            iy * CELL,
-            CELL,
-            CELL,
-          )
-        ) {
-          return false;
+      const minX = Math.min(seg.x1, seg.x2);
+      const maxX = Math.max(seg.x1, seg.x2);
+      const minY = Math.min(seg.y1, seg.y2);
+      const maxY = Math.max(seg.y1, seg.y2);
+      const ix0 = Math.floor(minX / CELL);
+      const ix1 = Math.floor(maxX / CELL);
+      const iy0 = Math.floor(minY / CELL);
+      const iy1 = Math.floor(maxY / CELL);
+      for (let iix = ix0; iix <= ix1; iix++) {
+        for (let iiy = iy0; iiy <= iy1; iiy++) {
+          if (!obstacleCells.has(`${iix},${iiy}`)) continue;
+          if (
+            segmentIntersectsAxisAlignedRect(
+              seg.x1,
+              seg.y1,
+              seg.x2,
+              seg.y2,
+              iix * CELL,
+              iiy * CELL,
+              CELL,
+              CELL,
+            )
+          ) {
+            return false;
+          }
         }
       }
     }

@@ -70,7 +70,7 @@ emplace_component(entt::registry &reg, entt::entity entity,
                   FieldInputArchive &fia) {
   T comp{};
   load_component(comp, fia);
-  reg.emplace_or_replace<T>(entity, std::move(comp));
+  (void)reg.emplace_or_replace<T>(entity, std::move(comp));
 }
 
 // Emplace: tag component — just mark the entity as having the tag
@@ -79,7 +79,7 @@ std::enable_if_t<is_empty_component<T>::value>
 emplace_component(entt::registry &reg, entt::entity entity,
                   FieldInputArchive &) {
   if (!reg.all_of<T>(entity)) {
-    reg.emplace<T>(entity);
+    (void)reg.emplace<T>(entity);
   }
 }
 
@@ -180,7 +180,7 @@ class RegistryStore : public Store {
       entt::entity entity{entt::null};                                         \
       block_ar(entity);                                                        \
       if (!registry.valid(entity)) {                                           \
-        registry.create(entity);                                               \
+        (void)registry.create(entity);                                         \
       }                                                                        \
       FieldInputArchive fia;                                                   \
       fia.readFrom(block_ar);                                                  \
@@ -221,7 +221,7 @@ class RegistryStore : public Store {
     } else {
       load_v2(ar);
     }
-    if (file_version == 3) {
+    if (file_version == 3 && expected_type == 3) {
       std::map<std::string, int64_t> legacy_spendable;
       ar(legacy_spendable);
       apply_legacy_spendable_to_registry(std::move(legacy_spendable));

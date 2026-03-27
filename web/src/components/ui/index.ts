@@ -4,6 +4,7 @@ export * from "./Badge";
 export * from "./IconButton";
 export * from "./CollapsibleSection";
 export * from "./NumberField";
+export * from "./DictEditor";
 export * from "./TextField";
 export * from "./SelectField";
 export * from "./TransformEditor";

@@ -33,6 +33,7 @@ import {
   isHypotheticalFramePlacementValid,
   obstacleCellKeysFromPatches,
   OFFSET_STEP,
+  type ConnectionLike,
   segmentForPairNthConnection,
   snappedTopLeftsOverlappingCell,
   sortConnectionsForPair,
@@ -47,6 +48,29 @@ type Props = {
     opts?: { keepInPlace: boolean },
   ) => void;
 };
+
+function fingerprintNonDragFrames(
+  frames: readonly { id: number; size: string; position?: { x: number; y: number } }[],
+  positions: ReadonlyMap<number, { x: number; y: number }>,
+  excludeId: number,
+): string {
+  const parts: string[] = [];
+  for (const f of frames) {
+    if (f.id === excludeId) continue;
+    const p = positions.get(f.id) ?? f.position;
+    if (!p) continue;
+    parts.push(`${f.id}:${p.x},${p.y}:${f.size}`);
+  }
+  parts.sort();
+  return parts.join("|");
+}
+
+function fingerprintConnections(conns: readonly ConnectionLike[]): string {
+  if (conns.length === 0) return "";
+  const parts = conns.map((c) => `${c.source}-${c.target}-${c.type}-${c.medium ?? ""}`);
+  parts.sort();
+  return parts.join("|");
+}
 
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 3.0;
@@ -721,6 +745,14 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
   const [patchInspector, setPatchInspector] = useState<{ patch: Patch; x: number; y: number } | null>(null);
   const drawConnectionsRef = useRef<() => void>(() => {});
   const drawRestrictedDropZonesRef = useRef<() => void>(() => {});
+  const restrictedDropPlacementCacheRef = useRef<{
+    frameId: number;
+    sidePx: number;
+    obstacleSet: Set<string>;
+    othersFp: string;
+    connsFp: string;
+    map: Map<string, boolean>;
+  } | null>(null);
   const restrictedDropLayerRef = useRef<Graphics | null>(null);
   const selectionBoxRef = useRef<Graphics | null>(null);
   const boxSelectSessionRef = useRef<{
@@ -1225,6 +1257,30 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
       approxCells = Math.ceil((ixMax - ixMin) / cellStride) * Math.ceil((iyMax - iyMin) / cellStride);
     }
 
+    const obs = obstacleCellsRef.current;
+    const othersFp = fingerprintNonDragFrames(framesRef.current, framePositionsRef.current, frameId);
+    const connsFp = fingerprintConnections(connectionsRef.current);
+    let placementCache = restrictedDropPlacementCacheRef.current;
+    if (
+      !placementCache ||
+      placementCache.frameId !== frameId ||
+      placementCache.sidePx !== side ||
+      placementCache.obstacleSet !== obs ||
+      placementCache.othersFp !== othersFp ||
+      placementCache.connsFp !== connsFp
+    ) {
+      placementCache = {
+        frameId,
+        sidePx: side,
+        obstacleSet: obs,
+        othersFp,
+        connsFp,
+        map: new Map(),
+      };
+      restrictedDropPlacementCacheRef.current = placementCache;
+    }
+    const topLeftValid = placementCache.map;
+
     // Per grid cell: red iff no snapped top-left exists that both overlaps this cell and is valid.
     // (Avoids misleading "top-left only" red that still allows the frame body to sit on wires.)
     for (let ix = ixMin; ix < ixMax; ix += cellStride) {
@@ -1234,16 +1290,20 @@ export function GameCanvas({ rpcClient, onFrameMiniInspect }: Props) {
 
         let anyValid = false;
         for (const p of tops) {
-          const candidate = new Map([[frameId, p]]);
-          if (
-            isGroupMoveValid(
+          const pk = `${p.x},${p.y}`;
+          let ok = topLeftValid.get(pk);
+          if (ok === undefined) {
+            const candidate = new Map([[frameId, p]]);
+            ok = isGroupMoveValid(
               candidate,
               connectionsRef.current,
               framesRef.current,
               framePositionsRef.current,
-              obstacleCellsRef.current,
-            )
-          ) {
+              obs,
+            );
+            topLeftValid.set(pk, ok);
+          }
+          if (ok) {
             anyValid = true;
             break;
           }

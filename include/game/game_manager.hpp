@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <liblog/liblog.hpp>
 #include <map>
+#include <optional>
 #include <string>
+#include <game/registry_store.hpp>
 #include <game/well_known_entities.hpp>
 #include <utils/entt.hpp>
 #include <utils/jobs.hpp>
@@ -68,10 +70,22 @@ public:
   std::string last_saved_at_;
   const std::string& lastSavedAt() const { return last_saved_at_; }
 
+  void emitSpendablePool();
+
+  // ── Init state editing ───────────────────────────────────────────────────
+  std::optional<RegistryStore> init_registry_;
+  std::string open_init_name_;
+
+  // ── Auto-backup ─────────────────────────────────────────────────────────
+  /** Copy current.state → save/backup/backup_<timestamp>.state. Returns true on success. */
+  bool autoBackup();
+
+  /** Returns the absolute path to current.state as configured in Lua settings. */
+  fs::path currentStatePath() const;
+
 private:
   void ensureEconomyEntity(entt::registry &reg, WellKnownEntities &wk);
   void ensureSpendableKeysFromItems();
-  void emitSpendablePool();
 
   std::queue<std::function<void()>> pending_commands_;
   std::mutex command_mutex_;
