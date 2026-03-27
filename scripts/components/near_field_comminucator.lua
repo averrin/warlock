@@ -28,7 +28,7 @@ return {
 	size = ComponentSize.S,
 	api = {
 		getConnectedFrames = function()
-			return frameWorld:nfcFrames(frame.data.id, 0)
+			return nfcFrames(frame.data.id, 0)
 		end,
 	},
 }

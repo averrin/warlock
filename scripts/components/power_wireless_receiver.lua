@@ -40,7 +40,7 @@ return {
 	require = {},
 	api = {
 		getConnections = function(component)
-			return component.data.attributes["connections"]:GetFinalValue()
+			return attr(component, "connections")
 		end,
 	},
 }

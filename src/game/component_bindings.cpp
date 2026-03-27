@@ -444,6 +444,144 @@ void register_bindings(sol::state &lua) {
   );
 
   lua.set("nexus", &g_nexus_api);
+
+  // =========================================================================
+  // Convenience helpers — cleaner dot-notation API for component scripts
+  // =========================================================================
+
+  // locator(frame, selector) — find the first component matching the selector.
+  //
+  // Supported selector formats:
+  //   "type:Propulsion"   — by the component's 'type' attribute
+  //   "name:Motor"        — by component name
+  //   ".Propulsion"       — CSS-style shorthand for type
+  //   "#42"               — by component id
+  //   "Motor"             — bare string defaults to name search
+  //   { type = "..." }    — table selector by type
+  //   { name = "..." }    — table selector by name
+  lua.set_function("locator",
+    [](Frame& frame, sol::object selector) -> std::shared_ptr<Component> {
+      if (selector.is<std::string>()) {
+        const auto& s = selector.as<std::string>();
+        if (s.empty()) return nullptr;
+        if (s[0] == '.') return frame.getComponentByType(s.substr(1));
+        if (s[0] == '#') {
+          try {
+            int id = std::stoi(s.substr(1));
+            for (auto& c : frame.components)
+              if (c->data.id == id) return c;
+          } catch (...) {}
+          return nullptr;
+        }
+        auto pos = s.find(':');
+        if (pos != std::string::npos) {
+          auto field = s.substr(0, pos), value = s.substr(pos + 1);
+          if (field == "type") return frame.getComponentByType(value);
+          if (field == "name") return frame.getComponentByName(value);
+        }
+        return frame.getComponentByName(s);  // bare string → search by name
+      }
+      if (selector.is<sol::table>()) {
+        sol::table tbl = selector.as<sol::table>();
+        sol::object type_val = tbl["type"];
+        if (type_val.valid() && type_val.is<std::string>())
+          return frame.getComponentByType(type_val.as<std::string>());
+        sol::object name_val = tbl["name"];
+        if (name_val.valid() && name_val.is<std::string>())
+          return frame.getComponentByName(name_val.as<std::string>());
+      }
+      return nullptr;
+    });
+
+  // locatorAll(frame, selector) — find all components matching the selector.
+  // Uses the same selector formats as locator().
+  lua.set_function("locatorAll",
+    [](Frame& frame, sol::object selector) -> std::vector<std::shared_ptr<Component>> {
+      if (selector.is<std::string>()) {
+        const auto& s = selector.as<std::string>();
+        if (s.empty()) return {};
+        if (s[0] == '.') return frame.getComponentsByType(s.substr(1));
+        auto pos = s.find(':');
+        if (pos != std::string::npos) {
+          auto field = s.substr(0, pos), value = s.substr(pos + 1);
+          if (field == "type") return frame.getComponentsByType(value);
+          if (field == "name") {
+            auto c = frame.getComponentByName(value);
+            return c ? std::vector<std::shared_ptr<Component>>{c}
+                     : std::vector<std::shared_ptr<Component>>{};
+          }
+        }
+        auto c = frame.getComponentByName(s);
+        return c ? std::vector<std::shared_ptr<Component>>{c}
+                 : std::vector<std::shared_ptr<Component>>{};
+      }
+      if (selector.is<sol::table>()) {
+        sol::table tbl = selector.as<sol::table>();
+        sol::object type_val = tbl["type"];
+        if (type_val.valid() && type_val.is<std::string>())
+          return frame.getComponentsByType(type_val.as<std::string>());
+        sol::object name_val = tbl["name"];
+        if (name_val.valid() && name_val.is<std::string>()) {
+          auto c = frame.getComponentByName(name_val.as<std::string>());
+          return c ? std::vector<std::shared_ptr<Component>>{c}
+                   : std::vector<std::shared_ptr<Component>>{};
+        }
+      }
+      return {};
+    });
+
+  // attr(obj, key)          — get an attribute's final (eased) value; nil if missing.
+  // setAttr(obj, key, value) — set an attribute's base value.
+  // Both work on any object that has .data.attributes (Component or Frame).
+  lua.script(R"(
+function attr(obj, key)
+  local a = obj.data.attributes[key]
+  if a then return a:GetFinalValue() end
+  return nil
+end
+
+function setAttr(obj, key, value)
+  local a = obj.data.attributes[key]
+  if a then a:SetBaseValue(value) end
+end
+)");
+
+  // Standalone frameWorld wrappers — no object prefix needed.
+  lua.set_function("moveFrame", sol::overload(
+    [](int id, std::string d) {
+      return entt::locator<FrameWorld>::value().moveFrame(id, std::move(d));
+    },
+    [](int id, std::string d, float step, float speed) {
+      return entt::locator<FrameWorld>::value().moveFrame(id, std::move(d), step, speed);
+    },
+    [](int id, std::string d, float step, float speed, float power) {
+      return entt::locator<FrameWorld>::value().moveFrame(id, std::move(d), step, speed, power);
+    }));
+  lua.set_function("scanAdjacent", [](int id) {
+    return entt::locator<FrameWorld>::value().scanAdjacent(id);
+  });
+  lua.set_function("nfcFrames", [](int id, float dist) {
+    return entt::locator<FrameWorld>::value().nfcFrames(id, dist);
+  });
+  lua.set_function("subcellStep", []() { return FrameWorld::subcellStep(); });
+  lua.set_function("cellStep", []() { return FrameWorld::cellStep(); });
+
+  // Standalone nexus wrappers — no object prefix needed.
+  lua.set_function("showToast", [](std::string msg, std::string type) {
+    g_nexus_api.showToast(std::move(msg), std::move(type));
+  });
+  lua.set_function("setMapMarker", [](float x, float y, std::string label, std::string color) {
+    g_nexus_api.setMapMarker(x, y, std::move(label), std::move(color));
+  });
+  lua.set_function("clearMapMarkers", []() { g_nexus_api.clearMapMarkers(); });
+  lua.set_function("removeMapMarker", [](std::string label) {
+    g_nexus_api.removeMapMarker(std::move(label));
+  });
+  lua.set_function("setGlobalIndicator",
+    [](std::string key, std::string label, std::string value, std::string color) {
+      g_nexus_api.setGlobalIndicator(std::move(key), std::move(label),
+                                     std::move(value), std::move(color));
+    });
 }
 
 // Function to create a Component from a Lua file

@@ -21,10 +21,10 @@ return {
 	size = ComponentSize.S,
 	api = {
 		getComponentTemperature = function(component)
-			return component.data.attributes["temp"]:GetFinalValue()
+			return attr(component, "temp")
 		end,
 		getFrameTemperature = function()
-			return frame.data.attributes["temp"]:GetFinalValue()
+			return attr(frame, "temp")
 		end,
 		getEnvTemperature = function()
 			return environment.temperature

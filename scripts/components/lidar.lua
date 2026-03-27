@@ -22,7 +22,7 @@ return {
 	size = ComponentSize.S,
 	api = {
 		scan = function(frame)
-			return frameWorld:scanAdjacent(frame.data.id)
+			return scanAdjacent(frame.data.id)
 		end,
 	},
 }

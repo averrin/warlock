@@ -32,23 +32,54 @@ return {
   conflict = {},                  -- cannot coexist with
   api = {
     myMethod = function(self)
-      return self.data.attributes["my_attr"]:GetFinalValue()
+      return attr(self, "my_attr")
     end,
   },
 }
 ```
 
 ## Attribute Access
+Use the `attr` / `setAttr` helpers — they work on both `Component` and `Frame`:
 ```lua
-self.data.attributes["key"]:GetFinalValue()  -- with easing applied
-self.data.attributes["key"]:SetBaseValue(v)
+attr(self, "key")          -- get final (eased) value; nil if attribute missing
+setAttr(self, "key", v)    -- set base value
+-- Direct access (advanced):
 self.data.attributes["key"]:GetBaseValue()
 ```
 
+## Component Locator
+Use `locator(frame, selector)` / `locatorAll(frame, selector)` instead of the individual
+`getComponentByType` / `getComponentByName` methods. Supported selector formats:
+```lua
+locator(frame, "type:Propulsion")   -- by type attribute
+locator(frame, "name:Motor")        -- by component name
+locator(frame, ".Propulsion")       -- CSS shorthand for type
+locator(frame, "#42")               -- by component id
+locator(frame, { type = "Sensor" }) -- table form
+locatorAll(frame, ".Storage")       -- returns a list of all matches
+```
+
 ## Available Globals
-- `frameWorld:scanAdjacent(id)` / `frameWorld:moveFrame(id, dir, step, speed, power)` / `frameWorld:nfcFrames(id, dist)`
-- `nexus:showToast(msg, type)` / `nexus:setGlobalIndicator(key, label, value, color)`
-- `gm:addFrame(name)` / `gm:addFrameFromBlueprint(name)` / `gm:addConnection(src, tgt, type)`
+Movement / world queries (no object prefix needed):
+```lua
+moveFrame(id, dir)                       -- move a frame one step
+moveFrame(id, dir, step, speed, power)   -- move with full parameters
+scanAdjacent(id)                         -- scan adjacent cells
+nfcFrames(id, distance)                  -- get nearby frames (NFC range)
+subcellStep()                            -- step size for smooth movement
+cellStep()                               -- full cell step size
+```
+
+UI feedback:
+```lua
+showToast(msg, type)                                -- "info" | "warning" | "error"
+setMapMarker(x, y, label, color)
+clearMapMarkers()
+removeMapMarker(label)
+setGlobalIndicator(key, label, value, color)
+```
+
+Low-level objects still available if needed: `frameWorld`, `nexus`, `oracle`.
 
 ## Data Packets
 ```lua

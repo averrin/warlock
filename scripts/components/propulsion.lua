@@ -34,26 +34,12 @@ return {
 	size = ComponentSize.S,
 	api = {
 		move = function(frame, direction)
-			local comp = frame:getComponentByType("Propulsion")
-			local spd = 1.0
-			local moveCost = 0.0
-			if comp then
-				local a = comp.data.attributes["speed"]
-				if a then
-					spd = a:GetFinalValue()
-				end
-				local mc = comp.data.attributes["move_consumption"]
-				if mc then
-					moveCost = mc:GetFinalValue()
-				end
-			end
-			if spd < 0.05 then
-				spd = 0.05
-			end
-			if moveCost < 0.0 then
-				moveCost = 0.0
-			end
-			return frameWorld:moveFrame(frame.data.id, direction, frameWorld:subcellStep(), spd, moveCost)
+			local comp = locator(frame, "type:Propulsion")
+			local spd = attr(comp, "speed") or 1.0
+			local moveCost = attr(comp, "move_consumption") or 0.0
+			if spd < 0.05 then spd = 0.05 end
+			if moveCost < 0.0 then moveCost = 0.0 end
+			return moveFrame(frame.data.id, direction, subcellStep(), spd, moveCost)
 		end,
 	},
 }
