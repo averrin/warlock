@@ -60,26 +60,36 @@ locatorAll(frame, ".Storage")       -- returns a list of all matches
 ```
 
 ## Available Globals
-Movement / world queries (no object prefix needed):
+Always in scope: `frame` (owning Frame), `environment`, `frameWorld`, `nexus`, `oracle`.
+
+Grid step constants:
 ```lua
-moveFrame(id, dir)                       -- move a frame one step
-moveFrame(id, dir, step, speed, power)   -- move with full parameters
-scanAdjacent(id)                         -- scan adjacent cells
-nfcFrames(id, distance)                  -- get nearby frames (NFC range)
-subcellStep()                            -- step size for smooth movement
-cellStep()                               -- full cell step size
+subcellStep()   -- 25 px — smallest move unit
+cellStep()      -- 75 px — one full grid cell
 ```
 
-UI feedback:
+UI feedback (standalone helpers):
 ```lua
-showToast(msg, type)                                -- "info" | "warning" | "error"
+showToast(msg, type)                     -- type: "info" | "warning" | "error"
 setMapMarker(x, y, label, color)
 clearMapMarkers()
 removeMapMarker(label)
 setGlobalIndicator(key, label, value, color)
 ```
 
-Low-level objects still available if needed: `frameWorld`, `nexus`, `oracle`.
+World actions are **not** global — access them through component APIs:
+- `Propulsion.api.move(frame, dir)` wraps `frameWorld.moveFrame`
+- `Lidar.api.scan(frame)` wraps `frameWorld.scanAdjacent`
+- `NearFieldCommunicator.api.getConnectedFrames(frame)` wraps `frameWorld.nfcFrames`
+
+When implementing a new component that needs world access, use dot notation with explicit self:
+```lua
+frameWorld.moveFrame(frameWorld, frame.data.id, "N", subcellStep(), 1.0, 25.0)
+frameWorld.scanAdjacent(frameWorld, frame.data.id)
+frameWorld.nfcFrames(frameWorld, frame.data.id, 5)
+```
+
+Full reference: `docs/lua-api.md`.
 
 ## Data Packets
 ```lua

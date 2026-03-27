@@ -455,7 +455,8 @@ void register_bindings(sol::state &lua) {
   //   "type:Propulsion"   — by the component's 'type' attribute
   //   "name:Motor"        — by component name
   //   ".Propulsion"       — CSS-style shorthand for type
-  //   "#42"               — by component id
+  //   "#42"               — by decimal component id
+  //   "#0x2A"             — by hexadecimal component id (0x prefix)
   //   "Motor"             — bare string defaults to name search
   //   { type = "..." }    — table selector by type
   //   { name = "..." }    — table selector by name
@@ -467,7 +468,8 @@ void register_bindings(sol::state &lua) {
         if (s[0] == '.') return frame.getComponentByType(s.substr(1));
         if (s[0] == '#') {
           try {
-            int id = std::stoi(s.substr(1));
+            // base 0 auto-detects decimal ("42") or hex with prefix ("0x2A")
+            int id = std::stoi(s.substr(1), nullptr, 0);
             for (auto& c : frame.components)
               if (c->data.id == id) return c;
           } catch (...) {}
@@ -546,25 +548,16 @@ function setAttr(obj, key, value)
 end
 )");
 
-  // Standalone frameWorld wrappers — no object prefix needed.
-  lua.set_function("moveFrame", sol::overload(
-    [](int id, std::string d) {
-      return entt::locator<FrameWorld>::value().moveFrame(id, std::move(d));
-    },
-    [](int id, std::string d, float step, float speed) {
-      return entt::locator<FrameWorld>::value().moveFrame(id, std::move(d), step, speed);
-    },
-    [](int id, std::string d, float step, float speed, float power) {
-      return entt::locator<FrameWorld>::value().moveFrame(id, std::move(d), step, speed, power);
-    }));
-  lua.set_function("scanAdjacent", [](int id) {
-    return entt::locator<FrameWorld>::value().scanAdjacent(id);
-  });
-  lua.set_function("nfcFrames", [](int id, float dist) {
-    return entt::locator<FrameWorld>::value().nfcFrames(id, dist);
-  });
+  // Grid step constants — used internally by Propulsion; exposed globally so
+  // blueprint scripts can reason about distances without hardcoding pixel values.
   lua.set_function("subcellStep", []() { return FrameWorld::subcellStep(); });
   lua.set_function("cellStep", []() { return FrameWorld::cellStep(); });
+  // NOTE: moveFrame / scanAdjacent / nfcFrames are intentionally NOT exposed as
+  // globals.  Access them through the dedicated component APIs:
+  //   Propulsion.api.move(frame, dir)
+  //   Lidar.api.scan(frame)
+  //   NearFieldCommunicator.api.getConnectedFrames(frame)
+  // Low-level access is still possible via the `frameWorld` usertype if needed.
 
   // Standalone nexus wrappers — no object prefix needed.
   lua.set_function("showToast", [](std::string msg, std::string type) {

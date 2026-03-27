@@ -27,8 +27,8 @@ return {
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
 	api = {
-		getConnectedFrames = function()
-			return nfcFrames(frame.data.id, 0)
+		getConnectedFrames = function(frame)
+			return frameWorld.nfcFrames(frameWorld, frame.data.id, 0)
 		end,
 	},
 }

@@ -39,7 +39,7 @@ return {
 			local moveCost = attr(comp, "move_consumption") or 0.0
 			if spd < 0.05 then spd = 0.05 end
 			if moveCost < 0.0 then moveCost = 0.0 end
-			return moveFrame(frame.data.id, direction, subcellStep(), spd, moveCost)
+			return frameWorld.moveFrame(frameWorld, frame.data.id, direction, subcellStep(), spd, moveCost)
 		end,
 	},
 }
