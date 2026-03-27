@@ -12,6 +12,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install dependencies
       run: |
@@ -21,19 +23,28 @@ jobs:
           build-essential \
           git
 
+    - name: Cache build dependencies
+      uses: actions/cache@v4
+      with:
+        path: build/_deps
+        key: deps-${{ runner.os }}-${{ hashFiles('cmake/deps.cmake') }}
+        restore-keys: |
+          deps-${{ runner.os }}-
+
     - name: Configure CMake
-      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCPM_SKIP_UPDATE=ON
 
     - name: Build
-      run: cmake --build build --config Release
+      run: cmake --build build --config Release --parallel $(nproc)
 
     - name: Run unit tests
-      run: cd build && ctest --output-on-failure -L unit
+      run: cd build && ctest --output-on-failure --verbose
 
     - name: Run e2e tests
+      if: success()
       run: |
         if [ -f build/warlock_e2e ]; then
-          ./build/warlock_e2e
+          ./build/warlock_e2e --reporter=compact
         else
           echo "E2E test executable not found, skipping"
         fi
