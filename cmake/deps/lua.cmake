@@ -1,6 +1,7 @@
 FetchContent_Declare(
   lua
-  URL "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz"
+  GIT_REPOSITORY https://github.com/lua/lua.git
+  GIT_TAG v${LUA_VERSION}
   )
 FetchContent_MakeAvailable(lua)
 file(GLOB LUA_SOURCE "${lua_SOURCE_DIR}/src/*.c")

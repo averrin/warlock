@@ -20,9 +20,16 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          cmake \
           build-essential \
           git
+
+    - name: Install latest CMake
+      run: |
+        wget -q https://github.com/Kitware/CMake/releases/download/v3.29.6/cmake-3.29.6-linux-x86_64.tar.gz
+        tar xzf cmake-3.29.6-linux-x86_64.tar.gz
+        sudo mv cmake-3.29.6-linux-x86_64 /opt/cmake
+        sudo ln -sf /opt/cmake/bin/cmake /usr/bin/cmake
+        sudo ln -sf /opt/cmake/bin/ctest /usr/bin/ctest
 
     - name: Cache dependencies
       uses: actions/cache@v4
