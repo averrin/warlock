@@ -50,11 +50,10 @@ return {
 	api = {
 		test = "yes",
 		setTarget = function(self, battery)
-			bid = battery.data.id
-			self.data.attributes["target"]:SetBaseValue(bid)
+			setAttr(self, "target", battery.data.id)
 		end,
 		getConsumption = function(self)
-			return self.data.attributes["consumption"]:GetFinalValue()
+			return attr(self, "consumption")
 		end,
 	},
 }

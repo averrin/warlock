@@ -23,7 +23,7 @@ return {
 	spendable_cost = { ["Electronic Parts"] = 10 },
 	api = {
 		scan = function(frame)
-			return frameWorld:scanAdjacent(frame.data.id)
+			return frameWorld.scanAdjacent(frameWorld, frame.data.id)
 		end,
 	},
 }

@@ -39,12 +39,6 @@ return {
 	size = ComponentSize.S,
 	spendable_cost = { ["Electronic Parts"] = 10 },
 	require = { "Core" },
-	api = {
-		sendRaw = function(component, s)
-			component:sendRaw(s)
-		end,
-		send = function(component, s)
-			component:send(s)
-		end,
-	},
+	-- send/sendRaw injected by engine into comp.api
+	api = {},
 }

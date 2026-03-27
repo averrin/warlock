@@ -28,8 +28,8 @@ return {
 	size = ComponentSize.S,
 	spendable_cost = { ["Electronic Parts"] = 10 },
 	api = {
-		getConnectedFrames = function()
-			return frameWorld:nfcFrames(frame.data.id, 0)
+		getConnectedFrames = function(frame)
+			return frameWorld.nfcFrames(frameWorld, frame.data.id, 0)
 		end,
 	},
 }

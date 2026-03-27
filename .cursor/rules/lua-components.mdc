@@ -32,23 +32,64 @@ return {
   conflict = {},                  -- cannot coexist with
   api = {
     myMethod = function(self)
-      return self.data.attributes["my_attr"]:GetFinalValue()
+      return attr(self, "my_attr")
     end,
   },
 }
 ```
 
 ## Attribute Access
+Use the `attr` / `setAttr` helpers — they work on both `Component` and `Frame`:
 ```lua
-self.data.attributes["key"]:GetFinalValue()  -- with easing applied
-self.data.attributes["key"]:SetBaseValue(v)
+attr(self, "key")          -- get final (eased) value; nil if attribute missing
+setAttr(self, "key", v)    -- set base value
+-- Direct access (advanced):
 self.data.attributes["key"]:GetBaseValue()
 ```
 
+## Component Locator
+Use `locator(frame, selector)` / `locatorAll(frame, selector)` instead of the individual
+`getComponentByType` / `getComponentByName` methods. Supported selector formats:
+```lua
+locator(frame, "type:Propulsion")   -- by type attribute
+locator(frame, "name:Motor")        -- by component name
+locator(frame, ".Propulsion")       -- CSS shorthand for type
+locator(frame, "#42")               -- by component id
+locator(frame, { type = "Sensor" }) -- table form
+locatorAll(frame, ".Storage")       -- returns a list of all matches
+```
+
 ## Available Globals
-- `frameWorld:scanAdjacent(id)` / `frameWorld:moveFrame(id, dir, step, speed, power)` / `frameWorld:nfcFrames(id, dist)`
-- `nexus:showToast(msg, type)` / `nexus:setGlobalIndicator(key, label, value, color)`
-- `gm:addFrame(name)` / `gm:addFrameFromBlueprint(name)` / `gm:addConnection(src, tgt, type)`
+Always in scope: `frame` (owning Frame), `environment`, `frameWorld`, `nexus`, `oracle`.
+
+Grid step constants:
+```lua
+subcellStep()   -- 25 px — smallest move unit
+cellStep()      -- 75 px — one full grid cell
+```
+
+UI feedback (standalone helpers):
+```lua
+showToast(msg, type)                     -- type: "info" | "warning" | "error"
+setMapMarker(x, y, label, color)
+clearMapMarkers()
+removeMapMarker(label)
+setGlobalIndicator(key, label, value, color)
+```
+
+World actions are **not** global — access them through component APIs:
+- `Propulsion.api.move(frame, dir)` wraps `frameWorld.moveFrame`
+- `Lidar.api.scan(frame)` wraps `frameWorld.scanAdjacent`
+- `NearFieldCommunicator.api.getConnectedFrames(frame)` wraps `frameWorld.nfcFrames`
+
+When implementing a new component that needs world access, use dot notation with explicit self:
+```lua
+frameWorld.moveFrame(frameWorld, frame.data.id, "N", subcellStep(), 1.0, 25.0)
+frameWorld.scanAdjacent(frameWorld, frame.data.id)
+frameWorld.nfcFrames(frameWorld, frame.data.id, 5)
+```
+
+Full reference: `docs/lua-api.md`.
 
 ## Data Packets
 ```lua

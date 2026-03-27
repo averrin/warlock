@@ -22,12 +22,9 @@ return {
 	spendable_cost = { ["Electronic Parts"] = 10 },
 	api = {
 		setLoad = function(component, value)
-			if value < 0 then
-				value = 0
-			elseif value > 1 then
-				value = 1
-			end
-			component.data.attributes["load"]:SetBaseValue(value)
+			if value < 0 then value = 0
+			elseif value > 1 then value = 1 end
+			setAttr(component, "load", value)
 		end,
 	},
 }

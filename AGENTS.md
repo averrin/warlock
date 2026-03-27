@@ -215,19 +215,29 @@ Method names: `domain.action` — e.g., `frame.create`, `component.add`, `game.p
 
 ## Lua API Available in Component Scripts
 
-### Globals
-- `frameWorld:scanAdjacent(frame_id)` → blocked directions
-- `frameWorld:moveFrame(frame_id, direction, step_px, speed, extra_power)` → move with tweening
-- `frameWorld:nfcFrames(frame_id, maxDistance)` → nearby frames
-- `nexus:showToast(msg, type)`, `nexus:setGlobalIndicator(key, label, value, color)`
-- `gm:addFrame(name)`, `gm:addFrameFromBlueprint(name)`, `gm:addConnection(src, tgt, type)`
+### Blueprint Globals
+- `frame` — owning Frame object
+- `oracle` — reserved
 
-### Component Self API
-- `self.data.attributes["key"]:GetFinalValue()` / `:SetBaseValue(val)`
-- `self:activate()` / `self:deactivate()`
-- `self:send({destination, body, headers})` / `self:read()` — data packets
-- `self:sendRaw(string)` / `self:readRaw()` — raw data
-- `self:getCounterpart()` — other end of connection
+### API-only Variables (available inside component spec `api = {}`, NOT in blueprint code)
+- `frameWorld` — FrameWorld for scanAdjacent, moveFrame, nfcFrames
+- `environment` — Environment (temperature, minutes, days)
+
+### Component Dot-notation
+- `comp.activate()` / `comp.deactivate()` / `comp.repair()` — state control (no self needed)
+- `attr(comp, "counterpart")` — counterpart component id (-1 if none)
+
+### comp.api Methods (injected by engine)
+- `comp.api.send({destination, body, headers})` / `comp.api.read()` — data packets
+- `comp.api.sendRaw(string)` / `comp.api.readRaw()` — raw data
+- `comp.api.injectRaw(s)` / `comp.api.injectPacket(tbl)` — inject into own inbox
+- `comp.api.queueDepthRaw()` / `comp.api.queueDepthPacket()` — check inbox
+- `comp.api.getStorage()` / `comp.api.slots()` / `comp.api.slotsCount()` — storage access
+- `comp.api.take(item, amount)` / `comp.api.getStackByItem(item)` — storage operations
+- `comp.api.transferTo(dst, stack)` / `comp.api.transferFrom(src, stack)` — transfers
+
+### Nexus API (through Nexus component, not global)
+- `nex.api.showToast(msg, type)`, `nex.api.setGlobalIndicator(key, label, value, color)`
 
 ### Frame API
 - `frame:getComponentByType("Type")` / `frame:getComponentsByType("Pattern*")`

@@ -33,12 +33,6 @@ return {
 	size = ComponentSize.S,
 	spendable_cost = { ["Electronic Parts"] = 10 },
 	require = { "Core" },
-	api = {
-		readRaw = function(component)
-			return component:readRaw()
-		end,
-		read = function(component)
-			return component:read()
-		end,
-	},
+	-- read/readRaw injected by engine into comp.api
+	api = {},
 }
