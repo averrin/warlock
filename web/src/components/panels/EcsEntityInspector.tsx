@@ -13,6 +13,8 @@ import {
   Badge,
   IconButton,
   CardExpandControl,
+  fmtId,
+  copyToClipboard,
 } from "../ui";
 
 function isFolderEntity(entity: EcsEntityDTO): boolean {
@@ -501,10 +503,10 @@ function GameFrameComponentsSection({
               ) : (
                 <span style={{ width: 14, flexShrink: 0 }} />
               )}
-              <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 4 }}>
                 <span style={{ color: "#a78bfa" }}>{c.name}</span>
-                <span style={{ color: "#6b7280", marginLeft: 6 }}>#{c.id}</span>
-                {c.state ? <span style={{ color: "#6b7280", marginLeft: 6 }}>{c.state}</span> : null}
+                <Badge label={fmtId(c.id)} variant="id" title={`Component ID ${c.id} — click to copy`} onClick={() => copyToClipboard(`#${c.id}`)} />
+                {c.state ? <span style={{ color: "#6b7280" }}>{c.state}</span> : null}
               </span>
               {canMutate && (
                 <button
@@ -639,11 +641,11 @@ function EntityRow({
           <span style={{ color: entityColor || "#e5e7eb", fontWeight: 500, minWidth: 0 }}>
             {entity.label || "(unnamed)"}
           </span>
-          <Badge label={`#${entity.entity_id}`} variant="id" />
+          <Badge label={fmtId(entity.entity_id)} variant="id" title={`Entity ID ${entity.entity_id} — click to copy`} onClick={() => copyToClipboard(`#${entity.entity_id}`)} />
           {isFolder ? (
             <Badge label="folder" variant="custom" />
           ) : frameDataId != null ? (
-            <Badge label={`frame #${frameDataId}`} variant="id" />
+            <Badge label={`frame ${fmtId(frameDataId)}`} variant="id" title={`Frame ID ${frameDataId} — click to copy`} onClick={() => copyToClipboard(`#${frameDataId}`)} />
           ) : null}
         </div>
         {/* Action buttons — stop propagation so clicks don't toggle expand */}

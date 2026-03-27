@@ -1,6 +1,6 @@
 export * from "./constants";
 export * from "./styles";
-export * from "./Badge";
+export { Badge, fmtId, copyToClipboard } from "./Badge";
 export * from "./IconButton";
 export * from "./CollapsibleSection";
 export * from "./NumberField";

@@ -1,7 +1,7 @@
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import type { RpcClient } from "../../rpc/client";
 import type { ComponentDTO, DataLinkBufferDTO } from "../../rpc/types";
-import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS, componentSizeOptionsAllowed, CardExpandControl } from "../ui";
+import { Badge, STATE_COLORS, EFFECT_LABELS, SelectField, COMPONENT_SIZES, MATERIALS, componentSizeOptionsAllowed, CardExpandControl, fmtId, copyToClipboard } from "../ui";
 import { useGameStore } from "../../stores/game";
 import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { ComponentControls } from "./ComponentControls";
@@ -99,6 +99,94 @@ function extractCodeString(val: unknown): string {
   return "";
 }
 
+function CopyLocatorMenu({ component }: { component: ComponentDTO }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const copy = (text: string, label: string) => {
+    copyToClipboard(text);
+    setCopied(label);
+    setTimeout(() => { setCopied(null); setOpen(false); }, 900);
+  };
+
+  const btnStyle: CSSProperties = {
+    border: "none",
+    background: "transparent",
+    color: "#9ca3af",
+    cursor: "pointer",
+    fontSize: 11,
+    padding: "3px 8px",
+    textAlign: "left" as const,
+    width: "100%",
+    whiteSpace: "nowrap" as const,
+    borderRadius: 3,
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        type="button"
+        title="Copy locator"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        style={{
+          border: "1px solid #334155",
+          borderRadius: 4,
+          width: 20,
+          height: 20,
+          background: open ? "#1e293b" : "#020617",
+          color: "#6b7280",
+          cursor: "pointer",
+          fontSize: 11,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
+          flexShrink: 0,
+        }}
+      >
+        ⎘
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 22,
+            background: "#111827",
+            border: "1px solid #374151",
+            borderRadius: 6,
+            zIndex: 100,
+            minWidth: 220,
+            padding: 4,
+            boxShadow: "0 4px 16px #000a",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {[
+            { label: "by id", text: `locator(frame, "#0x${component.id.toString(16).toUpperCase().padStart(2, "0")}")` },
+            { label: "by name", text: `locator(frame, ".${component.name}")` },
+            { label: "by type", text: `locator(frame, "type:${component.type ?? component.name}")` },
+          ].map(({ label, text }) => (
+            <button
+              key={label}
+              type="button"
+              style={{ ...btnStyle, color: copied === label ? "#22c55e" : "#9ca3af" }}
+              onClick={() => copy(text, label)}
+              onMouseEnter={(e) => { (e.target as HTMLElement).style.background = "#1f2937"; }}
+              onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "transparent"; }}
+            >
+              {copied === label ? "✓ " : ""}
+              <span style={{ color: "#6b7280", fontSize: 10 }}>{label}: </span>
+              <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 10, color: "#e5e7eb" }}>{text}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ComponentCard({ component, frameId, rpcClient }: Props) {
   const [expanded, setExpanded] = useState(false);
   const setComponentSize = useGameStore((s) => s.setComponentSize);
@@ -186,7 +274,7 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
         </div>
 
         <span style={{ fontSize: 12, fontWeight: 600, color: "#e5e7eb" }}>{component.name}</span>
-        <span style={{ fontSize: 10, color: "#6b7280" }}>#{component.id}</span>
+        <Badge label={fmtId(component.id)} variant="id" title={`ID ${component.id} — click to copy`} onClick={() => copyToClipboard(`#${component.id}`)} />
         {effects.map((eff, i) => (
           <span key={i} style={{ fontSize: 11 }}>{eff}</span>
         ))}
@@ -218,6 +306,7 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
           λ
         </button>
 
+        <CopyLocatorMenu component={component} />
         <ComponentControls
           frameId={frameId}
           componentId={component.id}

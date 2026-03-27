@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import type { FrameDTO, ComponentDTO } from "../../rpc/types";
-import { STATE_COLORS, EFFECT_LABELS, formatComponentSlotsLine } from "../ui";
+import { STATE_COLORS, EFFECT_LABELS } from "../ui";
 import { CELL } from "./connectionGeometry";
 import "./FrameCard.css";
 
@@ -174,7 +174,6 @@ export const FrameCard = memo(function FrameCard({
 
   const storage = useMemo(() => aggregateStorage(components), [components]);
   const effects = useMemo(() => collectEffects(components), [components]);
-  const slotsLine = useMemo(() => formatComponentSlotsLine(frame), [frame]);
 
   // Build class names
   let className = "frame-card";
@@ -224,7 +223,7 @@ export const FrameCard = memo(function FrameCard({
           </div>
         )}
         <span className="frame-card__name">{frame.name}</span>
-        <span className="frame-card__id">#{frame.id}</span>
+        <span className="frame-card__id">0x{frame.id.toString(16).toUpperCase().padStart(2, "0")}</span>
         {outsideControlZone && (
           <span className="frame-card__zone-badge" title="Outside control zone">
             NC
@@ -261,9 +260,20 @@ export const FrameCard = memo(function FrameCard({
         </div>
       )}
 
-      {slotsLine && (
-        <div className="frame-card__slots" title="Component size slots (used / max)">
-          Slots {slotsLine}
+      {frame.component_slots && Object.keys(frame.component_slots).length > 0 && (
+        <div className="frame-card__slots">
+          {Object.entries(frame.component_slots).map(([k, u]) => {
+            const full = u.used >= u.max;
+            const bg = full ? "#374151" : k === "S" ? "#1e3a5f" : k === "M" ? "#1a3a2a" : "#3a1a1a";
+            return (
+              <span
+                key={k}
+                style={{ fontSize: 9, borderRadius: 3, padding: "1px 4px", background: bg, color: "#e5e7eb" }}
+              >
+                {k} {u.used}/{u.max}
+              </span>
+            );
+          })}
         </div>
       )}
 

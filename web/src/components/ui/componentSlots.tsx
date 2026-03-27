@@ -35,16 +35,42 @@ export function componentSizeOptionsAllowed(
   });
 }
 
+const SLOT_COLORS: Record<string, string> = { S: "#1e3a5f", M: "#1a3a2a", L: "#3a1a1a" };
+const SLOT_FULL_COLORS: Record<string, string> = { S: "#374151", M: "#374151", L: "#374151" };
+
 export function ComponentSlotsRow({ frame }: { frame: FrameDTO }) {
-  const line = formatComponentSlotsLine(frame);
-  if (!line) return null;
+  const s = frame.component_slots;
+  if (!s) return null;
+  const badges = ORDER.filter((k) => s[k] && s[k]!.max > 0);
+  if (!badges.length) return null;
   return (
     <div
-      style={{ fontSize: 11, color: "#94a3b8", marginBottom: 6 }}
-      title="Component size slots (used / max per S, M, L)"
+      style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}
+      title="Component size slots (used / max)"
     >
-      <span style={{ color: "#64748b" }}>Slots </span>
-      {line}
+      {badges.map((k) => {
+        const u = s[k]!;
+        const free = u.max - u.used;
+        const full = free === 0;
+        const bg = full ? SLOT_FULL_COLORS[k] : SLOT_COLORS[k];
+        return (
+          <span
+            key={k}
+            style={{
+              fontSize: 10,
+              borderRadius: 4,
+              padding: "1px 5px",
+              background: bg,
+              color: full ? "#6b7280" : "#94a3b8",
+              border: "1px solid #1f2937",
+              fontFamily: "ui-monospace, monospace",
+            }}
+            title={`${k}: ${u.used} used / ${u.max} max (${free} free)`}
+          >
+            {k} {u.used}/{u.max}
+          </span>
+        );
+      })}
     </div>
   );
 }
