@@ -4,8 +4,10 @@ FetchContent_Declare(
   )
 FetchContent_MakeAvailable(lua)
 file(GLOB LUA_SOURCE "${lua_SOURCE_DIR}/*.c")
+# Remove CLI and combined sources
 list(REMOVE_ITEM LUA_SOURCE "${lua_SOURCE_DIR}/lua.c")
 list(REMOVE_ITEM LUA_SOURCE "${lua_SOURCE_DIR}/luac.c")
+list(REMOVE_ITEM LUA_SOURCE "${lua_SOURCE_DIR}/onelua.c")
 
 list(APPEND DEPS_SOURCES ${LUA_SOURCE})
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${lua_SOURCE_DIR}")
