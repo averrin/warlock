@@ -227,14 +227,18 @@ export function segmentForPairAndType(
   const idx = presentTypes.indexOf(type as ConnTypeOrder);
   if (idx < 0) return null;
 
-  const edge = edgeSegmentBetweenFrameCenters(srcPos, srcSize, tgtPos, tgtSize);
-  const baseX1 = edge.x1;
-  const baseY1 = edge.y1;
-  const baseX2 = edge.x2;
-  const baseY2 = edge.y2;
+  // Canonical normal from min→max id for consistent perpendicular across all connections in the pair.
+  const idA = Math.min(sample.source, sample.target);
+  const idB = Math.max(sample.source, sample.target);
+  const posA = getPosition(idA);
+  const posB = getPosition(idB);
+  const sizeA = getFrameSize(idA);
+  const sizeB = getFrameSize(idB);
+  if (!posA || !posB || sizeA === undefined || sizeB === undefined) return null;
 
-  const dx = baseX2 - baseX1;
-  const dy = baseY2 - baseY1;
+  const canonEdge = edgeSegmentBetweenFrameCenters(posA, sizeA, posB, sizeB);
+  const dx = canonEdge.x2 - canonEdge.x1;
+  const dy = canonEdge.y2 - canonEdge.y1;
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
   const nx = -dy / len;
   const ny = dx / len;
@@ -245,11 +249,12 @@ export function segmentForPairAndType(
   const ox = nx * offset;
   const oy = ny * offset;
 
+  const actualEdge = edgeSegmentBetweenFrameCenters(srcPos, srcSize, tgtPos, tgtSize);
   return {
-    x1: baseX1 + ox,
-    y1: baseY1 + oy,
-    x2: baseX2 + ox,
-    y2: baseY2 + oy,
+    x1: actualEdge.x1 + ox,
+    y1: actualEdge.y1 + oy,
+    x2: actualEdge.x2 + ox,
+    y2: actualEdge.y2 + oy,
   };
 }
 
@@ -379,14 +384,20 @@ export function segmentForPairNthConnection(
   const tgtSize = getFrameSize(sample.target);
   if (!srcPos || !tgtPos || srcSize === undefined || tgtSize === undefined) return null;
 
-  const edge = edgeSegmentBetweenFrameCenters(srcPos, srcSize, tgtPos, tgtSize);
-  const baseX1 = edge.x1;
-  const baseY1 = edge.y1;
-  const baseX2 = edge.x2;
-  const baseY2 = edge.y2;
+  // Always derive the perpendicular normal from canonical min→max id ordering so that
+  // connections going in opposite directions (e.g. POWER 1→2 and DATA 2→1) use the
+  // same normal direction and therefore spread to opposite sides rather than overlapping.
+  const idA = Math.min(sample.source, sample.target);
+  const idB = Math.max(sample.source, sample.target);
+  const posA = getPosition(idA);
+  const posB = getPosition(idB);
+  const sizeA = getFrameSize(idA);
+  const sizeB = getFrameSize(idB);
+  if (!posA || !posB || sizeA === undefined || sizeB === undefined) return null;
 
-  const dx = baseX2 - baseX1;
-  const dy = baseY2 - baseY1;
+  const canonEdge = edgeSegmentBetweenFrameCenters(posA, sizeA, posB, sizeB);
+  const dx = canonEdge.x2 - canonEdge.x1;
+  const dy = canonEdge.y2 - canonEdge.y1;
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
   const nx = -dy / len;
   const ny = dx / len;
@@ -397,11 +408,13 @@ export function segmentForPairNthConnection(
   const ox = nx * offset;
   const oy = ny * offset;
 
+  // Apply offset to the actual directional edge (source → target preserves arrow direction).
+  const actualEdge = edgeSegmentBetweenFrameCenters(srcPos, srcSize, tgtPos, tgtSize);
   return {
-    x1: baseX1 + ox,
-    y1: baseY1 + oy,
-    x2: baseX2 + ox,
-    y2: baseY2 + oy,
+    x1: actualEdge.x1 + ox,
+    y1: actualEdge.y1 + oy,
+    x2: actualEdge.x2 + ox,
+    y2: actualEdge.y2 + oy,
   };
 }
 

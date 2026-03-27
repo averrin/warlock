@@ -10,6 +10,8 @@ just run           # Build & run engine (port 9800)
 cd web && npm run dev  # Vite dev server (port 5173)
 just test          # All tests (unit + serial + e2e)
 just test-e2e      # E2E only (most important)
+just restart       # Kill running engine + restart in background
+just dev           # Kill → cmake build → restart (avoids LNK1168 lock)
 ```
 
 ## Architecture Overview
@@ -105,6 +107,18 @@ Files in `data/` (frame.proto, main.proto, extra.proto) are NOT Protocol Buffers
 
 ### WellKnownEntities — Two Population Sites
 `WellKnownEntities` (singleton entity handles for Environment, etc.) is populated in **both** `GameManager::loadData()` and `GameManager::start()`. Any new singleton entity must be found/created in both locations or it will be a null handle when loading from a save.
+
+### `fs::path::stem()` on `.meta.json` Files (FOOTGUN)
+
+Save/init state files are named `Name.meta.json`. `stem()` returns `"Name.meta"` not `"Name"` — it only strips the last extension. Always match the full suffix manually:
+
+```cpp
+auto fname = entry.path().filename().string();
+if (fname.size() < 10 || fname.substr(fname.size() - 10) != ".meta.json") continue;
+auto base_name = fname.substr(0, fname.size() - 10);  // "Name"
+```
+
+This applies to both `state.slots.list` and `state.init.list` handlers.
 
 ### Blueprint Code `start()` Is Never Called on Game Load (FOOTGUN)
 When a game is loaded from save, Cores that were already `ACTIVE` never go through the ACTIVATING→ACTIVE transition. The `start()` function in blueprint code is published by `TweeningSystem` only when a Core's `time_switch` fires the transition — it does **not** run on load. Any Lua globals initialized in `start()` remain `nil`, causing arithmetic/nil errors on the first `update()` call and putting the Core into `COMP_ERROR`.
@@ -256,6 +270,7 @@ Method names: `domain.action` — e.g., `frame.create`, `component.add`, `game.p
 - **Canvas**: Pixi.js via `@pixi/react`. Frames rendered as sprites with CSS overlay for text
 - **Panels**: Dockview layout. Each panel takes `rpcClient` prop, uses stores
 - **Styling**: Inline CSSProperties, dark theme. Shared styles in `components/ui/styles.ts`
+- **ID formatting**: Use `fmtId(id)` from `components/ui/Badge.tsx` for hex IDs (`0x0A` style, min 2 digits). Use `copyToClipboard(text)` for clipboard ops. Both exported from `components/ui/index.ts`.
 - **State sync**: Stores subscribe to server broadcasts (`client.on("event.state_update", ...)`)
 - **Adding a panel**: Create in `components/panels/`, register in `WindowWorkspace.tsx`
 

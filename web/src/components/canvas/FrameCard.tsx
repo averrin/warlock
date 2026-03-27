@@ -233,10 +233,10 @@ export const FrameCard = memo(function FrameCard({
       </div>
 
       <div className="frame-card__body">
-      {/* STATUS ROW */}
-      {badges && (
+      {/* STATUS + SLOTS ROW — unified single line */}
+      {(badges || (frame.component_slots && Object.keys(frame.component_slots).length > 0)) && (
         <div className="frame-card__status">
-          {badges.temperature != null && badges.temperature > -999 && (
+          {badges?.temperature != null && badges.temperature > -999 && (
             <>
               <div className="frame-card__temp-bar">
                 <div
@@ -252,23 +252,19 @@ export const FrameCard = memo(function FrameCard({
               </span>
             </>
           )}
-          {badges.power && (
+          {badges?.power && (
             <span className={`frame-card__power-chip frame-card__power-chip--${badges.power}`}>
               {POWER_LABELS[badges.power] ?? badges.power}
             </span>
           )}
-        </div>
-      )}
-
-      {frame.component_slots && Object.keys(frame.component_slots).length > 0 && (
-        <div className="frame-card__slots">
-          {Object.entries(frame.component_slots).map(([k, u]) => {
+          {frame.component_slots && Object.entries(frame.component_slots).map(([k, u]) => {
             const full = u.used >= u.max;
             const bg = full ? "#374151" : k === "S" ? "#1e3a5f" : k === "M" ? "#1a3a2a" : "#3a1a1a";
             return (
               <span
                 key={k}
-                style={{ fontSize: 9, borderRadius: 3, padding: "1px 4px", background: bg, color: "#e5e7eb" }}
+                className="frame-card__power-chip"
+                style={{ background: bg, color: full ? "#6b7280" : "#e5e7eb" }}
               >
                 {k} {u.used}/{u.max}
               </span>

@@ -28,8 +28,11 @@ export function StatusBar({ rpcClient }: Props) {
   const configureAutosave = useSaveStore((s) => s.configureAutosave);
 
   const [intervalInput, setIntervalInput] = useState(String(autosaveInterval));
+  const [slotSaving, setSlotSaving] = useState(false);
 
   const initSaveSlots = useSaveSlotsStore((s) => s.init);
+  const currentSlotName = useSaveSlotsStore((s) => s.currentSlotName);
+  const saveSlot = useSaveSlotsStore((s) => s.saveSlot);
 
   useEffect(() => {
     initSave(rpcClient);
@@ -41,7 +44,14 @@ export function StatusBar({ rpcClient }: Props) {
     setIntervalInput(String(autosaveInterval));
   }, [autosaveInterval]);
 
-  const handleSave = useCallback(() => save(rpcClient), [rpcClient, save]);
+  const handleSave = useCallback(() => {
+    if (currentSlotName) {
+      setSlotSaving(true);
+      void saveSlot(rpcClient, currentSlotName).finally(() => setSlotSaving(false));
+    } else {
+      void save(rpcClient);
+    }
+  }, [rpcClient, currentSlotName, saveSlot, save]);
   const handleLoad = useCallback(() => load(rpcClient), [rpcClient, load]);
 
   const handleToggleAutosave = useCallback(() => {
@@ -104,13 +114,13 @@ export function StatusBar({ rpcClient }: Props) {
       <button
         type="button"
         onClick={handleSave}
-        disabled={saving || !gameStarted}
+        disabled={(currentSlotName ? slotSaving : saving) || !gameStarted}
         style={{
-          ...btnStyle(saving || !gameStarted),
-          background: saving ? "#1e3a5f" : "#111827",
+          ...btnStyle((currentSlotName ? slotSaving : saving) || !gameStarted),
+          background: (currentSlotName ? slotSaving : saving) ? "#1e3a5f" : "#111827",
         }}
       >
-        {saving ? "Saving\u2026" : "Save"}
+        {(currentSlotName ? slotSaving : saving) ? "Saving\u2026" : currentSlotName ? `Save \u2192 ${currentSlotName}` : "Save"}
       </button>
 
       <button

@@ -21,6 +21,7 @@ interface SaveSlotsState {
   initStates: InitState[];
   backups: BackupEntry[];
   openInitName: string | null;
+  currentSlotName: string | null;
 
   fetchSlots: (client: RpcClient) => Promise<void>;
   fetchInitStates: (client: RpcClient) => Promise<void>;
@@ -46,6 +47,7 @@ export const useSaveSlotsStore = create<SaveSlotsState>((set, get) => ({
   initStates: [],
   backups: [],
   openInitName: null,
+  currentSlotName: null,
 
   init: (client) => {
     client.on("notify.slots.changed", () => {
@@ -88,11 +90,13 @@ export const useSaveSlotsStore = create<SaveSlotsState>((set, get) => ({
 
   saveSlot: async (client, name) => {
     await client.call("state.slots.save", { name });
+    set({ currentSlotName: name });
     await get().fetchSlots(client);
   },
 
   loadSlot: async (client, name) => {
     await client.call("state.slots.load", { name });
+    set({ currentSlotName: name });
   },
 
   deleteSlot: async (client, name) => {

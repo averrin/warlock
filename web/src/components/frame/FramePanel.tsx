@@ -8,7 +8,6 @@ import { FrameHeader } from "./FrameHeader";
 import { FrameControls } from "./FrameControls";
 import { ComponentStrip } from "./ComponentStrip";
 import { ComponentCard } from "./ComponentCard";
-import { StorageBar } from "./StorageBar";
 import { ErrorList } from "./ErrorList";
 import { ComponentContextMenu } from "../canvas/ComponentContextMenu";
 
@@ -175,8 +174,6 @@ export function FramePanel({
             {showExpandButton && <LevelControls level={1} onSetLevel={setLevel} />}
           </div>
         </div>
-
-        <StorageBar frameId={frame.id} components={components} rpcClient={rpcClient} />
 
         <ComponentSlotsRow frame={frame} />
 
