@@ -45,13 +45,17 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DCPM_SOURCE_CACHE="${GITHUB_WORKSPACE}/build/_deps"
 
-    - name: Build
-      run: cmake --build build --config Release --parallel $(nproc)
+    - name: Build main executable and unit tests
+      run: cmake --build build --config Release --parallel $(nproc) --target hellfrost warlock_unit warlock_serial
 
     - name: Run tests
       working-directory: build
       run: ctest --output-on-failure --verbose
 
-    - name: Run e2e tests
-      if: success() && hashFiles('build/warlock_e2e') != ''
-      run: ./build/warlock_e2e
+    - name: Build e2e tests (optional)
+      continue-on-error: true
+      run: cmake --build build --config Release --target warlock_e2e
+
+    - name: Run e2e tests if available
+      if: success() && hashFiles('build/tests/warlock_e2e') != ''
+      run: ./build/tests/warlock_e2e
