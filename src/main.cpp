@@ -9,6 +9,7 @@
 #include <rpc/handlers/items_handler.hpp>
 #include <rpc/handlers/storage_handler.hpp>
 #include <rpc/handlers/patch_handler.hpp>
+#include <rpc/handlers/research_handler.hpp>
 #include <rpc/event_bridge.hpp>
 #include <app/application.hpp>
 #include <backward.hpp>
@@ -119,6 +120,7 @@ int main(int argc, char *argv[]) {
   rpc::registerItemsHandlers(rpcServer);
   rpc::registerStorageHandlers(rpcServer);
   rpc::registerPatchHandlers(rpcServer);
+  rpc::registerResearchHandlers(rpcServer);
   rpc::initEventBridge(rpcServer);
   if (!rpcServer.start()) {
     app.log.error("RPC server startup failed. Try another port with --rpc-port <port>.");

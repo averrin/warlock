@@ -587,6 +587,9 @@ void GameManager::loadData() {
       mergeLegacySpendablesJsonInto(spendable_pool_);
     }
   }
+  if (research) {
+    research->loadUnlocked(PATH / "save");
+  }
   log.stop("Loading State");
   startJob->progress += 5;
 
@@ -651,6 +654,10 @@ void GameManager::saveData() {
     // Use saveStateToFile to write the live registry (not stale store data)
     loader.saveStateToFile(state, state.stores.front()->path.string(),
                           spendable_pool_);
+  }
+  if (research) {
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    research->saveUnlocked(PATH / "save");
   }
   log.stop(label);
 
@@ -867,6 +874,9 @@ void GameManager::start() {
   systems.push_back(exec);
   items = std::make_shared<ItemsSystem>();
   systems.push_back(items);
+
+  research = std::make_shared<ResearchManager>();
+  research->load(lua, PATH / "scripts/research");
 
   ensureSpendableKeysFromItems();
   emitSpendablePool();

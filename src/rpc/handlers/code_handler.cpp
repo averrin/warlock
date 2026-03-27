@@ -52,6 +52,7 @@ void registerCodeHandlers(Server& server) {
     nlohmann::json sources = nlohmann::json::object();
     nlohmann::json categories = nlohmann::json::object();
     for (auto& [name, code] : gm.exec->sources) {
+      if (gm.research && gm.research->isComponentLocked(name)) continue;
       sources[name] = code;
       categories[name] = gm.exec->categories.count(name) ? gm.exec->categories.at(name) : "Other";
     }
