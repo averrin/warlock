@@ -39,11 +39,22 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cmake-deps-
 
+    - name: Set up ccache
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: ${{ runner.os }}-ccache-${{ github.ref_name }}
+        restore-keys: |
+          ${{ runner.os }}-ccache-${{ github.event.pull_request.base.ref || 'master' }}
+          ${{ runner.os }}-ccache-master
+          ${{ runner.os }}-ccache-
+
     - name: Configure CMake
       run: |
         cmake -B build \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCPM_SOURCE_CACHE="${GITHUB_WORKSPACE}/build/_deps"
+          -DCPM_SOURCE_CACHE="${GITHUB_WORKSPACE}/build/_deps" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
     - name: Build
       run: cmake --build build --config Release --parallel $(nproc)
