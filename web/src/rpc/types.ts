@@ -206,3 +206,18 @@ export interface PowerNetworkDTO {
   battery_count?: number;
   history: Record<string, number[]>;
 }
+
+export interface ResearchNodeDTO {
+  name: string;
+  description: string;
+  icon: string;
+  cost: Record<string, number>;
+  requires: string[];
+  unlocks: string[];
+  unlocks_recipes: string[];
+  status: "locked" | "available" | "unlocked";
+}
+
+export interface ResearchListDTO {
+  nodes: ResearchNodeDTO[];
+}

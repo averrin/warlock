@@ -49,6 +49,7 @@ void registerItemsHandlers(Server& server) {
     }
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& r : gm.items->loader->get_recipes()) {
+      if (gm.research && gm.research->isRecipeLocked(r.name)) continue;
       nlohmann::json outs = nlohmann::json::array();
       for (const auto& o : r.outputs) {
         outs.push_back({{"name", o.item.name}, {"amount", o.amount}});

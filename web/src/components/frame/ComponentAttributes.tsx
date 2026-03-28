@@ -413,7 +413,10 @@ function SingleAttribute({
   const frameLinkCandidates = frameComponents.filter((c) => {
     if (c.id === componentId) return false;
     if (!linkFilter) return true;
-    return c.type === linkFilter;
+    if (c.type === linkFilter) return true;
+    // "Storage" filter also accepts any component with actual storage capacity (e.g. Nexus)
+    if (linkFilter === "Storage" && c.storage != null) return true;
+    return false;
   });
   const frameLinkIds = new Set(frameLinkCandidates.map((c) => c.id));
   const orphanFrameLink = isLinkFrame && targetId >= 0 && !frameLinkIds.has(targetId);

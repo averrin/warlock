@@ -30,6 +30,7 @@ import { PowerPanel } from "../panels/PowerPanel";
 import { StateInspector } from "../panels/StateInspector";
 import { GlobalIndicatorsPanel } from "../panels/GlobalIndicatorsPanel";
 import { ComponentCodeEditorPanel, type ComponentCodeEditorParams } from "../panels/ComponentCodeEditorPanel";
+import { ResearchTree } from "../panels/ResearchTree";
 import { InitEntityEditorPanel } from "../panels/InitEntityEditorPanel";
 
 type Props = {
@@ -192,6 +193,7 @@ function seedDefaultPanels(api: DockviewApi) {
   });
   registerTab("code-editor", "codeEditor", "Code Editor");
   registerTab("global-indicators", "globalIndicatorsPanel", "Global Indicators");
+  registerTab("research-tree", "researchTree", "Research Tree");
 
   api.addFloatingGroup(environment, {
     x: 140,
@@ -209,6 +211,7 @@ const TOP_BAR_BUTTONS: { id: string; component: string; title: string; label: st
   { id: "code-editor", component: "codeEditor", title: "Code Editor", label: "Code" },
   { id: "state-inspector", component: "stateInspector", title: "State Inspector", label: "State" },
   { id: "global-indicators", component: "globalIndicatorsPanel", title: "Global Indicators", label: "Indicators" },
+  { id: "research-tree", component: "researchTree", title: "Research Tree", label: "Research" },
   { id: "InitEntityEditor", component: "initEntityEditor", title: "Init Entity Editor", label: "Init Editor" },
 ];
 
@@ -324,6 +327,7 @@ export function WindowWorkspace({ rpcClient }: Props) {
       codeEditor: (() => codeEditorNode) as FunctionComponent<IDockviewPanelProps>,
       stateInspector: (() => <StateInspector rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       globalIndicatorsPanel: (() => <GlobalIndicatorsPanel />) as FunctionComponent<IDockviewPanelProps>,
+      researchTree: (() => <ResearchTree rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       componentCodeEditor: ((props: IDockviewPanelProps) => (
         <ComponentCodeEditorPanel rpcClient={rpcClient} {...(props.params as ComponentCodeEditorParams)} />
       )) as FunctionComponent<IDockviewPanelProps>,

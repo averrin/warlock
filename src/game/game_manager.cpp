@@ -746,6 +746,9 @@ void GameManager::loadData(bool forceFromInit) {
       log.var("Current State", current_state.registry.storage<hf::meta>().size());
     }
   }
+  if (research) {
+    research->loadUnlocked(PATH / "save");
+  }
   log.stop("Loading State");
   startJob->progress += 5;
 
@@ -844,6 +847,10 @@ void GameManager::saveData() {
   if (!state.stores.empty()) {
     // Use saveStateToFile to write the live registry (not stale store data)
     loader.saveStateToFile(state, state.stores.front()->path.string());
+  }
+  if (research) {
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    research->saveUnlocked(PATH / "save");
   }
   log.stop(label);
 
@@ -1154,6 +1161,9 @@ void GameManager::start() {
   items = std::make_shared<ItemsSystem>();
   systems.push_back(items);
 
+  research = std::make_shared<ResearchManager>();
+  research->load(lua, PATH / "scripts/research");
+
   ensureSpendableKeysFromItems();
   emitSpendablePool();
 
@@ -1304,6 +1314,11 @@ void GameManager::serve() {
               if (!other) continue;
               if (other.get() == comp.get()) continue;
               if (other->data.get<std::string>("type") == needed) {
+                found = true;
+                break;
+              }
+              // "Storage" requirement is satisfied by any component with actual storage capacity
+              if (needed == "Storage" && other->storage != nullptr) {
                 found = true;
                 break;
               }
