@@ -78,13 +78,14 @@ struct Metadata {
     return std::get<T>(attributes[name]->GetFinalValue());
   }
 
-  bool has(std::string key) { return attributes.find(key) != attributes.end(); }
+  bool has(std::string key) const { return attributes.find(key) != attributes.end(); }
 
-  template <class T> T get_or(std::string name, T default_value) {
-    if (attributes.find(name) == attributes.end()) {
+  template <class T> T get_or(std::string name, T default_value) const {
+    auto it = attributes.find(name);
+    if (it == attributes.end()) {
       return default_value;
     }
-    return std::get<T>(attributes[name]->GetFinalValue());
+    return std::get<T>(it->second->GetFinalValue());
   }
 
   friend class cereal::access;
