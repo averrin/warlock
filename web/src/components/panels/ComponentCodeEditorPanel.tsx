@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState, useEffect, useRef, useMemo } from "react";
+import { Suspense, lazy, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { OnMount } from "@monaco-editor/react";
 import type { RpcClient } from "../../rpc/client";
 import type { ComponentDTO } from "../../rpc/types";
@@ -67,6 +67,13 @@ const runBtn: React.CSSProperties = {
   color: "#86efac",
 };
 
+const fileBtn: React.CSSProperties = {
+  ...btnBase,
+  background: "#1a1a2e",
+  borderColor: "#6366f1",
+  color: "#a5b4fc",
+};
+
 const disabledBtn: React.CSSProperties = {
   ...btnBase,
   opacity: 0.4,
@@ -124,6 +131,78 @@ export function ComponentCodeEditorPanel({
   const canSave = mode === "attribute" && frameId != null && componentId != null;
   const canRun = mode === "attribute" && frameId != null && executeSupported;
   const canSaveSource = mode === "source" && defEditorSupported && sourcesSupported && !!sourceName;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleSaveToFile = useCallback(() => {
+    const blob = new Blob([code], { type: "text/x-lua" });
+
+    // Try File System Access API first (Chromium browsers)
+    if ("showSaveFilePicker" in window) {
+      void (async () => {
+        try {
+          const handle = await (window as unknown as { showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker({
+            suggestedName: `${attrKey ?? "code"}.lua`,
+            types: [{ description: "Lua files", accept: { "text/x-lua": [".lua"] } }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          setStatus("Exported to file"); setStatusOk(true);
+        } catch (err: unknown) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setStatus("File export failed"); setStatusOk(false);
+        }
+      })();
+      return;
+    }
+
+    // Fallback: download via anchor
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${attrKey ?? "code"}.lua`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus("Exported to file"); setStatusOk(true);
+  }, [code, attrKey]);
+
+  const handleLoadFromFile = useCallback(() => {
+    // Try File System Access API first (Chromium browsers)
+    if ("showOpenFilePicker" in window) {
+      void (async () => {
+        try {
+          const [handle] = await (window as unknown as { showOpenFilePicker: (opts: unknown) => Promise<FileSystemFileHandle[]> }).showOpenFilePicker({
+            types: [{ description: "Lua files", accept: { "text/x-lua": [".lua"] } }],
+            multiple: false,
+          });
+          const file = await handle.getFile();
+          const text = await file.text();
+          setCode(text);
+          setStatus("Loaded from file"); setStatusOk(true);
+        } catch (err: unknown) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setStatus("File load failed"); setStatusOk(false);
+        }
+      })();
+      return;
+    }
+
+    // Fallback: hidden file input
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    void file.text().then((text) => {
+      setCode(text);
+      setStatus("Loaded from file"); setStatusOk(true);
+    }).catch(() => {
+      setStatus("File load failed"); setStatusOk(false);
+    });
+    // Reset so the same file can be re-selected
+    e.target.value = "";
+  }, []);
 
   // Source mode: load from code.sources by name
   useEffect(() => {
@@ -261,6 +340,30 @@ export function ComponentCodeEditorPanel({
                 Clear errors
               </button>
             )}
+            <span style={{ borderLeft: "1px solid #334155", height: 16, margin: "0 2px" }} />
+            <button
+              type="button"
+              style={fileBtn}
+              title="Save editor content to a .lua file"
+              onClick={handleSaveToFile}
+            >
+              Export
+            </button>
+            <button
+              type="button"
+              style={fileBtn}
+              title="Load content from a .lua file"
+              onClick={handleLoadFromFile}
+            >
+              Import
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".lua"
+              style={{ display: "none" }}
+              onChange={handleFileInputChange}
+            />
             {coreCodeContext && (
               <div
                 style={{
