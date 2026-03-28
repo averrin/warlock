@@ -5,4 +5,5 @@ return {
 	cost = { ["Electronic Parts"] = 50, ["Advanced Chips"] = 10 },
 	requires = { "Basic Power" },
 	unlocks = { "Generator", "Solar Panel" },
+	unlocks_recipes = { "Spark Ore", "Consume Spark Ore", "Consume Spark Stone" },
 }

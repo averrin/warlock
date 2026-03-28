@@ -5,6 +5,7 @@
 void ResearchManager::load(sol::state &lua, const fs::path &scripts_path) {
   nodes_.clear();
   locked_components_.clear();
+  locked_recipes_.clear();
   unlocked_.clear();
 
   if (!fs::exists(scripts_path)) {
@@ -35,24 +36,19 @@ void ResearchManager::load(sol::state &lua, const fs::path &scripts_path) {
       }
     }
 
-    sol::optional<sol::table> req_t = spec["requires"];
-    if (req_t) {
-      for (const auto &pair : req_t.value()) {
-        if (pair.second.is<std::string>()) {
-          node.requires.push_back(pair.second.as<std::string>());
-        }
+    auto parse_string_list = [](sol::optional<sol::table> t, std::vector<std::string> &out) {
+      if (!t) return;
+      for (const auto &pair : t.value()) {
+        if (pair.second.is<std::string>()) out.push_back(pair.second.as<std::string>());
       }
-    }
+    };
 
-    sol::optional<sol::table> unlocks_t = spec["unlocks"];
-    if (unlocks_t) {
-      for (const auto &pair : unlocks_t.value()) {
-        if (pair.second.is<std::string>()) {
-          node.unlocks.push_back(pair.second.as<std::string>());
-          locked_components_.insert(pair.second.as<std::string>());
-        }
-      }
-    }
+    parse_string_list(spec["requires"], node.requires);
+    parse_string_list(spec["unlocks"], node.unlocks);
+    parse_string_list(spec["unlocks_recipes"], node.unlocks_recipes);
+
+    for (const auto &u : node.unlocks) locked_components_.insert(u);
+    for (const auto &r : node.unlocks_recipes) locked_recipes_.insert(r);
 
     nodes_[node.name] = std::move(node);
   }
@@ -106,12 +102,23 @@ bool ResearchManager::prerequisitesMet(const std::string &name) const {
 
 bool ResearchManager::isComponentLocked(const std::string &component_name) const {
   if (locked_components_.count(component_name) == 0) return false;
-  // Component is in some research's unlocks list; check if any unlocked research covers it
   for (const auto &uname : unlocked_) {
     auto it = nodes_.find(uname);
     if (it == nodes_.end()) continue;
     for (const auto &u : it->second.unlocks) {
       if (u == component_name) return false;
+    }
+  }
+  return true;
+}
+
+bool ResearchManager::isRecipeLocked(const std::string &recipe_name) const {
+  if (locked_recipes_.count(recipe_name) == 0) return false;
+  for (const auto &uname : unlocked_) {
+    auto it = nodes_.find(uname);
+    if (it == nodes_.end()) continue;
+    for (const auto &r : it->second.unlocks_recipes) {
+      if (r == recipe_name) return false;
     }
   }
   return true;

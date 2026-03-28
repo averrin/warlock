@@ -4,5 +4,6 @@ return {
 	icon = "power-lightning-bolt.png",
 	cost = {},
 	requires = {},
-	unlocks = { "Nexus", "Power Wire Connector", "Data Wire Connector" },
+	unlocks = { "Nexus", "Power Wire Connector", "Data Wire Connector", "Storage" },
+	unlocks_recipes = {},
 }

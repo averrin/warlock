@@ -131,7 +131,11 @@ function ResearchNode({
   return (
     <div
       style={cardStyle}
-      title={node.description + (node.unlocks.length ? `\nUnlocks: ${node.unlocks.join(", ")}` : "")}
+      title={
+        node.description +
+        (node.unlocks.length ? `\nUnlocks: ${node.unlocks.join(", ")}` : "") +
+        (node.unlocks_recipes?.length ? `\nRecipes: ${node.unlocks_recipes.join(", ")}` : "")
+      }
       onClick={() => clickable && onUnlock(node.name)}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -145,6 +149,11 @@ function ResearchNode({
         <div style={{ fontSize: 10, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {node.unlocks.slice(0, 3).join(", ")}
           {node.unlocks.length > 3 ? ` +${node.unlocks.length - 3}` : ""}
+        </div>
+      )}
+      {node.unlocks_recipes?.length > 0 && (
+        <div style={{ fontSize: 10, color: "#4b5563", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          +{node.unlocks_recipes.length} recipe{node.unlocks_recipes.length > 1 ? "s" : ""}
         </div>
       )}
     </div>

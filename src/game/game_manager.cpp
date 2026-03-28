@@ -1317,6 +1317,11 @@ void GameManager::serve() {
                 found = true;
                 break;
               }
+              // "Storage" requirement is satisfied by any component with actual storage capacity
+              if (needed == "Storage" && other->storage != nullptr) {
+                found = true;
+                break;
+              }
             }
             if (!found) {
               missing.push_back(needed);

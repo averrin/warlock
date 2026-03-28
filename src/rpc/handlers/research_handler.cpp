@@ -35,6 +35,11 @@ nlohmann::json serializeResearchList(GameManager& gm) {
       unlocks_j.push_back(u);
     }
 
+    nlohmann::json unlocks_recipes_j = nlohmann::json::array();
+    for (const auto& r : node.unlocks_recipes) {
+      unlocks_recipes_j.push_back(r);
+    }
+
     nodes.push_back({
       {"name", name},
       {"description", node.description},
@@ -42,6 +47,7 @@ nlohmann::json serializeResearchList(GameManager& gm) {
       {"cost", cost_j},
       {"requires", requires_j},
       {"unlocks", unlocks_j},
+      {"unlocks_recipes", unlocks_recipes_j},
       {"status", status},
     });
   }

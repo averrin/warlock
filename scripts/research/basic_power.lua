@@ -4,5 +4,6 @@ return {
 	icon = "battery-100.png",
 	cost = { ["Electronic Parts"] = 20 },
 	requires = { "Nexus Core" },
-	unlocks = { "Battery", "Charger", "Consumer", "Capacitor" },
+	unlocks = { "Battery", "Charger", "Consumer", "Capacitor", "Power Meter", "Load Limiter" },
+	unlocks_recipes = {},
 }

@@ -214,6 +214,7 @@ export interface ResearchNodeDTO {
   cost: Record<string, number>;
   requires: string[];
   unlocks: string[];
+  unlocks_recipes: string[];
   status: "locked" | "available" | "unlocked";
 }
 

@@ -4,5 +4,6 @@ return {
 	icon = "circuit-board.png",
 	cost = { ["Electronic Parts"] = 40 },
 	requires = { "Nexus Core" },
-	unlocks = { "Data Relay", "Core", "Control Relay" },
+	unlocks = { "Data Relay", "Core", "Main Core", "Control Relay", "Clock" },
+	unlocks_recipes = {},
 }
