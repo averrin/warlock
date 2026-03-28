@@ -82,7 +82,27 @@ public:
   /** Clear all compiled scripts (e.g. after state.load replaces registry). */
   void invalidateAllScripts();
   void cleanupFrame(int frame_id);
+
+  /** Dispatch a component_state_changed event to Advanced Cores on the given frame.
+   *  Calls onStateChange() in compiled script tables of cores that have a "memory" attribute. */
+  void dispatchStateChange(int frame_id, int component_id,
+                           const std::string& component_name,
+                           int prev_state, int new_state,
+                           const std::string& reason);
 };
 
 /** Rebind component `api` and attribute `inspector_meta` from Lua specs (not serialized); call after load and once exec exists. */
 void refresh_component_apis(CodeExecutionSystem& exec);
+
+/** Sync counterpart_id into the "counterpart" attribute on every data-connector component. Call after recompute_data_link_counterparts(). */
+void sync_all_counterpart_attributes();
+
+/** Convert a Lua table to nlohmann::json (arrays and objects auto-detected). */
+nlohmann::json sol_table_to_json(sol::table t);
+
+/** Convert nlohmann::json to a Lua object (inverse of sol_table_to_json). */
+sol::object json_to_lua(sol::state_view L, const nlohmann::json& j);
+
+/** Shared map: comp_id → { library_code, last_heartbeat_time }.
+ *  Written by game_manager (reception), read by code_execution (injection). */
+extern std::unordered_map<int, std::pair<std::string, std::chrono::steady_clock::time_point>> g_core_library;

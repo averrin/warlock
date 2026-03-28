@@ -13,7 +13,7 @@ class RegistryContainer : public Container<RegistryStore> {
   int8_t getType() override { return type; }
 
 public:
-  int8_t version = 3;
+  int8_t version = 4;
   int8_t type = 2;
 
   entt::registry registry;

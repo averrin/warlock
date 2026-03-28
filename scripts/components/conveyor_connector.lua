@@ -63,19 +63,19 @@ return {
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
+	spendable_cost = { ["Electronic Parts"] = 10 },
 	require = { "Storage" },
 	api = {
 		setTarget = function(self, storage)
-			sid = storage.data.id
-			self.data.attributes["target"]:SetBaseValue(sid)
+			setAttr(self, "target", storage.data.id)
 		end,
 		setMode = function(self, mode)
 			if mode == "SEND" or mode == "RECEIVE" then
-				self.data.attributes["mode"]:SetBaseValue(mode)
+				setAttr(self, "mode", mode)
 			end
 		end,
 		setFilter = function(self, filter)
-			self.data.attributes["filter"]:SetBaseValue(filter)
+			setAttr(self, "filter", filter)
 		end,
 	},
 }

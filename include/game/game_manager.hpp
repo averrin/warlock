@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <liblog/liblog.hpp>
 #include <map>
+#include <optional>
 #include <string>
+#include <game/registry_store.hpp>
 #include <game/well_known_entities.hpp>
 #include <utils/entt.hpp>
 #include <utils/jobs.hpp>
@@ -44,11 +46,10 @@ public:
   uint64_t tick_count() const { return tick_count_; }
   void serve();
 
-  void loadData();
+  void loadData(bool forceFromInit = false);
   void saveData();
 
-  /** Global spendable currency (persisted in the state save file). */
-  const std::map<std::string, int64_t> &spendablePool() const { return spendable_pool_; }
+  std::map<std::string, int64_t> spendablePool() const;
   void addSpendable(const std::string &name, int64_t delta);
   bool tryConsumeSpendable(const std::map<std::string, int> &cost, std::string &err);
   entt::entity addFrame(std::string name);
@@ -71,10 +72,22 @@ public:
   std::string last_saved_at_;
   const std::string& lastSavedAt() const { return last_saved_at_; }
 
-private:
-  std::map<std::string, int64_t> spendable_pool_;
-  void ensureSpendableKeysFromItems();
   void emitSpendablePool();
+
+  // ── Init state editing ───────────────────────────────────────────────────
+  std::optional<RegistryStore> init_registry_;
+  std::string open_init_name_;
+
+  // ── Auto-backup ─────────────────────────────────────────────────────────
+  /** Copy current.state → save/backup/backup_<timestamp>.state. Returns true on success. */
+  bool autoBackup();
+
+  /** Returns the absolute path to current.state as configured in Lua settings. */
+  fs::path currentStatePath() const;
+
+private:
+  void ensureEconomyEntity(entt::registry &reg, WellKnownEntities &wk);
+  void ensureSpendableKeysFromItems();
 
   std::queue<std::function<void()>> pending_commands_;
   std::mutex command_mutex_;

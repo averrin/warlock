@@ -70,7 +70,7 @@ emplace_component(entt::registry &reg, entt::entity entity,
                   FieldInputArchive &fia) {
   T comp{};
   load_component(comp, fia);
-  reg.emplace_or_replace<T>(entity, std::move(comp));
+  (void)reg.emplace_or_replace<T>(entity, std::move(comp));
 }
 
 // Emplace: tag component — just mark the entity as having the tag
@@ -79,7 +79,7 @@ std::enable_if_t<is_empty_component<T>::value>
 emplace_component(entt::registry &reg, entt::entity entity,
                   FieldInputArchive &) {
   if (!reg.all_of<T>(entity)) {
-    reg.emplace<T>(entity);
+    (void)reg.emplace<T>(entity);
   }
 }
 
@@ -180,7 +180,7 @@ class RegistryStore : public Store {
       entt::entity entity{entt::null};                                         \
       block_ar(entity);                                                        \
       if (!registry.valid(entity)) {                                           \
-        registry.create(entity);                                               \
+        (void)registry.create(entity);                                         \
       }                                                                        \
       FieldInputArchive fia;                                                   \
       fia.readFrom(block_ar);                                                  \
@@ -221,23 +221,38 @@ class RegistryStore : public Store {
     } else {
       load_v2(ar);
     }
-    if (file_version >= 3) {
-      ar(spendable_pool);
-    } else {
-      spendable_pool.clear();
+    if (file_version == 3 && expected_type == 3) {
+      std::map<std::string, int64_t> legacy_spendable;
+      ar(legacy_spendable);
+      apply_legacy_spendable_to_registry(std::move(legacy_spendable));
     }
   }
 
   template <class Archive> void save(Archive &ar) const {
     ar(cereal::base_class<Store>(this));
     save_v2(ar);
-    ar(spendable_pool);
+  }
+
+  void apply_legacy_spendable_to_registry(std::map<std::string, int64_t> legacy) {
+    entt::entity econ = entt::null;
+    for (auto e : registry.view<SpendablePool>()) {
+      econ = e;
+      break;
+    }
+    if (econ == entt::null) {
+      econ = registry.create();
+      hf::meta m;
+      m.name = "Economy";
+      m.id = "ECONOMY";
+      registry.emplace<hf::meta>(econ, m);
+      registry.emplace<SpendablePool>(econ, SpendablePool{std::move(legacy)});
+      return;
+    }
+    registry.get<SpendablePool>(econ).amounts = std::move(legacy);
   }
 
 public:
   entt::registry registry;
-  /** Global spendable currency amounts (serialized with state; format v3+). */
-  std::map<std::string, int64_t> spendable_pool;
 
   using Store::Store;
 };

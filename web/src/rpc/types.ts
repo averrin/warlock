@@ -129,6 +129,11 @@ export interface CanvasBadgesDTO {
   has_error?: boolean;
 }
 
+export interface ComponentSlotUsageDTO {
+  used: number;
+  max: number;
+}
+
 export interface FrameDTO {
   entity_id: number;
   id: number;
@@ -137,6 +142,7 @@ export interface FrameDTO {
   material?: string;
   component_count: number;
   components?: ComponentDTO[];
+  component_slots?: Record<string, ComponentSlotUsageDTO>;
   metadata?: MetadataDTO;
   position?: {
     x: number;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <game/components/frame.hpp>
 #include <game/systems/code_execution.hpp>
 #include <map>
 #include <sol/sol.hpp>
@@ -14,6 +15,11 @@ std::map<std::string, int> parse_spendable_cost_table(sol::table spec);
 
 std::map<std::string, int> component_script_spendable_cost(sol::state &lua,
                                                            const std::string &source);
+
+ComponentSize component_script_size(sol::state &lua, const std::string &source);
+
+bool blueprint_fits_component_slots(sol::state &lua, CodeExecutionSystem &exec, sol::table bp_spec,
+                                    std::string &err);
 
 std::map<std::string, int> blueprint_spendable_total(sol::state &lua,
                                                      CodeExecutionSystem &exec,

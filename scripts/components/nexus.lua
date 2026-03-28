@@ -59,8 +59,23 @@ return {
 			type = AttributeType.STRING,
 			value = "",
 		},
+		library_broadcast = {
+			title = "Library broadcast",
+			description = "Library heartbeat broadcast status (updated by engine)",
+			type = AttributeType.STRING,
+			value = "—",
+			inspector = { readonly = true },
+		},
+		library = {
+			title = "Library",
+			description = "Shared Lua library code, broadcast to Advanced Cores via heartbeat",
+			type = AttributeType.STRING,
+			inspector = { widget = "code" },
+			value = "-- Shared library\nreturn {}\n",
+		},
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.L,
+	spendable_cost = { ["Electronic Parts"] = 50 },
 	api = {},
 }

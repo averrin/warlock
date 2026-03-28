@@ -165,13 +165,7 @@ void syncFrameLuaEnvironment(CodeExecutionSystem& exec, int frame_id, Frame* fra
   auto& current_state = entt::locator<State>::value();
   auto& wk = entt::locator<WellKnownEntities>::value();
   sol::state& L = exec.getState(frame_id);
-  if (wk.environment != entt::null && current_state.registry.valid(wk.environment) &&
-      current_state.registry.all_of<Environment>(wk.environment)) {
-    auto& environment = current_state.registry.get<Environment>(wk.environment);
-    L.set("environment", environment);
-  } else {
-    L.set("environment", sol::nil);
-  }
+  // environment is not set as a global — scoped to component API definitions.
   if (frame_ptr) {
     L.set("frame", frame_ptr);
   } else {

@@ -22,7 +22,6 @@ import { useWindowLayoutStore } from "../../stores/windowLayout";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
 import { GameCanvas } from "../canvas/GameCanvas";
 import { CodeEditorPanel } from "../panels/CodeEditorPanel";
-import { ComponentPalette } from "../panels/ComponentPalette";
 import { EnvironmentPanel } from "../panels/EnvironmentPanel";
 import { LogPanel } from "../panels/LogPanel";
 import { FrameInspector } from "../panels/FrameInspector";
@@ -32,6 +31,7 @@ import { StateInspector } from "../panels/StateInspector";
 import { GlobalIndicatorsPanel } from "../panels/GlobalIndicatorsPanel";
 import { ComponentCodeEditorPanel, type ComponentCodeEditorParams } from "../panels/ComponentCodeEditorPanel";
 import { ResearchTree } from "../panels/ResearchTree";
+import { InitEntityEditorPanel } from "../panels/InitEntityEditorPanel";
 
 type Props = {
   rpcClient: RpcClient;
@@ -191,7 +191,6 @@ function seedDefaultPanels(api: DockviewApi) {
     title: "Environment",
     position: { referencePanel: frameInspector, direction: "within" },
   });
-  registerTab("component-palette", "componentPalette", "Components");
   registerTab("code-editor", "codeEditor", "Code Editor");
   registerTab("global-indicators", "globalIndicatorsPanel", "Global Indicators");
   registerTab("research-tree", "researchTree", "Research Tree");
@@ -209,11 +208,11 @@ const TOP_BAR_BUTTONS: { id: string; component: string; title: string; label: st
   { id: "power-panel", component: "powerPanel", title: "Power Networks", label: "Power" },
   { id: "environment", component: "environmentPanel", title: "Environment", label: "Environment" },
   { id: "log", component: "logPanel", title: "Log", label: "Log" },
-  { id: "component-palette", component: "componentPalette", title: "Components", label: "Components" },
   { id: "code-editor", component: "codeEditor", title: "Code Editor", label: "Code" },
   { id: "state-inspector", component: "stateInspector", title: "State Inspector", label: "State" },
   { id: "global-indicators", component: "globalIndicatorsPanel", title: "Global Indicators", label: "Indicators" },
   { id: "research-tree", component: "researchTree", title: "Research Tree", label: "Research" },
+  { id: "InitEntityEditor", component: "initEntityEditor", title: "Init Entity Editor", label: "Init Editor" },
 ];
 
 export function WindowWorkspace({ rpcClient }: Props) {
@@ -325,7 +324,6 @@ export function WindowWorkspace({ rpcClient }: Props) {
       powerPanel: (() => <PowerPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       environmentPanel: (() => <EnvironmentPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       logPanel: (() => <LogPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
-      componentPalette: (() => <ComponentPalette rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       codeEditor: (() => codeEditorNode) as FunctionComponent<IDockviewPanelProps>,
       stateInspector: (() => <StateInspector rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
       globalIndicatorsPanel: (() => <GlobalIndicatorsPanel />) as FunctionComponent<IDockviewPanelProps>,
@@ -333,6 +331,7 @@ export function WindowWorkspace({ rpcClient }: Props) {
       componentCodeEditor: ((props: IDockviewPanelProps) => (
         <ComponentCodeEditorPanel rpcClient={rpcClient} {...(props.params as ComponentCodeEditorParams)} />
       )) as FunctionComponent<IDockviewPanelProps>,
+      initEntityEditor: (() => <InitEntityEditorPanel rpcClient={rpcClient} />) as FunctionComponent<IDockviewPanelProps>,
     } satisfies Record<string, FunctionComponent<IDockviewPanelProps>>;
   }, [openFrameMiniInspectorAt, rpcClient]);
 

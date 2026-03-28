@@ -17,7 +17,7 @@ return {
   start = function()
     ports = {}
     taps = {}
-    local all = frame:getComponentsByType("Data Connector")
+    local all = locatorAll(frame, ".Data Connector")
     for _, c in ipairs(all) do
       if is_tap(c) then
         table.insert(taps, c)
@@ -38,35 +38,35 @@ return {
   end,
   update = function()
     for i, ingress in ipairs(ports) do
-      local d = ingress:queueDepthRaw() + ingress:queueDepthPacket()
+      local d = ingress.api.queueDepthRaw() + ingress.api.queueDepthPacket()
       if d > max_queue_seen[i] then max_queue_seen[i] = d end
       local n = 0
       while n < DRAIN_CAP do
-        local raw = ingress:readRaw()
+        local raw = ingress.api.readRaw()
         if raw ~= nil then
           counters.rx[i] = counters.rx[i] + 1
           for j, p in ipairs(ports) do
             if j ~= i then
-              p:injectRaw(raw)
+              p.api.injectRaw(raw)
               counters.tx[j] = counters.tx[j] + 1
             end
           end
           for _, t in ipairs(taps) do
-            t:injectRaw(raw)
+            t.api.injectRaw(raw)
           end
           n = n + 1
         else
-          local pkt = ingress:read()
+          local pkt = ingress.api.read()
           if pkt == nil then break end
           counters.rx[i] = counters.rx[i] + 1
           for j, p in ipairs(ports) do
             if j ~= i then
-              p:injectPacket(pkt)
+              p.api.injectPacket(pkt)
               counters.tx[j] = counters.tx[j] + 1
             end
           end
           for _, t in ipairs(taps) do
-            t:injectPacket(pkt)
+            t.api.injectPacket(pkt)
           end
           n = n + 1
         end

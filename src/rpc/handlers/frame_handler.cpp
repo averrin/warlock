@@ -2,6 +2,7 @@
 #include <rpc/handlers/handler_utils.hpp>
 #include <rpc/dto.hpp>
 #include <game/game_manager.hpp>
+#include <game/frame_costs.hpp>
 #include <game/spendable.hpp>
 #include <game/state.hpp>
 #include <game/systems/power.hpp>
@@ -56,7 +57,6 @@ void registerFrameHandlers(Server& server) {
     return serializeFrame(registry, entity, frame);
   });
 
-  // frame.create — async, enqueues command and returns status
   server.router().on("frame.create", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
     requireClaim(server, ctx);
     auto& gm = entt::locator<GameManager>::value();
@@ -67,35 +67,39 @@ void registerFrameHandlers(Server& server) {
       throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Missing required parameter: name"};
     }
     std::string name = params["name"].get<std::string>();
-    nlohmann::json captured_params = params;
 
-    gm.enqueueCommand([&gm, name, captured_params]() {
-      std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
-      auto entity = gm.addFrame(name);
-      auto& state = entt::locator<State>::value();
-      auto& registry = state.registry;
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    auto& state = entt::locator<State>::value();
+    auto& registry = state.registry;
 
-      if (captured_params.contains("position") && registry.all_of<wl::transform>(entity)) {
-        auto& t = registry.get<wl::transform>(entity);
-        if (captured_params["position"].contains("x")) t.position.x = captured_params["position"]["x"].get<float>();
-        if (captured_params["position"].contains("y")) t.position.y = captured_params["position"]["y"].get<float>();
-        registry.replace<wl::transform>(entity, t);
+    FrameSize fs = FrameSize::S;
+    if (params.contains("size") && params["size"].is_string()) {
+      auto sz_opt = magic_enum::enum_cast<FrameSize>(params["size"].get<std::string>());
+      if (sz_opt.has_value()) {
+        fs = sz_opt.value();
       }
+    }
+    auto fc = warlock::frame_cost_for_size(fs);
+    std::string err;
+    if (!gm.tryConsumeSpendable(fc, err)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, err};
+    }
 
-      if (captured_params.contains("size") && captured_params["size"].is_string()) {
-        auto& frame = registry.get<Frame>(entity);
-        auto sz_str = captured_params["size"].get<std::string>();
-        auto sz_opt = magic_enum::enum_cast<FrameSize>(sz_str);
-        if (sz_opt.has_value()) {
-          frame.size = sz_opt.value();
-          registry.replace<Frame>(entity, frame);
-        }
-      }
-    });
+    auto entity = gm.addFrame(name);
+    auto& frame = registry.get<Frame>(entity);
+    frame.size = fs;
+    registry.replace<Frame>(entity, frame);
 
-    nlohmann::json result = {{"status", "queued"}, {"name", name}};
-    logWebAction(server, "frame.create", "queued", {{"name", name}});
-    return result;
+    if (params.contains("position") && registry.all_of<wl::transform>(entity)) {
+      auto& t = registry.get<wl::transform>(entity);
+      if (params["position"].contains("x")) t.position.x = params["position"]["x"].get<float>();
+      if (params["position"].contains("y")) t.position.y = params["position"]["y"].get<float>();
+      registry.replace<wl::transform>(entity, t);
+    }
+
+    auto frameJson = serializeFrame(registry, entity, frame);
+    logWebAction(server, "frame.create", "ok", {{"name", name}});
+    return frameJson;
   });
 
   // frame.create_from_blueprint — takes {blueprint: string}
@@ -120,6 +124,10 @@ void registerFrameHandlers(Server& server) {
     auto &lua = entt::locator<sol::state>::value();
     std::string bp_source = gm.exec->blueprints[bp];
     sol::table bp_spec = lua.load(bp_source).call();
+    std::string slot_err;
+    if (!warlock::blueprint_fits_component_slots(lua, *gm.exec, bp_spec, slot_err)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, slot_err};
+    }
     auto total = warlock::blueprint_spendable_total(lua, *gm.exec, bp_spec);
     std::string err;
     if (!gm.tryConsumeSpendable(total, err)) {
@@ -179,6 +187,21 @@ void registerFrameHandlers(Server& server) {
     auto entity = static_cast<entt::entity>(eid);
     if (!registry.valid(entity) || !registry.all_of<Frame>(entity)) {
       throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Frame not found"};
+    }
+    auto& frame = registry.get<Frame>(entity);
+    auto& lua = entt::locator<sol::state>::value();
+    std::map<std::string, int> refund = warlock::frame_cost_for_size(frame.size);
+    if (gm.exec) {
+      for (auto& cp : frame.components) {
+        if (!cp) continue;
+        const std::string t = cp->data.get_or<std::string>("type", "");
+        if (t.empty() || gm.exec->sources.count(t) == 0) continue;
+        refund = warlock::merge_spendable_maps(
+            refund, warlock::component_script_spendable_cost(lua, gm.exec->getScript(t)));
+      }
+    }
+    for (const auto& [k, v] : refund) {
+      if (v > 0) gm.addSpendable(k, v);
     }
     registry.destroy(entity);
     nlohmann::json result = {{"ok", true}};
@@ -331,7 +354,12 @@ void registerFrameHandlers(Server& server) {
       throw rpc::RpcError{rpc::error::ENTITY_NOT_FOUND, "Frame not found"};
     }
     auto& frame = registry.get<Frame>(entity);
-    frame.size = size_opt.value();
+    FrameSize new_fs = size_opt.value();
+    if (!component_counts_within_limits(new_fs, component_counts_by_size(frame))) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS,
+                        "Current components do not fit the requested frame size"};
+    }
+    frame.size = new_fs;
     nlohmann::json result = {{"ok", true}};
     logWebAction(server, "frame.set_size", "ok", {{"id", eid}, {"size", size_str}});
     return result;

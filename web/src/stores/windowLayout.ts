@@ -94,10 +94,19 @@ export const useWindowLayoutStore = create<WindowLayoutStore>((set, get) => ({
   focusPanel: (panelId) => {
     const api = get().dockviewApi;
     if (!api) return;
-    const panel = api.getPanel(panelId);
-    if (panel) {
-      panel.api.setActive();
+    let panel = api.getPanel(panelId);
+    if (!panel) {
+      // Map well-known panel ids to their component/title
+      const PANEL_META: Record<string, { component: string; title: string }> = {
+        "InitEntityEditor": { component: "initEntityEditor", title: "Init Entity Editor" },
+        "state-inspector": { component: "stateInspector", title: "State Inspector" },
+      };
+      const meta = PANEL_META[panelId];
+      if (meta) {
+        panel = api.addPanel({ id: panelId, component: meta.component, title: meta.title });
+      }
     }
+    panel?.api.setActive();
   },
   pendingStateInspectorExpandFrameId: null,
   clearPendingStateInspectorExpand: () => set({ pendingStateInspectorExpandFrameId: null }),

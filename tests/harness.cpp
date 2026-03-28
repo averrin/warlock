@@ -61,7 +61,7 @@ struct TestHarness::Impl {
 #ifdef WARLOCK_PROJECT_ROOT
     fs::path path = WARLOCK_PROJECT_ROOT;
 #else
-    fs::path path = get_selfpath();
+    fs::path path = resolve_content_root(get_selfpath());
 #endif
 
     entt::monostate<"id"_hs>{} = 0;

@@ -356,29 +356,30 @@ return {
   CHECK(result["status"] == "ok");
 }
 
-// ─── Code accesses environment global ────────────────────────────────────────
+// ─── environment is NOT a global in blueprint code ───────────────────────────
+// environment is scoped to component API definitions only; blueprint code
+// must access it through component APIs (e.g. Temperature Sensor).
 
-E2E_TEST(lua,"lua exec: code can access environment global") {
+E2E_TEST(lua,"lua exec: environment is nil in blueprint code") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
   (void)client.call("session.claim");
 
-  h.tick(1);  // ensure environment is populated
+  h.tick(1);
 
   int fid = first_frame_data_id(client);
 
-  std::string env_access = R"(
+  std::string env_nil_check = R"(
 return {
   update = function()
-    local temp = environment.temperature
-    if temp == nil then
-      error("environment.temperature is nil")
+    if environment ~= nil then
+      error("environment should not be a global in blueprint code")
     end
   end,
 }
 )";
-  client.call("code.update", {{"frame_id", fid}, {"code", env_access}});
+  client.call("code.update", {{"frame_id", fid}, {"code", env_nil_check}});
   auto result = client.call("code.execute", {{"frame_id", fid}, {"function", "update"}});
   REQUIRE(result.contains("status"));
   CHECK(result["status"] == "ok");
@@ -640,5 +641,145 @@ return {
 )";
   client.call("code.update", {{"frame_id", fid}, {"code", state_code}});
   auto result = client.call("code.execute", {{"frame_id", fid}, {"function", "update"}});
+  CHECK(result["status"] == "ok");
+}
+
+// ─── Dot-notation activate/deactivate/repair ─────────────────────────────────
+
+E2E_TEST(lua,"lua exec: comp.activate() dot notation works without self") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+  (void)client.call("session.claim");
+
+  int fid = first_frame_data_id(client);
+
+  // activate/deactivate/repair are properties returning closures — callable
+  // with dot notation (no colon, no explicit self).
+  std::string code = R"(
+return {
+  update = function()
+    local core = frame:getComponentByType("Core")
+    -- verify the properties exist and are callable
+    if type(core.activate) ~= "function" then
+      error("core.activate should be a function, got " .. type(core.activate))
+    end
+    if type(core.deactivate) ~= "function" then
+      error("core.deactivate should be a function, got " .. type(core.deactivate))
+    end
+    if type(core.repair) ~= "function" then
+      error("core.repair should be a function, got " .. type(core.repair))
+    end
+    -- colon-style should NOT work (no self parameter to bind)
+    -- but dot-style call should succeed
+    core.deactivate()
+    core.activate()
+  end,
+}
+)";
+  client.call("code.update", {{"frame_id", fid}, {"code", code}});
+  auto result = client.call("code.execute", {{"frame_id", fid}, {"function", "update"}});
+  REQUIRE(result.contains("status"));
+  CHECK(result["status"] == "ok");
+}
+
+// ─── comp.api data-link methods ──────────────────────────────────────────────
+
+E2E_TEST(lua,"lua exec: comp.api has injected data-link methods") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+  (void)client.call("session.claim");
+
+  int fid = first_frame_data_id(client);
+
+  std::string code = R"(
+return {
+  update = function()
+    local core = frame:getComponentByType("Core")
+    local methods = {"sendRaw","send","readRaw","read",
+                     "injectRaw","injectPacket","queueDepthRaw","queueDepthPacket"}
+    for _, m in ipairs(methods) do
+      if type(core.api[m]) ~= "function" then
+        error("expected core.api." .. m .. " to be a function, got " .. type(core.api[m]))
+      end
+    end
+    -- queueDepth returns 0 when inbox is empty
+    if core.api.queueDepthRaw() ~= 0 then
+      error("expected empty raw inbox")
+    end
+    if core.api.queueDepthPacket() ~= 0 then
+      error("expected empty packet inbox")
+    end
+  end,
+}
+)";
+  client.call("code.update", {{"frame_id", fid}, {"code", code}});
+  auto result = client.call("code.execute", {{"frame_id", fid}, {"function", "update"}});
+  REQUIRE(result.contains("status"));
+  CHECK(result["status"] == "ok");
+}
+
+// ─── counterpart attribute ────────────────────────────────────────────────────
+
+E2E_TEST(lua,"lua exec: counterpart attribute exists and is integer") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+  (void)client.call("session.claim");
+
+  int fid = first_frame_data_id(client);
+
+  std::string code = R"(
+return {
+  update = function()
+    local core = frame:getComponentByType("Core")
+    local cp = attr(core, "counterpart")
+    if cp == nil then
+      error("counterpart attribute missing")
+    end
+    if type(cp) ~= "number" then
+      error("counterpart should be a number, got " .. type(cp))
+    end
+    -- unconnected component should have -1
+    if cp ~= -1 then
+      error("unconnected core should have counterpart=-1, got " .. tostring(cp))
+    end
+  end,
+}
+)";
+  client.call("code.update", {{"frame_id", fid}, {"code", code}});
+  // need a tick so counterpart attributes are synced
+  h.tick(2);
+  auto result = client.call("code.execute", {{"frame_id", fid}, {"function", "update"}});
+  REQUIRE(result.contains("status"));
+  CHECK(result["status"] == "ok");
+}
+
+// ─── nexus is NOT a global in blueprint code ──────────────────────────────────
+
+E2E_TEST(lua,"lua exec: nexus is nil in blueprint code") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+  (void)client.call("session.claim");
+
+  int fid = first_frame_data_id(client);
+
+  std::string code = R"(
+return {
+  update = function()
+    if nexus ~= nil then
+      error("nexus should not be a global in blueprint code")
+    end
+    if frameWorld ~= nil then
+      error("frameWorld should not be a global in blueprint code")
+    end
+  end,
+}
+)";
+  client.call("code.update", {{"frame_id", fid}, {"code", code}});
+  auto result = client.call("code.execute", {{"frame_id", fid}, {"function", "update"}});
+  REQUIRE(result.contains("status"));
   CHECK(result["status"] == "ok");
 }

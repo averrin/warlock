@@ -3,12 +3,11 @@ import type { RpcClient } from "../../rpc/client";
 import type { FrameDTO } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
 import { capabilityMethods, isFeatureSupported } from "../../capabilities";
-import { CollapsibleSection, SelectField, TransformEditor, FRAME_SIZES, MATERIALS } from "../ui";
+import { CollapsibleSection, SelectField, TransformEditor, FRAME_SIZES, MATERIALS, ComponentSlotsRow } from "../ui";
 import { FrameHeader } from "./FrameHeader";
 import { FrameControls } from "./FrameControls";
 import { ComponentStrip } from "./ComponentStrip";
 import { ComponentCard } from "./ComponentCard";
-import { StorageBar } from "./StorageBar";
 import { ErrorList } from "./ErrorList";
 import { ComponentContextMenu } from "../canvas/ComponentContextMenu";
 
@@ -176,7 +175,7 @@ export function FramePanel({
           </div>
         </div>
 
-        <StorageBar frameId={frame.id} components={components} rpcClient={rpcClient} />
+        <ComponentSlotsRow frame={frame} />
 
         <div style={{ borderTop: "1px solid #1e293b", paddingTop: 6, marginTop: 6 }}>
           <ComponentStrip
@@ -265,6 +264,7 @@ export function FramePanel({
 
       {activeTab === "components" ? (
         <div style={{ display: "grid", gap: 8 }}>
+          <ComponentSlotsRow frame={frame} />
           <ComponentStrip
             frameId={frame.id}
             components={components}

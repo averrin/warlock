@@ -50,5 +50,6 @@ return {
 	},
 	state = ComponentState.ACTIVATED,
 	size = ComponentSize.S,
+	spendable_cost = { ["Electronic Parts"] = 10 },
 	api = {},
 }

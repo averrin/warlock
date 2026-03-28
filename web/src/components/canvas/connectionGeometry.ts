@@ -227,14 +227,18 @@ export function segmentForPairAndType(
   const idx = presentTypes.indexOf(type as ConnTypeOrder);
   if (idx < 0) return null;
 
-  const edge = edgeSegmentBetweenFrameCenters(srcPos, srcSize, tgtPos, tgtSize);
-  const baseX1 = edge.x1;
-  const baseY1 = edge.y1;
-  const baseX2 = edge.x2;
-  const baseY2 = edge.y2;
+  // Canonical normal from min→max id for consistent perpendicular across all connections in the pair.
+  const idA = Math.min(sample.source, sample.target);
+  const idB = Math.max(sample.source, sample.target);
+  const posA = getPosition(idA);
+  const posB = getPosition(idB);
+  const sizeA = getFrameSize(idA);
+  const sizeB = getFrameSize(idB);
+  if (!posA || !posB || sizeA === undefined || sizeB === undefined) return null;
 
-  const dx = baseX2 - baseX1;
-  const dy = baseY2 - baseY1;
+  const canonEdge = edgeSegmentBetweenFrameCenters(posA, sizeA, posB, sizeB);
+  const dx = canonEdge.x2 - canonEdge.x1;
+  const dy = canonEdge.y2 - canonEdge.y1;
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
   const nx = -dy / len;
   const ny = dx / len;
@@ -245,11 +249,12 @@ export function segmentForPairAndType(
   const ox = nx * offset;
   const oy = ny * offset;
 
+  const actualEdge = edgeSegmentBetweenFrameCenters(srcPos, srcSize, tgtPos, tgtSize);
   return {
-    x1: baseX1 + ox,
-    y1: baseY1 + oy,
-    x2: baseX2 + ox,
-    y2: baseY2 + oy,
+    x1: actualEdge.x1 + ox,
+    y1: actualEdge.y1 + oy,
+    x2: actualEdge.x2 + ox,
+    y2: actualEdge.y2 + oy,
   };
 }
 
@@ -379,14 +384,20 @@ export function segmentForPairNthConnection(
   const tgtSize = getFrameSize(sample.target);
   if (!srcPos || !tgtPos || srcSize === undefined || tgtSize === undefined) return null;
 
-  const edge = edgeSegmentBetweenFrameCenters(srcPos, srcSize, tgtPos, tgtSize);
-  const baseX1 = edge.x1;
-  const baseY1 = edge.y1;
-  const baseX2 = edge.x2;
-  const baseY2 = edge.y2;
+  // Always derive the perpendicular normal from canonical min→max id ordering so that
+  // connections going in opposite directions (e.g. POWER 1→2 and DATA 2→1) use the
+  // same normal direction and therefore spread to opposite sides rather than overlapping.
+  const idA = Math.min(sample.source, sample.target);
+  const idB = Math.max(sample.source, sample.target);
+  const posA = getPosition(idA);
+  const posB = getPosition(idB);
+  const sizeA = getFrameSize(idA);
+  const sizeB = getFrameSize(idB);
+  if (!posA || !posB || sizeA === undefined || sizeB === undefined) return null;
 
-  const dx = baseX2 - baseX1;
-  const dy = baseY2 - baseY1;
+  const canonEdge = edgeSegmentBetweenFrameCenters(posA, sizeA, posB, sizeB);
+  const dx = canonEdge.x2 - canonEdge.x1;
+  const dy = canonEdge.y2 - canonEdge.y1;
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
   const nx = -dy / len;
   const ny = dx / len;
@@ -397,11 +408,13 @@ export function segmentForPairNthConnection(
   const ox = nx * offset;
   const oy = ny * offset;
 
+  // Apply offset to the actual directional edge (source → target preserves arrow direction).
+  const actualEdge = edgeSegmentBetweenFrameCenters(srcPos, srcSize, tgtPos, tgtSize);
   return {
-    x1: baseX1 + ox,
-    y1: baseY1 + oy,
-    x2: baseX2 + ox,
-    y2: baseY2 + oy,
+    x1: actualEdge.x1 + ox,
+    y1: actualEdge.y1 + oy,
+    x2: actualEdge.x2 + ox,
+    y2: actualEdge.y2 + oy,
   };
 }
 
@@ -493,21 +506,31 @@ export function groupMoveAvoidsWireIntersections(
   if (obstacleCells && obstacleCells.size > 0) {
     for (const seg of wireSegments) {
       if (!moves.has(seg.source) && !moves.has(seg.target)) continue;
-      for (const key of obstacleCells) {
-        const [ix, iy] = key.split(",").map(Number);
-        if (
-          segmentIntersectsAxisAlignedRect(
-            seg.x1,
-            seg.y1,
-            seg.x2,
-            seg.y2,
-            ix * CELL,
-            iy * CELL,
-            CELL,
-            CELL,
-          )
-        ) {
-          return false;
+      const minX = Math.min(seg.x1, seg.x2);
+      const maxX = Math.max(seg.x1, seg.x2);
+      const minY = Math.min(seg.y1, seg.y2);
+      const maxY = Math.max(seg.y1, seg.y2);
+      const ix0 = Math.floor(minX / CELL);
+      const ix1 = Math.floor(maxX / CELL);
+      const iy0 = Math.floor(minY / CELL);
+      const iy1 = Math.floor(maxY / CELL);
+      for (let iix = ix0; iix <= ix1; iix++) {
+        for (let iiy = iy0; iiy <= iy1; iiy++) {
+          if (!obstacleCells.has(`${iix},${iiy}`)) continue;
+          if (
+            segmentIntersectsAxisAlignedRect(
+              seg.x1,
+              seg.y1,
+              seg.x2,
+              seg.y2,
+              iix * CELL,
+              iiy * CELL,
+              CELL,
+              CELL,
+            )
+          ) {
+            return false;
+          }
         }
       }
     }

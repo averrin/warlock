@@ -68,13 +68,19 @@ void registerComponentHandlers(Server& server) {
     }
 
     auto &lua = entt::locator<sol::state>::value();
+    auto& frame = registry.get<Frame>(frame_entity);
+    ComponentSize add_size =
+        warlock::component_script_size(lua, gm.exec->getScript(component_name));
+    if (!frame_has_slot_for_component_size(frame, add_size)) {
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Frame has no free slot for this component size"};
+    }
+
     auto cost = warlock::component_script_spendable_cost(lua, gm.exec->getScript(component_name));
     std::string err;
     if (!gm.tryConsumeSpendable(cost, err)) {
       throw rpc::RpcError{rpc::error::INVALID_PARAMS, err};
     }
 
-    auto& frame = registry.get<Frame>(frame_entity);
     auto component = create_component_from_lua(
         gm.exec->getState(frame.data.id),
         gm.exec->getScript(component_name));
@@ -252,6 +258,13 @@ void registerComponentHandlers(Server& server) {
     }
     const std::string removedType = (*it)->data.get_or<std::string>("type", "");
     destroyConnectionsUsingConnectorType(registry, frame_data_id, removedType);
+    if (gm.exec && !removedType.empty() && gm.exec->sources.count(removedType)) {
+      auto &lua = entt::locator<sol::state>::value();
+      auto refund = warlock::component_script_spendable_cost(lua, gm.exec->getScript(removedType));
+      for (const auto &[k, v] : refund) {
+        if (v > 0) gm.addSpendable(k, v);
+      }
+    }
     frame.components.erase(it);
     nlohmann::json result = {{"ok", true}};
     logWebAction(server, "component.remove", "ok", {{"frame_id", frame_data_id}, {"component_id", component_id}});
@@ -295,7 +308,18 @@ void registerComponentHandlers(Server& server) {
     auto& frame = registry.get<Frame>(frame_entity);
     for (auto& comp : frame.components) {
       if (comp && comp->data.id == component_id) {
-        comp->size = size_opt.value();
+        ComponentSize old_sz = comp->size;
+        ComponentSize new_sz = size_opt.value();
+        if (old_sz != new_sz) {
+          auto counts = component_counts_by_size(frame);
+          counts[static_cast<unsigned>(old_sz)]--;
+          counts[static_cast<unsigned>(new_sz)]++;
+          if (!component_counts_within_limits(frame.size, counts)) {
+            throw rpc::RpcError{rpc::error::INVALID_PARAMS,
+                              "Component size would exceed frame slot limits"};
+          }
+        }
+        comp->size = new_sz;
         nlohmann::json result = {{"ok", true}};
         logWebAction(server, "component.set_size", "ok", {{"frame_id", frame_data_id}, {"component_id", component_id}, {"size", size_str}});
         return result;

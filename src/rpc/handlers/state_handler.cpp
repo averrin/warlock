@@ -13,8 +13,15 @@
 #include <magic_enum.hpp>
 #include <fmt/format.h>
 
+#include <utils/data/loader.hpp>
+
 #include <algorithm>
+#include <chrono>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
 #include <mutex>
+#include <sstream>
 #include <vector>
 
 namespace rpc {
@@ -109,8 +116,8 @@ void removeEntityFromParentChildren(entt::registry& reg, entt::entity ent) {
 }
 
 bool isProtectedWellKnown(entt::entity ent, const WellKnownEntities& wk) {
-  return ent == wk.environment || ent == wk.frames_folder || ent == wk.connections_folder ||
-         ent == wk.patches_folder;
+  return ent == wk.environment || ent == wk.economy || ent == wk.frames_folder ||
+         ent == wk.connections_folder || ent == wk.patches_folder;
 }
 
 void emplaceComponentByName(entt::registry& reg, entt::entity ent, const std::string& name) {
@@ -152,6 +159,9 @@ void emplaceComponentByName(entt::registry& reg, entt::entity ent, const std::st
     if (!reg.all_of<Environment>(ent)) reg.emplace<Environment>(ent);
     return;
   }
+  if (name == "SpendablePool") {
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Use economy APIs for SpendablePool"};
+  }
   if (name == "transform") {
     if (!reg.all_of<wl::transform>(ent)) reg.emplace<wl::transform>(ent);
     return;
@@ -170,12 +180,213 @@ void emplaceComponentByName(entt::registry& reg, entt::entity ent, const std::st
   throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown component: " + name};
 }
 
+// ── Slot/init name validation ────────────────────────────────────────────────
+void validateSlotName(const std::string& name) {
+  if (name.empty())
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Name must not be empty"};
+  if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos)
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Name must not contain path separators"};
+  if (name.find("..") != std::string::npos)
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Name must not contain .."};
+}
+
+std::string iso8601Now() {
+  auto now = std::chrono::system_clock::now();
+  auto t = std::chrono::system_clock::to_time_t(now);
+  std::ostringstream oss;
+  oss << std::put_time(std::gmtime(&t), "%Y-%m-%dT%H:%M:%SZ");
+  return oss.str();
+}
+
+// Converts "20260327T123456Z" (from autoBackup filenames) → "2026-03-27T12:34:56Z"
+std::string backupTimestampToIso(const std::string& ts) {
+  if (ts.size() != 16) return ts;
+  return ts.substr(0,4) + "-" + ts.substr(4,2) + "-" + ts.substr(6,2) + "T"
+       + ts.substr(9,2) + ":" + ts.substr(11,2) + ":" + ts.substr(13,2) + "Z";
+}
+
+// ── Shared entity serialization ──────────────────────────────────────────────
+nlohmann::json serializeEntityList(entt::registry& registry) {
+  nlohmann::json entities = nlohmann::json::array();
+  for (auto tup : registry.storage<entt::entity>().each()) {
+    auto ent = std::get<0>(tup);
+    if (!registry.valid(ent)) continue;
+
+    nlohmann::json ent_json;
+    ent_json["entity_id"] = static_cast<int>(ent);
+    nlohmann::json comps = nlohmann::json::object();
+
+    if (registry.all_of<hf::meta>(ent)) {
+      auto& c = registry.get<hf::meta>(ent);
+      comps["meta"] = {{"name", c.name}, {"description", c.description}, {"id", c.id}};
+    }
+    if (registry.all_of<hf::ineditor>(ent)) {
+      auto& c = registry.get<hf::ineditor>(ent);
+      comps["ineditor"] = {{"icon", c.icon}, {"color", c.color}};
+    }
+    if (registry.all_of<hf::tags>(ent)) {
+      auto& c = registry.get<hf::tags>(ent);
+      nlohmann::json arr = nlohmann::json::array();
+      for (const auto& t : c.tags) arr.push_back(t);
+      comps["tags"] = {{"tags", arr}};
+    }
+    if (registry.all_of<hf::player>(ent)) {
+      comps["player"] = nlohmann::json::object();
+    }
+    if (registry.all_of<hf::obstacle>(ent)) {
+      auto& c = registry.get<hf::obstacle>(ent);
+      comps["obstacle"] = {{"passThrough", c.passThrough}, {"seeThrough", c.seeThrough}, {"interactive", c.interactive}, {"passAddCost", c.passAddCost}, {"interactionCost", c.interactionCost}};
+    }
+    if (registry.all_of<hf::creature>(ent)) {
+      comps["creature"] = nlohmann::json::object();
+    }
+    if (registry.all_of<hf::script>(ent)) {
+      auto& c = registry.get<hf::script>(ent);
+      comps["script"] = {{"path", c.path}, {"enabled", c.enabled}};
+    }
+    if (registry.all_of<Frame>(ent)) {
+      auto& f = registry.get<Frame>(ent);
+      comps["Frame"] = {{"id", f.data.id}, {"name", f.data.name}, {"size", std::string(magic_enum::enum_name(f.size))}, {"material", std::string(magic_enum::enum_name(f.material))}, {"component_count", static_cast<int>(f.components.size())}};
+    }
+    if (registry.all_of<Connection>(ent)) {
+      auto& c = registry.get<Connection>(ent);
+      comps["Connection"] = {{"id", c.data.id}, {"source", c.source}, {"target", c.target}, {"type", std::string(magic_enum::enum_name(c.type))}, {"medium", std::string(magic_enum::enum_name(c.medium))}};
+    }
+    if (registry.all_of<Environment>(ent)) {
+      auto& c = registry.get<Environment>(ent);
+      comps["Environment"] = {{"temperature", c.temperature}, {"air_flow", c.airFlow}, {"sun", c.sun}, {"minutes", c.minutes}, {"days", c.days}, {"radioactivity", c.radioactivity}};
+    }
+    if (registry.all_of<wl::transform>(ent)) {
+      auto& c = registry.get<wl::transform>(ent);
+      comps["transform"] = {{"x", c.position.x}, {"y", c.position.y}, {"scale", c.scale}, {"rotation", c.rotation}, {"relative", c.relative}, {"layer", c.layer}};
+    }
+    if (registry.all_of<wl::relation>(ent)) {
+      auto& c = registry.get<wl::relation>(ent);
+      nlohmann::json children = nlohmann::json::array();
+      for (auto ch : c.children) children.push_back(static_cast<int>(ch));
+      comps["relation"] = {{"parent", c.parent == entt::null ? -1 : static_cast<int>(c.parent)}, {"children", children}};
+    }
+    if (registry.all_of<ResourcePatch>(ent)) {
+      auto& c = registry.get<ResourcePatch>(ent);
+      comps["ResourcePatch"] = {{"patch_type", c.patch_type}, {"item_name", c.item_name}, {"obstacle", c.obstacle}, {"cell_count", static_cast<int>(c.cells.size())}};
+    }
+    if (registry.all_of<SpendablePool>(ent)) {
+      auto& c = registry.get<SpendablePool>(ent);
+      nlohmann::json amounts_obj = nlohmann::json::object();
+      for (auto& [k, v] : c.amounts) amounts_obj[k] = v;
+      comps["SpendablePool"] = {{"amounts", amounts_obj}};
+    }
+    if (registry.all_of<entt::tag<"proto"_hs>>(ent)) {
+      comps["proto"] = true;
+    }
+
+    std::string label;
+    if (registry.all_of<hf::meta>(ent)) {
+      auto& m = registry.get<hf::meta>(ent);
+      if (!m.name.empty()) label = m.name;
+    }
+    if (label.empty() && registry.all_of<Frame>(ent))
+      label = "Frame: " + registry.get<Frame>(ent).data.name;
+    if (label.empty() && registry.all_of<Connection>(ent))
+      label = "Connection #" + std::to_string(registry.get<Connection>(ent).data.id);
+    if (label.empty() && registry.all_of<Environment>(ent))
+      label = "Environment";
+    if (label.empty() && registry.all_of<ResourcePatch>(ent))
+      label = "Patch: " + registry.get<ResourcePatch>(ent).patch_type;
+
+    std::string ineditor_color;
+    if (registry.all_of<hf::ineditor>(ent))
+      ineditor_color = registry.get<hf::ineditor>(ent).color;
+
+    ent_json["color"] = ineditor_color;
+    ent_json["label"] = label;
+    ent_json["components"] = comps;
+    entities.push_back(ent_json);
+  }
+  return {{"entities", entities}};
+}
+
+// ── Shared set_field logic ───────────────────────────────────────────────────
+// gm_ptr is non-null only when operating on the live registry (to emit pool changes).
+void applySetFieldToRegistry(entt::registry& registry, int entity_id,
+                              const std::string& component, const std::string& field,
+                              const nlohmann::json& value,
+                              GameManager* gm_ptr = nullptr) {
+  auto ent = static_cast<entt::entity>(entity_id);
+  if (!registry.valid(ent))
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Invalid entity"};
+
+  if (component == "meta" && registry.all_of<hf::meta>(ent)) {
+    auto& c = registry.get<hf::meta>(ent);
+    if (field == "name") c.name = value.get<std::string>();
+    else if (field == "description") c.description = value.get<std::string>();
+    else if (field == "id") c.id = value.get<std::string>();
+    else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+  } else if (component == "ineditor" && registry.all_of<hf::ineditor>(ent)) {
+    auto& c = registry.get<hf::ineditor>(ent);
+    if (field == "icon") c.icon = value.get<std::string>();
+    else if (field == "color") c.color = value.get<std::string>();
+    else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+  } else if (component == "tags" && registry.all_of<hf::tags>(ent)) {
+    auto& c = registry.get<hf::tags>(ent);
+    if (field == "tags") {
+      c.tags.clear();
+      for (const auto& t : value) c.tags.push_back(t.get<std::string>());
+    } else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+  } else if (component == "obstacle" && registry.all_of<hf::obstacle>(ent)) {
+    auto& c = registry.get<hf::obstacle>(ent);
+    if (field == "passThrough") c.passThrough = value.get<bool>();
+    else if (field == "seeThrough") c.seeThrough = value.get<bool>();
+    else if (field == "interactive") c.interactive = value.get<bool>();
+    else if (field == "passAddCost") c.passAddCost = value.get<int>();
+    else if (field == "interactionCost") c.interactionCost = value.get<int>();
+    else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+  } else if (component == "script" && registry.all_of<hf::script>(ent)) {
+    auto& c = registry.get<hf::script>(ent);
+    if (field == "path") c.path = value.get<std::string>();
+    else if (field == "enabled") c.enabled = value.get<bool>();
+    else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+  } else if (component == "Environment" && registry.all_of<Environment>(ent)) {
+    auto& c = registry.get<Environment>(ent);
+    if (field == "temperature") c.temperature = value.get<float>();
+    else if (field == "air_flow") c.airFlow = value.get<float>();
+    else if (field == "sun") c.sun = value.get<float>();
+    else if (field == "minutes") c.minutes = value.get<int>();
+    else if (field == "days") c.days = value.get<int>();
+    else if (field == "radioactivity") c.radioactivity = value.get<float>();
+    else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+  } else if (component == "transform" && registry.all_of<wl::transform>(ent)) {
+    auto& c = registry.get<wl::transform>(ent);
+    if (field == "x") c.position.x = value.get<float>();
+    else if (field == "y") c.position.y = value.get<float>();
+    else if (field == "scale") c.scale = value.get<float>();
+    else if (field == "rotation") c.rotation = value.get<float>();
+    else if (field == "relative") c.relative = value.get<bool>();
+    else if (field == "layer") c.layer = value.get<std::string>();
+    else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+  } else if (component == "ResourcePatch" && registry.all_of<ResourcePatch>(ent)) {
+    auto& c = registry.get<ResourcePatch>(ent);
+    if (field == "patch_type") c.patch_type = value.get<std::string>();
+    else if (field == "item_name") c.item_name = value.get<std::string>();
+    else if (field == "obstacle") c.obstacle = value.get<bool>();
+    else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
+  } else if (component == "SpendablePool" && registry.all_of<SpendablePool>(ent)) {
+    registry.get<SpendablePool>(ent).amounts[field] = value.get<int64_t>();
+    if (gm_ptr) gm_ptr->emitSpendablePool();
+  } else {
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown component or entity does not have it"};
+  }
+}
+
 void removeComponentByName(entt::registry& reg, entt::entity ent, const std::string& name) {
   if (name == "Frame" || name == "Connection" || name == "ResourcePatch") {
     throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Use dedicated APIs to remove " + name};
   }
   if (name == "Environment") {
     throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Cannot remove Environment component"};
+  }
+  if (name == "SpendablePool") {
+    throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Cannot remove SpendablePool component"};
   }
   if (name == "relation") {
     if (!reg.all_of<wl::relation>(ent)) return;
@@ -253,12 +464,14 @@ void registerStateHandlers(Server& server) {
     return result;
   });
 
-  // state.load — load state from disk
+  // state.load — load state from disk (auto-backups current before reloading)
   server.router().on("state.load", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
     requireClaim(server, ctx);
     auto& gm = entt::locator<GameManager>::value();
 
-    gm.enqueueCommand([&gm]() {
+    gm.enqueueCommand([&gm, &server]() {
+      gm.autoBackup();
+      server.broadcast("notify.backups.changed", nlohmann::json::object());
       gm.loadData();
     });
 
@@ -427,211 +640,24 @@ void registerStateHandlers(Server& server) {
   // entities.list — enumerate all entities with their ECS component data
   server.router().on("entities.list", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
     auto& gm = entt::locator<GameManager>::value();
-    if (!gm.started) {
-      return {{"entities", nlohmann::json::array()}};
-    }
-
+    if (!gm.started) return {{"entities", nlohmann::json::array()}};
     std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
     auto& state = entt::locator<State>::value();
-    auto& registry = state.registry;
-
-    // Collect all alive entities
-    nlohmann::json entities = nlohmann::json::array();
-    for (auto tup : registry.storage<entt::entity>().each()) {
-      auto ent = std::get<0>(tup);
-      if (!registry.valid(ent)) continue;
-
-      nlohmann::json ent_json;
-      ent_json["entity_id"] = static_cast<int>(ent);
-      nlohmann::json comps = nlohmann::json::object();
-
-      // meta
-      if (registry.all_of<hf::meta>(ent)) {
-        auto& c = registry.get<hf::meta>(ent);
-        comps["meta"] = {{"name", c.name}, {"description", c.description}, {"id", c.id}};
-      }
-      // ineditor
-      if (registry.all_of<hf::ineditor>(ent)) {
-        auto& c = registry.get<hf::ineditor>(ent);
-        comps["ineditor"] = {{"icon", c.icon}, {"color", c.color}};
-      }
-      // tags
-      if (registry.all_of<hf::tags>(ent)) {
-        auto& c = registry.get<hf::tags>(ent);
-        nlohmann::json arr = nlohmann::json::array();
-        for (const auto& t : c.tags) arr.push_back(t);
-        comps["tags"] = {{"tags", arr}};
-      }
-      // player
-      if (registry.all_of<hf::player>(ent)) {
-        comps["player"] = nlohmann::json::object();
-      }
-      // obstacle
-      if (registry.all_of<hf::obstacle>(ent)) {
-        auto& c = registry.get<hf::obstacle>(ent);
-        comps["obstacle"] = {{"passThrough", c.passThrough}, {"seeThrough", c.seeThrough}, {"interactive", c.interactive}, {"passAddCost", c.passAddCost}, {"interactionCost", c.interactionCost}};
-      }
-      // creature
-      if (registry.all_of<hf::creature>(ent)) {
-        comps["creature"] = nlohmann::json::object();
-      }
-      // script
-      if (registry.all_of<hf::script>(ent)) {
-        auto& c = registry.get<hf::script>(ent);
-        comps["script"] = {{"path", c.path}, {"enabled", c.enabled}};
-      }
-      // Frame
-      if (registry.all_of<Frame>(ent)) {
-        auto& f = registry.get<Frame>(ent);
-        comps["Frame"] = {{"id", f.data.id}, {"name", f.data.name}, {"size", std::string(magic_enum::enum_name(f.size))}, {"material", std::string(magic_enum::enum_name(f.material))}, {"component_count", static_cast<int>(f.components.size())}};
-      }
-      // Connection
-      if (registry.all_of<Connection>(ent)) {
-        auto& c = registry.get<Connection>(ent);
-        comps["Connection"] = {{"id", c.data.id}, {"source", c.source}, {"target", c.target}, {"type", std::string(magic_enum::enum_name(c.type))}, {"medium", std::string(magic_enum::enum_name(c.medium))}};
-      }
-      // Environment
-      if (registry.all_of<Environment>(ent)) {
-        auto& c = registry.get<Environment>(ent);
-        comps["Environment"] = {{"temperature", c.temperature}, {"air_flow", c.airFlow}, {"sun", c.sun}, {"minutes", c.minutes}, {"days", c.days}, {"radioactivity", c.radioactivity}};
-      }
-      // transform
-      if (registry.all_of<wl::transform>(ent)) {
-        auto& c = registry.get<wl::transform>(ent);
-        comps["transform"] = {{"x", c.position.x}, {"y", c.position.y}, {"scale", c.scale}, {"rotation", c.rotation}, {"relative", c.relative}, {"layer", c.layer}};
-      }
-      // relation
-      if (registry.all_of<wl::relation>(ent)) {
-        auto& c = registry.get<wl::relation>(ent);
-        nlohmann::json children = nlohmann::json::array();
-        for (auto ch : c.children) children.push_back(static_cast<int>(ch));
-        comps["relation"] = {{"parent", c.parent == entt::null ? -1 : static_cast<int>(c.parent)}, {"children", children}};
-      }
-      // ResourcePatch
-      if (registry.all_of<ResourcePatch>(ent)) {
-        auto& c = registry.get<ResourcePatch>(ent);
-        comps["ResourcePatch"] = {{"patch_type", c.patch_type}, {"item_name", c.item_name}, {"obstacle", c.obstacle}, {"cell_count", static_cast<int>(c.cells.size())}};
-      }
-      // proto tag
-      if (registry.all_of<entt::tag<"proto"_hs>>(ent)) {
-        comps["proto"] = true;
-      }
-
-      // Determine a label for the entity
-      std::string label;
-      if (registry.all_of<hf::meta>(ent)) {
-        auto& m = registry.get<hf::meta>(ent);
-        if (!m.name.empty()) label = m.name;
-      }
-      if (label.empty() && registry.all_of<Frame>(ent)) {
-        label = "Frame: " + registry.get<Frame>(ent).data.name;
-      }
-      if (label.empty() && registry.all_of<Connection>(ent)) {
-        label = "Connection #" + std::to_string(registry.get<Connection>(ent).data.id);
-      }
-      if (label.empty() && registry.all_of<Environment>(ent)) {
-        label = "Environment";
-      }
-      if (label.empty() && registry.all_of<ResourcePatch>(ent)) {
-        label = "Patch: " + registry.get<ResourcePatch>(ent).patch_type;
-      }
-
-      // Resolve ineditor color for UI styling
-      std::string ineditor_color;
-      if (registry.all_of<hf::ineditor>(ent)) {
-        ineditor_color = registry.get<hf::ineditor>(ent).color;
-      }
-      ent_json["color"] = ineditor_color;
-
-      ent_json["label"] = label;
-      ent_json["components"] = comps;
-      entities.push_back(ent_json);
-    }
-
-    return {{"entities", entities}};
+    return serializeEntityList(state.registry);
   });
 
   // entities.set_field — update a single field on an ECS component of an entity
   server.router().on("entities.set_field", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
     requireClaim(server, ctx);
     auto& gm = entt::locator<GameManager>::value();
-    if (!gm.started) {
-      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
-    }
-
+    if (!gm.started) throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
     int entity_id = params.at("entity_id").get<int>();
     std::string component = params.at("component").get<std::string>();
     std::string field = params.at("field").get<std::string>();
     const auto& value = params.at("value");
-
     std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
     auto& state = entt::locator<State>::value();
-    auto& registry = state.registry;
-
-    auto ent = static_cast<entt::entity>(entity_id);
-    if (!registry.valid(ent)) {
-      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Invalid entity"};
-    }
-
-    // macro-style dispatch for each component type
-    if (component == "meta" && registry.all_of<hf::meta>(ent)) {
-      auto& c = registry.get<hf::meta>(ent);
-      if (field == "name") c.name = value.get<std::string>();
-      else if (field == "description") c.description = value.get<std::string>();
-      else if (field == "id") c.id = value.get<std::string>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "ineditor" && registry.all_of<hf::ineditor>(ent)) {
-      auto& c = registry.get<hf::ineditor>(ent);
-      if (field == "icon") c.icon = value.get<std::string>();
-      else if (field == "color") c.color = value.get<std::string>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "tags" && registry.all_of<hf::tags>(ent)) {
-      auto& c = registry.get<hf::tags>(ent);
-      if (field == "tags") {
-        c.tags.clear();
-        for (const auto& t : value) c.tags.push_back(t.get<std::string>());
-      } else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "obstacle" && registry.all_of<hf::obstacle>(ent)) {
-      auto& c = registry.get<hf::obstacle>(ent);
-      if (field == "passThrough") c.passThrough = value.get<bool>();
-      else if (field == "seeThrough") c.seeThrough = value.get<bool>();
-      else if (field == "interactive") c.interactive = value.get<bool>();
-      else if (field == "passAddCost") c.passAddCost = value.get<int>();
-      else if (field == "interactionCost") c.interactionCost = value.get<int>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "script" && registry.all_of<hf::script>(ent)) {
-      auto& c = registry.get<hf::script>(ent);
-      if (field == "path") c.path = value.get<std::string>();
-      else if (field == "enabled") c.enabled = value.get<bool>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "Environment" && registry.all_of<Environment>(ent)) {
-      auto& c = registry.get<Environment>(ent);
-      if (field == "temperature") c.temperature = value.get<float>();
-      else if (field == "air_flow") c.airFlow = value.get<float>();
-      else if (field == "sun") c.sun = value.get<float>();
-      else if (field == "minutes") c.minutes = value.get<int>();
-      else if (field == "days") c.days = value.get<int>();
-      else if (field == "radioactivity") c.radioactivity = value.get<float>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "transform" && registry.all_of<wl::transform>(ent)) {
-      auto& c = registry.get<wl::transform>(ent);
-      if (field == "x") c.position.x = value.get<float>();
-      else if (field == "y") c.position.y = value.get<float>();
-      else if (field == "scale") c.scale = value.get<float>();
-      else if (field == "rotation") c.rotation = value.get<float>();
-      else if (field == "relative") c.relative = value.get<bool>();
-      else if (field == "layer") c.layer = value.get<std::string>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else if (component == "ResourcePatch" && registry.all_of<ResourcePatch>(ent)) {
-      auto& c = registry.get<ResourcePatch>(ent);
-      if (field == "patch_type") c.patch_type = value.get<std::string>();
-      else if (field == "item_name") c.item_name = value.get<std::string>();
-      else if (field == "obstacle") c.obstacle = value.get<bool>();
-      else throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown field"};
-    } else {
-      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Unknown component or entity does not have it"};
-    }
-
+    applySetFieldToRegistry(state.registry, entity_id, component, field, value, &gm);
     return {{"ok", true}};
   });
 
@@ -740,6 +766,449 @@ void registerStateHandlers(Server& server) {
     }
     removeComponentByName(registry, ent, comp);
     logWebAction(server, "entities.component.remove", "ok", {{"entity_id", eid}, {"component", comp}});
+    return {{"ok", true}};
+  });
+
+  // ── Save Slots ────────────────────────────────────────────────────────────
+
+  server.router().on("state.slots.list", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto slot_dir = PATH / "save" / "slots";
+    nlohmann::json slots = nlohmann::json::array();
+    if (!fs::exists(slot_dir)) return {{"slots", slots}};
+    for (auto& entry : fs::directory_iterator(slot_dir)) {
+      auto fname = entry.path().filename().string();
+      if (fname.size() < 10 || fname.substr(fname.size() - 10) != ".meta.json") continue;
+      auto base_name = fname.substr(0, fname.size() - 10); // strip ".meta.json"
+      auto state_path = slot_dir / (base_name + ".state");
+      if (!fs::exists(state_path)) continue;
+      try {
+        std::ifstream f(entry.path());
+        auto meta = nlohmann::json::parse(f);
+        slots.push_back({
+          {"name", meta.value("name", base_name)},
+          {"created_at", meta.value("created_at", "")},
+          {"path", state_path.string()}
+        });
+      } catch (...) {}
+    }
+    return {{"slots", slots}};
+  });
+
+  server.router().on("state.slots.save", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    std::string name = params.at("name").get<std::string>();
+    validateSlotName(name);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto slot_dir = PATH / "save" / "slots";
+    std::error_code ec;
+    fs::create_directories(slot_dir, ec);
+    auto& state = entt::locator<State>::value();
+    auto& loader = entt::locator<Loader>::value();
+    loader.saveStateToFile(state, (slot_dir / (name + ".state")).string());
+    auto created_at = iso8601Now();
+    nlohmann::json meta = {{"name", name}, {"created_at", created_at}};
+    std::ofstream mf(slot_dir / (name + ".meta.json"));
+    mf << meta.dump(2);
+    server.broadcast("notify.slots.changed", nlohmann::json::object());
+    logWebAction(server, "state.slots.save", "ok", {{"name", name}});
+    return {{"name", name}, {"created_at", created_at}};
+  });
+
+  server.router().on("state.slots.load", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    std::string name = params.at("name").get<std::string>();
+    validateSlotName(name);
+    auto& gm = entt::locator<GameManager>::value();
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto slot_state = PATH / "save" / "slots" / (name + ".state");
+    if (!fs::exists(slot_state))
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Slot not found: " + name};
+    gm.enqueueCommand([&gm, &server, slot_state]() {
+      if (!gm.autoBackup()) {
+        server.broadcast("notify.error", {{"message", "Backup failed, aborting slot load"}});
+        return;
+      }
+      server.broadcast("notify.backups.changed", nlohmann::json::object());
+      auto current_path = gm.currentStatePath();
+      std::error_code ec;
+      fs::copy_file(slot_state, current_path, fs::copy_options::overwrite_existing, ec);
+      if (ec) {
+        server.broadcast("notify.error", {{"message", "Failed to restore slot: " + ec.message()}});
+        return;
+      }
+      gm.loadData();
+      server.broadcast("notify.slots.changed", nlohmann::json::object());
+    });
+    logWebAction(server, "state.slots.load", "queued", {{"name", name}});
+    return {{"status", "queued"}};
+  });
+
+  // New Game — reload state from init, discarding current save
+  server.router().on("state.new_game", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    gm.enqueueCommand([&gm, &server]() {
+      gm.loadData(true); // forceFromInit = true, skips save file
+      gm.saveData();
+      server.broadcast("notify.game.started", nlohmann::json::object());
+    });
+    logWebAction(server, "state.new_game", "queued");
+    return {{"status", "queued"}};
+  });
+
+  server.router().on("state.slots.delete", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    std::string name = params.at("name").get<std::string>();
+    validateSlotName(name);
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto slot_dir = PATH / "save" / "slots";
+    std::error_code ec;
+    fs::remove(slot_dir / (name + ".state"), ec);
+    fs::remove(slot_dir / (name + ".meta.json"), ec);
+    server.broadcast("notify.slots.changed", nlohmann::json::object());
+    logWebAction(server, "state.slots.delete", "ok", {{"name", name}});
+    return {{"ok", true}};
+  });
+
+  // ── Init States ───────────────────────────────────────────────────────────
+
+  server.router().on("state.init.list", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto init_dir = PATH / "data" / "init";
+    // Read selected name
+    std::string selected_name;
+    auto sel_path = init_dir / "selected.json";
+    if (fs::exists(sel_path)) {
+      try {
+        std::ifstream sf(sel_path);
+        selected_name = nlohmann::json::parse(sf).value("selected", "");
+      } catch (...) {}
+    }
+    nlohmann::json inits = nlohmann::json::array();
+
+    // Include built-in init states from Lua settings.init_states
+    auto &lua = entt::locator<sol::state>::value();
+    sol::optional<sol::table> init_tbl = lua["settings"]["init_states"];
+    if (init_tbl) {
+      for (auto& kv : *init_tbl) {
+        std::string rel = kv.second.as<std::string>();
+        auto p = PATH / fs::path(rel);
+        if (!fs::exists(p)) continue;
+        auto stem = p.stem().string();
+        inits.push_back({
+          {"name", stem},
+          {"description", "Built-in init state"},
+          {"builtin", true},
+          {"selected", stem == selected_name}
+        });
+      }
+    }
+
+    // User-created init templates in data/init/
+    if (fs::exists(init_dir)) {
+      for (auto& entry : fs::directory_iterator(init_dir)) {
+        auto fname = entry.path().filename().string();
+        if (fname.size() < 10 || fname.substr(fname.size() - 10) != ".meta.json") continue;
+        if (fname == "selected.json") continue;
+        auto base_name = fname.substr(0, fname.size() - 10); // strip ".meta.json"
+        auto state_path = init_dir / (base_name + ".state");
+        if (!fs::exists(state_path)) continue;
+        try {
+          std::ifstream f(entry.path());
+          auto meta = nlohmann::json::parse(f);
+          std::string n = meta.value("name", base_name);
+          inits.push_back({
+            {"name", n},
+            {"description", meta.value("description", "")},
+            {"builtin", false},
+            {"selected", n == selected_name}
+          });
+        } catch (...) {}
+      }
+    }
+    return {{"inits", inits}, {"selected", selected_name}};
+  });
+
+  server.router().on("state.init.select", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    std::string name = params.at("name").get<std::string>();
+    validateSlotName(name);
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto init_dir = PATH / "data" / "init";
+    std::error_code ec;
+    fs::create_directories(init_dir, ec);
+    nlohmann::json sel = {{"selected", name}};
+    std::ofstream sf(init_dir / "selected.json");
+    sf << sel.dump(2);
+    server.broadcast("notify.init.changed", nlohmann::json::object());
+    logWebAction(server, "state.init.select", "ok", {{"name", name}});
+    return {{"ok", true}};
+  });
+
+  server.router().on("state.init.save_current", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    std::string name = params.at("name").get<std::string>();
+    std::string description = params.value("description", "");
+    validateSlotName(name);
+    auto& gm = entt::locator<GameManager>::value();
+    if (!gm.started) throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Game not started"};
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto init_dir = PATH / "data" / "init";
+    std::error_code ec;
+    fs::create_directories(init_dir, ec);
+    auto& state = entt::locator<State>::value();
+    auto& loader = entt::locator<Loader>::value();
+    loader.saveStateToFile(state, (init_dir / (name + ".state")).string());
+    nlohmann::json meta = {{"name", name}, {"description", description}};
+    std::ofstream mf(init_dir / (name + ".meta.json"));
+    mf << meta.dump(2);
+    server.broadcast("notify.init.changed", nlohmann::json::object());
+    logWebAction(server, "state.init.save_current", "ok", {{"name", name}});
+    return {{"name", name}, {"description", description}};
+  });
+
+  server.router().on("state.init.delete", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    std::string name = params.at("name").get<std::string>();
+    validateSlotName(name);
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    // Check if this is a built-in init state (from Lua settings.init_states)
+    auto &lua = entt::locator<sol::state>::value();
+    sol::optional<sol::table> init_tbl = lua["settings"]["init_states"];
+    if (init_tbl) {
+      for (auto& kv : *init_tbl) {
+        auto p = PATH / fs::path(kv.second.as<std::string>());
+        if (p.stem().string() == name) {
+          throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Cannot delete built-in init state"};
+        }
+      }
+    }
+    auto init_dir = PATH / "data" / "init";
+    auto state_path = init_dir / (name + ".state");
+    if (!fs::exists(state_path))
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Init state not found: " + name};
+    std::error_code ec;
+    fs::remove(state_path, ec);
+    fs::remove(init_dir / (name + ".meta.json"), ec);
+    server.broadcast("notify.init.changed", nlohmann::json::object());
+    logWebAction(server, "state.init.delete", "ok", {{"name", name}});
+    return {{"ok", true}};
+  });
+
+  // Reset the built-in init state — rebuild from Lua config with fresh spendables
+  server.router().on("state.init.reset_builtin", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
+    requireClaim(server, ctx);
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto &lua = entt::locator<sol::state>::value();
+    auto init_state_files = lua["settings"]["init_states"].get<std::vector<std::string>>();
+    if (init_state_files.empty())
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "No init states configured"};
+    auto& loader = entt::locator<Loader>::value();
+    auto target = PATH / fs::path(init_state_files[0]);
+    // Load the existing init state
+    auto fresh = std::make_shared<State>();
+    if (fs::exists(target)) {
+      loader.load<State>(*fresh, {target.string()});
+    }
+    // Find or create the Economy entity and reset SpendablePool from config.lua
+    entt::entity economy = entt::null;
+    for (auto e : fresh->registry.view<SpendablePool>()) {
+      economy = e;
+      break;
+    }
+    if (economy == entt::null) {
+      economy = fresh->registry.create();
+      hf::meta m; m.name = "Economy"; m.id = "ECONOMY";
+      fresh->registry.emplace<hf::meta>(economy, m);
+      fresh->registry.emplace<SpendablePool>(economy);
+    }
+    auto& sp = fresh->registry.get<SpendablePool>(economy);
+    sp.amounts.clear();
+    sol::optional<std::map<std::string, int64_t>> pool_cfg = lua["settings"]["spendable_pool"];
+    if (pool_cfg) sp.amounts = *pool_cfg;
+    // Save it back
+    loader.saveStateToFile(*fresh, target.string());
+    server.broadcast("notify.init.changed", nlohmann::json::object());
+    logWebAction(server, "state.init.reset_builtin", "ok");
+    return {{"ok", true}};
+  });
+
+  server.router().on("state.init.open", [](const Context& /*ctx*/, const nlohmann::json& params) -> nlohmann::json {
+    std::string name = params.at("name").get<std::string>();
+    validateSlotName(name);
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    // Try user-created template first, then fall back to Lua-configured built-in
+    auto init_path = PATH / "data" / "init" / (name + ".state");
+    if (!fs::exists(init_path)) {
+      // Search built-in init states from Lua settings
+      auto &lua = entt::locator<sol::state>::value();
+      sol::optional<sol::table> init_tbl = lua["settings"]["init_states"];
+      if (init_tbl) {
+        for (auto& kv : *init_tbl) {
+          auto p = PATH / fs::path(kv.second.as<std::string>());
+          if (p.stem().string() == name && fs::exists(p)) { init_path = p; break; }
+        }
+      }
+    }
+    if (!fs::exists(init_path))
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Init state not found: " + name};
+    auto& gm = entt::locator<GameManager>::value();
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    // expected_type=3 matches State format; expected_version=4
+    gm.init_registry_.emplace(static_cast<int8_t>(3), name, init_path, 4);
+    std::ifstream ifs(init_path.string(), std::ios::in | std::ios::binary);
+    if (!ifs.is_open()) throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Cannot open init state file"};
+    cereal::BinaryInputArchive iarchive(ifs);
+    iarchive(*gm.init_registry_);
+    gm.open_init_name_ = name;
+    return {{"ok", true}};
+  });
+
+  server.router().on("state.init.save_edits", [&server](const Context& ctx, const nlohmann::json& /*params*/) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    if (!gm.init_registry_)
+      throw rpc::RpcError{rpc::error::INVALID_REQUEST, "No init state open"};
+    auto& rs = *gm.init_registry_;
+    rs.initEmpty();
+    std::error_code ec;
+    fs::create_directories(rs.path.parent_path(), ec);
+    std::ofstream ofs(rs.path.string(), std::ios::out | std::ios::binary);
+    if (!ofs.is_open())
+      throw rpc::RpcError{rpc::error::INTERNAL_ERROR, "Cannot write init state file"};
+    cereal::BinaryOutputArchive oarchive(ofs);
+    oarchive(rs);
+    server.broadcast("notify.init.changed", nlohmann::json::object());
+    logWebAction(server, "state.init.save_edits", "ok", {{"name", gm.open_init_name_}});
+    return {{"ok", true}};
+  });
+
+  server.router().on("state.init.close", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    gm.init_registry_.reset();
+    gm.open_init_name_.clear();
+    return {{"ok", true}};
+  });
+
+  // ── Backups ───────────────────────────────────────────────────────────────
+
+  server.router().on("state.backups.list", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto backup_dir = PATH / "save" / "backup";
+    nlohmann::json backups = nlohmann::json::array();
+    if (!fs::exists(backup_dir)) return {{"backups", backups}};
+    for (auto& entry : fs::directory_iterator(backup_dir)) {
+      if (entry.path().extension() != ".state") continue;
+      auto stem = entry.path().stem().string(); // "backup_20260327T123456Z"
+      std::string created_at;
+      if (stem.size() > 7 && stem.substr(0, 7) == "backup_")
+        created_at = backupTimestampToIso(stem.substr(7));
+      backups.push_back({{"name", stem}, {"created_at", created_at}});
+    }
+    return {{"backups", backups}};
+  });
+
+  server.router().on("state.backups.restore", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    std::string name = params.at("name").get<std::string>();
+    auto& gm = entt::locator<GameManager>::value();
+    fs::path PATH = entt::monostate<"path"_hs>{};
+    auto backup_path = PATH / "save" / "backup" / (name + ".state");
+    if (!fs::exists(backup_path))
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Backup not found: " + name};
+    gm.enqueueCommand([&gm, &server, backup_path]() {
+      if (!gm.autoBackup()) {
+        server.broadcast("notify.error", {{"message", "Backup failed, aborting restore"}});
+        return;
+      }
+      server.broadcast("notify.backups.changed", nlohmann::json::object());
+      auto current_path = gm.currentStatePath();
+      std::error_code ec;
+      fs::copy_file(backup_path, current_path, fs::copy_options::overwrite_existing, ec);
+      if (ec) {
+        server.broadcast("notify.error", {{"message", "Failed to restore backup: " + ec.message()}});
+        return;
+      }
+      gm.loadData();
+    });
+    logWebAction(server, "state.backups.restore", "queued", {{"name", name}});
+    return {{"status", "queued"}};
+  });
+
+  // ── Init Entity Editing ───────────────────────────────────────────────────
+
+  server.router().on("init.entities.list", [](const Context& /*ctx*/, const nlohmann::json& /*params*/) -> nlohmann::json {
+    auto& gm = entt::locator<GameManager>::value();
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    if (!gm.init_registry_)
+      throw rpc::RpcError{rpc::error::INVALID_REQUEST, "No init state open"};
+    return serializeEntityList(gm.init_registry_->registry);
+  });
+
+  server.router().on("init.entities.set_field", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    if (!gm.init_registry_)
+      throw rpc::RpcError{rpc::error::INVALID_REQUEST, "No init state open"};
+    int entity_id = params.at("entity_id").get<int>();
+    std::string component = params.at("component").get<std::string>();
+    std::string field = params.at("field").get<std::string>();
+    const auto& value = params.at("value");
+    applySetFieldToRegistry(gm.init_registry_->registry, entity_id, component, field, value);
+    return {{"ok", true}};
+  });
+
+  server.router().on("init.entities.create", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    if (!gm.init_registry_)
+      throw rpc::RpcError{rpc::error::INVALID_REQUEST, "No init state open"};
+    auto& registry = gm.init_registry_->registry;
+    std::string name = params.value("name", std::string("Entity"));
+    int parent_raw = params.value("parent_entity_id", -1);
+    auto ent = registry.create();
+    hf::meta meta;
+    meta.name = name;
+    meta.id = fmt::format("INIT-ENT-{}", static_cast<int>(ent));
+    registry.emplace<hf::meta>(ent, meta);
+    registry.emplace<wl::relation>(ent);
+    if (parent_raw >= 0) {
+      auto parent_e = static_cast<entt::entity>(parent_raw);
+      if (registry.valid(parent_e)) {
+        registry.get<wl::relation>(ent).parent = parent_e;
+        registry.get_or_emplace<wl::relation>(parent_e).children.push_back(ent);
+      }
+    }
+    logWebAction(server, "init.entities.create", "ok", {{"entity_id", static_cast<int>(ent)}});
+    return {{"entity_id", static_cast<int>(ent)}};
+  });
+
+  server.router().on("init.entities.destroy", [&server](const Context& ctx, const nlohmann::json& params) -> nlohmann::json {
+    requireClaim(server, ctx);
+    auto& gm = entt::locator<GameManager>::value();
+    std::lock_guard<std::recursive_mutex> lock(gm.updateMutex);
+    if (!gm.init_registry_)
+      throw rpc::RpcError{rpc::error::INVALID_REQUEST, "No init state open"};
+    auto& registry = gm.init_registry_->registry;
+    int eid = params.at("entity_id").get<int>();
+    auto ent = static_cast<entt::entity>(eid);
+    if (!registry.valid(ent))
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Invalid entity"};
+    if (registry.all_of<wl::relation>(ent) && !registry.get<wl::relation>(ent).children.empty())
+      throw rpc::RpcError{rpc::error::INVALID_PARAMS, "Entity still has children"};
+    removeEntityFromParentChildren(registry, ent);
+    registry.destroy(ent);
+    logWebAction(server, "init.entities.destroy", "ok", {{"entity_id", eid}});
     return {{"ok", true}};
   });
 

@@ -32,3 +32,22 @@ inline fs::path get_selfpath() {
   auto path = fs::path(buff);
   return path.parent_path();
 }
+
+inline fs::path resolve_content_root(fs::path exe_dir) {
+  std::error_code ec;
+  fs::path cur = fs::weakly_canonical(fs::absolute(exe_dir), ec);
+  if (ec)
+    cur = fs::absolute(exe_dir);
+  for (int i = 0; i < 12; ++i) {
+    const auto proto = cur / "data" / "frame.proto";
+    if (fs::is_regular_file(proto, ec)) {
+      const auto sz = fs::file_size(proto, ec);
+      if (!ec && sz >= 8)
+        return cur;
+    }
+    if (!cur.has_parent_path() || cur == cur.parent_path())
+      break;
+    cur = cur.parent_path();
+  }
+  return fs::absolute(exe_dir);
+}

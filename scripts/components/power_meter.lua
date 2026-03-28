@@ -19,6 +19,7 @@ return {
     },
     state = ComponentState.ACTIVE,
     size = ComponentSize.S,
+	spendable_cost = { ["Electronic Parts"] = 10 },
     api = {
       getPowerInfo = function(component)
         return frame:getPowerInfo()

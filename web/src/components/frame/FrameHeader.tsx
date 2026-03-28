@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FrameDTO, PowerNetworkDTO } from "../../rpc/types";
-import { Badge } from "../ui";
+import { Badge, fmtId, copyToClipboard } from "../ui";
 import { netAvailable } from "../../utils/power";
 
 type Props = {
@@ -64,7 +64,7 @@ export function FrameHeader({ frame, powerNetwork, compact, onRename }: Props) {
           ✎
         </button>
       )}
-      <Badge label={`#${frame.id}`} variant="id" />
+      <Badge label={fmtId(frame.id)} variant="id" title={`ID ${frame.id} — click to copy`} onClick={() => copyToClipboard(`#${frame.id}`)} />
       <Badge label={healthBadge} variant="state" />
       {netAvail !== null && (
         <Badge

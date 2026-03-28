@@ -14,7 +14,7 @@ using all_components =
                   hf::tags, hf::player,
                   hf::obstacle, hf::creature, hf::script,
                   entt::tag<"proto"_hs>, Frame,
-                  Connection, Environment, wl::transform,
+                  Connection, Environment, SpendablePool, wl::transform,
                   wl::relation, ResourcePatch>;
 
 template <typename ComponentList, template <typename> class Visitor,

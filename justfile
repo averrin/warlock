@@ -43,6 +43,29 @@ run *args: (build bin_name)
     "./" + build_dir + "/bin/" + bin_name + " " + args \
   } }}
 
+# Restart the running engine process (kill + start in background)
+[no-cd]
+restart:
+  {{ if os_family() == "windows" { \
+    "Get-Process -Name " + bin_name + " -ErrorAction SilentlyContinue | Stop-Process -Force; " + \
+    "Start-Process -FilePath './" + build_dir + "/bin/Debug/" + bin_name + ".exe' -WorkingDirectory (Get-Location).Path" \
+  } else { \
+    "pkill -f " + bin_name + " || true; ./" + build_dir + "/bin/" + bin_name + " &" \
+  } }}
+
+# Stop, build, and restart the engine
+[no-cd]
+dev:
+  {{ if os_family() == "windows" { \
+    "Get-Process -Name " + bin_name + " -ErrorAction SilentlyContinue | Stop-Process -Force; " + \
+    "cmake --build ./" + build_dir + " --target " + bin_name + " --config Debug --parallel 2; " + \
+    "Start-Process -FilePath './" + build_dir + "/bin/Debug/" + bin_name + ".exe' -WorkingDirectory (Get-Location).Path" \
+  } else { \
+    "pkill -f " + bin_name + " || true; " + \
+    "cmake --build ./" + build_dir + " --target " + bin_name + " -j$(nproc 2>/dev/null || echo 4) && " + \
+    "./" + build_dir + "/bin/" + bin_name + " &" \
+  } }}
+
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 # Run unit tests (no game engine)

@@ -40,6 +40,7 @@ void Application::initConfig() {
   }
   sol::table settings = lua.script_file(cp.string());
   entt::monostate<"settings"_hs>{} = settings;
+  lua.set("settings", settings);
 }
 
 void Application::initLua() {

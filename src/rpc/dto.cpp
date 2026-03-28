@@ -218,6 +218,14 @@ nlohmann::json serializeFrame(const Frame& frame) {
     }
   }
 
+  nlohmann::json slots = nlohmann::json::object();
+  auto counts = component_counts_by_size(frame);
+  for (ComponentSize cs : {ComponentSize::S, ComponentSize::M, ComponentSize::L}) {
+    std::string key = std::string(magic_enum::enum_name(cs));
+    slots[key] = {{"used", counts[static_cast<unsigned>(cs)]},
+                  {"max", component_slot_limit(frame.size, cs)}};
+  }
+
   return {
     {"id", frame.data.id},
     {"name", frame.data.name},
@@ -225,6 +233,7 @@ nlohmann::json serializeFrame(const Frame& frame) {
     {"material", std::string(magic_enum::enum_name(frame.material))},
     {"temperature", temperature},
     {"components", comps},
+    {"component_slots", slots},
     {"effects", nlohmann::json::array()},
     {"metadata", serializeMetadata(frame.data)}
   };

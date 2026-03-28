@@ -68,16 +68,17 @@ return {
 	},
 	state = ComponentState.DEACTIVATED,
 	size = ComponentSize.M,
+	spendable_cost = { ["Electronic Parts"] = 25 },
 	require = { "Power Wire Connector" },
 	api = {
 		getStatus = function(self)
-			return self.data.attributes["status"]:GetFinalValue()
+			return attr(self, "status")
 		end,
 		getCharge = function(self)
-			return self.data.attributes["charge"]:GetFinalValue()
+			return attr(self, "charge")
 		end,
 		getCapacity = function(self)
-			return self.data.attributes["capacity"]:GetFinalValue()
+			return attr(self, "capacity")
 		end,
 	},
 }

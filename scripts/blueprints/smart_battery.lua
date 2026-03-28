@@ -12,23 +12,23 @@ return {
 	code = [[
 return {
   start = function()
-    charger = frame:getComponentByType("Charger");
-    bat = frame:getComponentByType("Battery");
-    bat:activate();
+    charger = locator(frame, ".Charger");
+    bat = locator(frame, ".Battery");
+    bat.activate();
     charger.api.setTarget(charger, bat);
   end,
   update = function()
-    meter = frame:getComponentByType("Power Meter");
-    thermo = frame:getComponentByType("Temperature Sensor");
+    meter = locator(frame, ".Power Meter");
+    thermo = locator(frame, ".Temperature Sensor");
     info = meter.api.getPowerInfo(meter);
-    charger = frame:getComponentByType("Charger");
-    bat = frame:getComponentByType("Battery");
-    if bat.api.getCharge(bat) <= bat.api.getCapacity(bat)
+    charger = locator(frame, ".Charger");
+    bat = locator(frame, ".Battery");
+    if bat.api.getCharge(bat) < bat.api.getCapacity(bat)
       and info.production - info.consumption > charger.api.getConsumption(charger)
       and thermo.api.getComponentTemperature(bat) < 80 then
-      charger:activate();
+      charger.activate();
     else
-      charger:deactivate();
+      charger.deactivate();
     end
   end,
   idle = function()

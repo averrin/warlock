@@ -10,10 +10,10 @@ E2E_TEST(web,"web cutover: frame.move updates frame position") {
   client.call("session.claim");
 
   auto createResult = client.call("frame.create", {{"name", "MoveTarget"}});
-  REQUIRE(createResult.contains("status"));
-  CHECK(createResult["status"] == "queued");
+  REQUIRE(createResult.contains("name"));
+  CHECK(createResult["name"].get<std::string>() == "MoveTarget");
 
-  h.tick(3);
+  h.tick(1);
 
   // Find the created frame
   auto list = client.call("frame.list");

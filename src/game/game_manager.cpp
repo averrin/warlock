@@ -14,6 +14,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 
 #include <game/meta_data.hpp>
 #include <game/patch_loader.hpp>
+#include <game/prototypes.hpp>
 #include <game/state.hpp>
 #include <utils/data/loader.hpp>
 
@@ -24,9 +25,11 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <iomanip>
 #include <game/attributes.hpp>
 #include <game/components/frame.hpp>
+#include <game/spendable.hpp>
 #include <game/systems/environment.hpp>
 #include <game/systems/items.hpp>
 #include <game/systems/power.hpp>
+#include <game/systems/code_execution.hpp>
 #include <game/data_link.hpp>
 #include <game/systems/thermal.hpp>
 #include <game/systems/tweening.hpp>
@@ -39,6 +42,7 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <unordered_map>
@@ -188,6 +192,19 @@ void mergeLegacySpendablesJsonInto(std::map<std::string, int64_t> &pool) {
     }
   } catch (...) {
   }
+}
+
+void require_bootstrap_prototypes() {
+  auto &prototypes = entt::locator<Prototypes>::value();
+  for (auto e : prototypes.registry.view<hf::meta>()) {
+    if (prototypes.registry.get<hf::meta>(e).id == "ENV")
+      return;
+  }
+  throw std::runtime_error(
+      "Frame prototypes failed to load (ENV missing). data/frame.proto is missing, empty, or "
+      "unreadable from the working directory. Run `just init` so the build output has a valid "
+      "junction to the repo `data/` folder, or run the binary with cwd set so `data/frame.proto` "
+      "resolves correctly.");
 }
 
 static constexpr const char kControlRelayNexusErr[] =
@@ -489,6 +506,155 @@ static void enforce_control_relay_nexus_registration(
   }
 }
 
+// ---- Nexus library heartbeat (Nexus → Advanced Cores) ----
+
+static std::chrono::steady_clock::time_point g_nexus_lib_hb_last;
+static constexpr auto kLibraryHeartbeatInterval = std::chrono::milliseconds(3000);
+static constexpr auto kLibraryHeartbeatTimeout = std::chrono::seconds(10);
+
+static void set_status_attr(Component& c, const std::string& key, const std::string& val) {
+  auto it = c.data.attributes.find(key);
+  if (it != c.data.attributes.end() && it->second)
+    it->second->SetBaseValue(val);
+}
+
+static int g_nexus_lib_receivers = 0; // updated by reception function
+
+static void process_nexus_library_heartbeats(entt::registry &registry) {
+  const auto now = std::chrono::steady_clock::now();
+  bool should_send = g_nexus_lib_hb_last.time_since_epoch().count() == 0 ||
+                     now - g_nexus_lib_hb_last >= kLibraryHeartbeatInterval;
+
+  for (auto e : registry.view<Frame>()) {
+    auto &fr = registry.get<Frame>(e);
+    for (auto &comp : fr.components) {
+      if (!comp) continue;
+      if (comp->data.get_or<std::string>("type", "") != "Nexus") continue;
+      if (comp->state != ComponentState::ACTIVE) {
+        set_status_attr(*comp, "library_broadcast", "Inactive");
+        continue;
+      }
+
+      auto lib_it = comp->data.attributes.find("library");
+      if (lib_it == comp->data.attributes.end() || !lib_it->second) {
+        set_status_attr(*comp, "library_broadcast", "No library code");
+        continue;
+      }
+      auto lib_code = std::get<std::string>(lib_it->second->GetBaseValue());
+      if (lib_code.empty()) {
+        set_status_attr(*comp, "library_broadcast", "Empty library");
+        continue;
+      }
+
+      // Find data connector (reuse same target_data logic as relay reception)
+      std::shared_ptr<Component> dc;
+      if (auto it = comp->data.attributes.find("target_data");
+          it != comp->data.attributes.end() && it->second &&
+          it->second->GetType() == AttributeType::INT) {
+        int tid = std::get<int>(it->second->GetFinalValue());
+        if (tid >= 0) dc = find_component_by_id(tid);
+      }
+      if (!dc) {
+        for (auto &c : fr.components) {
+          if (c && c->data.get_or<std::string>("type", "") == "Data Connector") {
+            dc = c;
+            break;
+          }
+        }
+      }
+      if (!dc) {
+        set_status_attr(*comp, "library_broadcast", "No data connector");
+        continue;
+      }
+      if (dc->counterpart_id < 0) {
+        set_status_attr(*comp, "library_broadcast", "Data wire not connected");
+        continue;
+      }
+
+      if (should_send) {
+        DataPacket pkt;
+        pkt.source = fr.data.id;
+        pkt.destination = -1;
+        pkt.headers["hb"] = "LIBRARY_HEARTBEAT";
+        pkt.body = lib_code;
+        data_link_send_packet(dc, std::move(pkt));
+      }
+
+      int n = g_nexus_lib_receivers;
+      set_status_attr(*comp, "library_broadcast",
+                      n > 0 ? fmt::format("Broadcasting to {} core{}", n, n == 1 ? "" : "s")
+                             : "Broadcasting (no receivers)");
+    }
+  }
+  if (should_send)
+    g_nexus_lib_hb_last = now;
+}
+
+static void process_advanced_core_library_reception(entt::registry &registry) {
+  const auto now = std::chrono::steady_clock::now();
+
+  // Expire stale entries
+  for (auto it = g_core_library.begin(); it != g_core_library.end();) {
+    if (now - it->second.second >= kLibraryHeartbeatTimeout)
+      it = g_core_library.erase(it);
+    else
+      ++it;
+  }
+
+  int receiver_count = 0;
+
+  for (auto e : registry.view<Frame>()) {
+    auto &fr = registry.get<Frame>(e);
+    for (auto &comp : fr.components) {
+      if (!comp) continue;
+      if (comp->data.get_or<std::string>("type", "") != "Core") continue;
+      if (!comp->data.has("memory")) continue; // Advanced Core only
+
+      if (comp->state != ComponentState::ACTIVE) {
+        set_status_attr(*comp, "library_status", "Inactive");
+        continue;
+      }
+
+      // Find a Data Connector on this frame
+      std::shared_ptr<Component> dc;
+      for (auto &c : fr.components) {
+        if (c && c->data.get_or<std::string>("type", "") == "Data Connector") {
+          dc = c;
+          break;
+        }
+      }
+      if (!dc) {
+        set_status_attr(*comp, "library_status", "No data connector");
+        continue;
+      }
+
+      constexpr int kDrainCap = 64;
+      int n = 0;
+      while (n++ < kDrainCap && !dc->data_packet_inbox.empty()) {
+        auto &front = dc->data_packet_inbox.front();
+        auto hb_it = front.headers.find("hb");
+        if (hb_it != front.headers.end() && hb_it->second == "LIBRARY_HEARTBEAT") {
+          g_core_library[comp->data.id] = {front.body, now};
+          dc->data_packet_inbox.pop_front();
+        } else {
+          break; // Don't consume non-library packets
+        }
+      }
+
+      // Set status based on whether we have a fresh library
+      auto lib_it = g_core_library.find(comp->data.id);
+      if (lib_it != g_core_library.end()) {
+        receiver_count++;
+        set_status_attr(*comp, "library_status", "Library active");
+      } else {
+        set_status_attr(*comp, "library_status", "No heartbeat");
+      }
+    }
+  }
+
+  g_nexus_lib_receivers = receiver_count;
+}
+
 } // namespace
 
 GameManager::GameManager() {
@@ -502,7 +668,7 @@ GameManager::GameManager() {
 
 GameManager::~GameManager() {}
 
-void GameManager::loadData() {
+void GameManager::loadData(bool forceFromInit) {
   auto p = log.parent;
   log.setParent(nullptr);
   log.setAsync(true);
@@ -557,8 +723,8 @@ void GameManager::loadData() {
     log.var("State Path", current_state.stores.front()->path.string());
   };
 
-  if (!fs::exists(state_path)) {
-    log.info("No save file; creating from init");
+  if (forceFromInit || !fs::exists(state_path)) {
+    log.info(forceFromInit ? "Forced new game from init" : "No save file; creating from init");
     rebuildFromInit();
   } else {
     log.info("Loading current state");
@@ -580,18 +746,19 @@ void GameManager::loadData() {
       log.var("Current State", current_state.registry.storage<hf::meta>().size());
     }
   }
-  if (!current_state.stores.empty()) {
-    auto &st = current_state.stores.front();
-    spendable_pool_ = st->spendable_pool;
-    if (st->file_version < 3) {
-      mergeLegacySpendablesJsonInto(spendable_pool_);
-    }
-  }
   if (research) {
     research->loadUnlocked(PATH / "save");
   }
   log.stop("Loading State");
   startJob->progress += 5;
+
+  // Ensure directories exist for save slots, backups, and init states
+  {
+    std::error_code ec;
+    fs::create_directories(PATH / "save" / "slots", ec);
+    fs::create_directories(PATH / "save" / "backup", ec);
+    fs::create_directories(PATH / "data" / "init", ec);
+  }
 
   log.start("Loading Patch Types");
   auto& patch_loader = entt::locator<PatchLoader>::emplace();
@@ -600,10 +767,13 @@ void GameManager::loadData() {
   log.var("Patch Types", patch_loader.get_patch_types().size());
   log.stop("Loading Patch Types");
 
-  // Repopulate WellKnownEntities from the newly-loaded registry
   WellKnownEntities wk;
   for (auto e : current_state.registry.view<Environment>()) {
     wk.environment = e;
+    break;
+  }
+  for (auto e : current_state.registry.view<SpendablePool>()) {
+    wk.economy = e;
     break;
   }
   for (auto e : current_state.registry.view<hf::meta>()) {
@@ -611,6 +781,16 @@ void GameManager::loadData() {
     if (meta.name == "Frames") wk.frames_folder = e;
     if (meta.name == "Connections") wk.connections_folder = e;
     if (meta.name == "Patches") wk.patches_folder = e;
+  }
+  ensureEconomyEntity(current_state.registry, wk);
+  if (!current_state.stores.empty()) {
+    auto &st = current_state.stores.front();
+    if (st->file_version < 3 && wk.economy != entt::null &&
+        current_state.registry.valid(wk.economy) &&
+        current_state.registry.all_of<SpendablePool>(wk.economy)) {
+      mergeLegacySpendablesJsonInto(
+          current_state.registry.get<SpendablePool>(wk.economy).amounts);
+    }
   }
   entt::locator<WellKnownEntities>::emplace(wk);
 
@@ -647,13 +827,26 @@ void GameManager::saveData() {
   auto &metaData = entt::locator<MetaData>::value();
   loader.save(metaData);
   auto &prototypes = entt::locator<Prototypes>::value();
-  loader.save(prototypes);
+  {
+    bool have_env_proto = false;
+    for (auto e : prototypes.registry.view<hf::meta>()) {
+      if (prototypes.registry.get<hf::meta>(e).id == "ENV") {
+        have_env_proto = true;
+        break;
+      }
+    }
+    if (have_env_proto) {
+      loader.save(prototypes);
+    } else {
+      log.warn(
+          "Skipping save of frame.proto — prototypes did not load (would overwrite template data)");
+    }
+  }
 
   auto &state = entt::locator<State>::value();
   if (!state.stores.empty()) {
     // Use saveStateToFile to write the live registry (not stale store data)
-    loader.saveStateToFile(state, state.stores.front()->path.string(),
-                          spendable_pool_);
+    loader.saveStateToFile(state, state.stores.front()->path.string());
   }
   if (research) {
     fs::path PATH = entt::monostate<"path"_hs>{};
@@ -674,13 +867,87 @@ void GameManager::saveData() {
   log.setParent(p);
 }
 
+bool GameManager::autoBackup() {
+  auto state_path = currentStatePath();
+
+  if (!fs::exists(state_path)) return false;
+
+  auto backup_dir = state_path.parent_path().parent_path() / "backup";
+  std::error_code ec;
+  fs::create_directories(backup_dir, ec);
+
+  auto now = std::chrono::system_clock::now();
+  auto t = std::chrono::system_clock::to_time_t(now);
+  std::ostringstream oss;
+  oss << std::put_time(std::gmtime(&t), "%Y%m%dT%H%M%SZ");
+  auto backup_path = backup_dir / ("backup_" + oss.str() + ".state");
+
+  fs::copy_file(state_path, backup_path, fs::copy_options::overwrite_existing, ec);
+  if (ec) {
+    log.warn("autoBackup: failed to copy {} → {}: {}", state_path.string(), backup_path.string(), ec.message());
+    return false;
+  }
+  return true;
+}
+
+fs::path GameManager::currentStatePath() const {
+  auto &lua = entt::locator<sol::state>::value();
+  fs::path PATH = entt::monostate<"path"_hs>{};
+  return PATH / fs::path(lua["settings"]["current_state"].get<std::string>());
+}
+
+void GameManager::ensureEconomyEntity(entt::registry &reg, WellKnownEntities &wk) {
+  if (wk.economy != entt::null && reg.valid(wk.economy) &&
+      reg.all_of<SpendablePool>(wk.economy)) {
+    return;
+  }
+  wk.economy = entt::null;
+  for (auto e : reg.view<SpendablePool>()) {
+    wk.economy = e;
+    break;
+  }
+  if (wk.economy != entt::null && reg.valid(wk.economy)) {
+    return;
+  }
+  const entt::entity e = reg.create();
+  hf::meta m;
+  m.name = "Economy";
+  m.id = "ECONOMY";
+  reg.emplace<hf::meta>(e, m);
+  SpendablePool sp;
+  auto &lua = entt::locator<sol::state>::value();
+  sol::optional<std::map<std::string, int64_t>> pool_cfg =
+      lua["settings"]["spendable_pool"];
+  if (pool_cfg) sp.amounts = *pool_cfg;
+  reg.emplace<SpendablePool>(e, std::move(sp));
+  wk.economy = e;
+}
+
+std::map<std::string, int64_t> GameManager::spendablePool() const {
+  auto &state = entt::locator<State>::value();
+  const auto &wk = entt::locator<WellKnownEntities>::value();
+  if (wk.economy == entt::null || !state.registry.valid(wk.economy) ||
+      !state.registry.all_of<SpendablePool>(wk.economy)) {
+    return {};
+  }
+  return state.registry.get<SpendablePool>(wk.economy).amounts;
+}
+
 void GameManager::ensureSpendableKeysFromItems() {
   if (!items || !items->loader) {
     return;
   }
+  std::lock_guard<std::recursive_mutex> lock(updateMutex);
+  auto &state = entt::locator<State>::value();
+  auto &wk = entt::locator<WellKnownEntities>::value();
+  if (wk.economy == entt::null || !state.registry.valid(wk.economy) ||
+      !state.registry.all_of<SpendablePool>(wk.economy)) {
+    return;
+  }
+  auto &amounts = state.registry.get<SpendablePool>(wk.economy).amounts;
   for (const auto &[name, def] : items->loader->get_items()) {
-    if (def.spendable && spendable_pool_.count(name) == 0) {
-      spendable_pool_[name] = 0;
+    if (def.spendable && amounts.count(name) == 0) {
+      amounts[name] = 0;
     }
   }
 }
@@ -688,21 +955,36 @@ void GameManager::ensureSpendableKeysFromItems() {
 void GameManager::emitSpendablePool() {
   auto &emitter = entt::locator<event_emitter>::value();
   spendable_pool_changed_event ev;
-  ev.amounts = spendable_pool_;
+  ev.amounts = spendablePool();
   emitter.publish(ev);
 }
 
 void GameManager::addSpendable(const std::string &name, int64_t delta) {
-  spendable_pool_[name] += delta;
+  std::lock_guard<std::recursive_mutex> lock(updateMutex);
+  auto &state = entt::locator<State>::value();
+  auto &wk = entt::locator<WellKnownEntities>::value();
+  if (wk.economy == entt::null || !state.registry.valid(wk.economy) ||
+      !state.registry.all_of<SpendablePool>(wk.economy)) {
+    return;
+  }
+  state.registry.get<SpendablePool>(wk.economy).amounts[name] += delta;
   emitSpendablePool();
 }
 
 bool GameManager::tryConsumeSpendable(const std::map<std::string, int> &cost,
                                       std::string &err) {
+  auto &state = entt::locator<State>::value();
+  auto &wk = entt::locator<WellKnownEntities>::value();
+  if (wk.economy == entt::null || !state.registry.valid(wk.economy) ||
+      !state.registry.all_of<SpendablePool>(wk.economy)) {
+    err = "Economy not available";
+    return false;
+  }
+  auto &amounts = state.registry.get<SpendablePool>(wk.economy).amounts;
   for (const auto &[k, v] : cost) {
     if (v <= 0)
       continue;
-    if (spendable_pool_[k] < v) {
+    if (amounts[k] < v) {
       err = "Not enough " + k;
       return false;
     }
@@ -710,7 +992,7 @@ bool GameManager::tryConsumeSpendable(const std::map<std::string, int> &cost,
   bool changed = false;
   for (const auto &[k, v] : cost) {
     if (v > 0) {
-      spendable_pool_[k] -= v;
+      amounts[k] -= v;
       changed = true;
     }
   }
@@ -795,7 +1077,11 @@ int GameManager::addFrameFromBlueprint(std::string name) {
   auto &frame = current_state.registry.get<Frame>(e);
   frame.size = spec["size"].get_or(FrameSize::S);
 
-  for (auto cn : spec["components"].get<std::vector<std::string>>()) {
+  for (auto cn : spec["components"].get_or<std::vector<std::string>>({})) {
+    ComponentSize sz = warlock::component_script_size(lua, exec->getScript(cn));
+    if (!frame_has_slot_for_component_size(frame, sz)) {
+      throw std::runtime_error("Blueprint exceeds component size slots for this frame size");
+    }
     auto component = create_component_from_lua(exec->getState(frame.data.id),
                                                exec->getScript(cn));
     if (cn == "Core" || cn == "Main Core") {
@@ -889,31 +1175,65 @@ void GameManager::start() {
     exec->executeCoreFunction(e.component, e.function_name);
   });
 
-  emitter.connect<add_component>([=, this](const auto &e, const auto &em) {
+  emitter.connect<component_state_changed>(
+    std::function<void(component_state_changed&, const event_emitter&)>(
+      [this](component_state_changed& event, const event_emitter&) {
+        if (exec) {
+          exec->dispatchStateChange(event.frame_id, event.component_id,
+                                    event.component_name, event.prev_state,
+                                    event.new_state, event.reason);
+        }
+      }
+    )
+  );
+
+  emitter.connect<add_component>([this](const auto &e, const auto &em) {
+    auto &lua_st = entt::locator<sol::state>::value();
+    ComponentSize sz =
+        warlock::component_script_size(lua_st, exec->getScript(e.component_name));
+    if (!frame_has_slot_for_component_size(e.frame, sz)) {
+      throw std::runtime_error("Frame has no free slot for this component size");
+    }
     auto component = create_component_from_lua(
         exec->getState(e.frame.data.id), exec->getScript(e.component_name));
     e.frame.addComponent(component);
   });
 
-  if (current_state.registry.template storage<entt::entity>().size() > 0) {
-    // Populate WellKnownEntities from existing registry
-    WellKnownEntities wk;
-    for (auto e : current_state.registry.view<Environment>()) {
-      wk.environment = e;
-      break;
-    }
-    for (auto e : current_state.registry.view<hf::meta>()) {
-      auto &meta = current_state.registry.get<hf::meta>(e);
-      if (meta.name == "Frames") wk.frames_folder = e;
-      if (meta.name == "Connections") wk.connections_folder = e;
-      if (meta.name == "Patches") wk.patches_folder = e;
-    }
-    entt::locator<WellKnownEntities>::emplace(wk);
+  WellKnownEntities wk_loaded;
+  for (auto e : current_state.registry.view<Environment>()) {
+    wk_loaded.environment = e;
+    break;
+  }
+  for (auto e : current_state.registry.view<SpendablePool>()) {
+    wk_loaded.economy = e;
+    break;
+  }
+  for (auto e : current_state.registry.view<hf::meta>()) {
+    auto &meta = current_state.registry.get<hf::meta>(e);
+    if (meta.name == "Frames") wk_loaded.frames_folder = e;
+    if (meta.name == "Connections") wk_loaded.connections_folder = e;
+    if (meta.name == "Patches") wk_loaded.patches_folder = e;
+  }
+  const bool persisted_world_ok =
+      wk_loaded.environment != entt::null &&
+      current_state.registry.valid(wk_loaded.environment) &&
+      wk_loaded.frames_folder != entt::null &&
+      current_state.registry.valid(wk_loaded.frames_folder);
+
+  if (persisted_world_ok) {
+    ensureEconomyEntity(current_state.registry, wk_loaded);
+    entt::locator<WellKnownEntities>::emplace(wk_loaded);
     log.setAsync(false);
     log.setParent(p);
     started = true;
     return;
   }
+
+  if (current_state.registry.template storage<entt::entity>().size() > 0) {
+    current_state.registry.clear();
+  }
+
+  require_bootstrap_prototypes();
 
   WellKnownEntities wk;
   wk.environment = EnttTools::createEntityFromPrototype("ENV", current_state.registry);
@@ -923,6 +1243,7 @@ void GameManager::start() {
                                        "Connections");
   wk.patches_folder = EnttTools::createEntityFromPrototype("FOLDER", current_state.registry,
                                        "Patches");
+  ensureEconomyEntity(current_state.registry, wk);
   entt::locator<WellKnownEntities>::emplace(wk);
   lua.load_file((PATH / "scripts/game_init.lua").string()).call();
 
@@ -1039,6 +1360,8 @@ void GameManager::serve() {
       process_relay_heartbeats(current_state.registry);
       enforce_control_relay_nexus_registration(
           current_state.registry, emitter, g_control_relay_nexus_pending);
+      process_nexus_library_heartbeats(current_state.registry);
+      process_advanced_core_library_reception(current_state.registry);
     }
 
     if (entt::locator<rpc::Server>::has_value()) {

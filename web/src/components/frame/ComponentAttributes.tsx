@@ -774,7 +774,7 @@ export function ComponentAttributes({
   if (!attributes) return null;
 
   const entries = Object.entries(attributes).filter(
-    ([, val]) => !(isAttributeDTO(val) && val.inspector?.widget === "code"),
+    ([, val]) => !(isAttributeDTO(val) && (val.inspector?.widget === "code" || val.inspector?.widget === "memory")),
   );
 
   if (entries.length === 0) return null;

@@ -102,7 +102,7 @@ E2E_TEST(frames,"frame.create — requires session claim") {
   assert_jsonrpc_error(resp, 1000);
 }
 
-E2E_TEST(frames,"frame.create — queues frame creation") {
+E2E_TEST(frames,"frame.create — returns frame DTO immediately") {
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
@@ -110,12 +110,10 @@ E2E_TEST(frames,"frame.create — queues frame creation") {
   client.call("session.claim");
 
   auto result = client.call("frame.create", {{"name", "MyNewFrame"}});
-  REQUIRE(result.contains("status"));
-  CHECK(result["status"] == "queued");
-  CHECK(result["name"] == "MyNewFrame");
-
-  // Let the game tick process the command
-  h.tick(3);
+  REQUIRE(result.contains("name"));
+  CHECK(result["name"].get<std::string>() == "MyNewFrame");
+  REQUIRE(result.contains("size"));
+  CHECK(result["size"].get<std::string>() == "S");
 
   // Verify the frame appears in the list
   auto list_result = client.call("frame.list");
@@ -203,6 +201,36 @@ E2E_TEST(frames,"state.snapshot — frames include canvas_badges") {
       CHECK(badges["temperature"].is_number());
     }
   }
+}
+
+E2E_TEST(frames,"component.add — rejected when frame size slots are full") {
+  TestHarness h;
+  RpcClient client;
+  client.connect(h.ws_url());
+  client.call("session.claim");
+  client.call("frame.create", {{"name", "SlotLimitFrame"}});
+  h.tick(5);
+
+  auto list = client.call("frame.list");
+  int entity_id = -1;
+  int frame_id = -1;
+  for (const auto &f : list["frames"]) {
+    if (f["name"].get<std::string>() == "SlotLimitFrame") {
+      entity_id = f["entity_id"].get<int>();
+      frame_id = f["id"].get<int>();
+      break;
+    }
+  }
+  REQUIRE(entity_id >= 0);
+  REQUIRE(frame_id >= 0);
+
+  (void)client.call("frame.set_size", {{"id", entity_id}, {"size", "XS"}});
+
+  auto ok = client.call("component.add", {{"frame_id", frame_id}, {"component_name", "Clock"}});
+  REQUIRE(ok.contains("component"));
+
+  auto bad = client.call_raw("component.add", {{"frame_id", frame_id}, {"component_name", "Clock"}});
+  assert_jsonrpc_error(bad, -32602);
 }
 
 E2E_TEST(frames,"state.snapshot — new empty frame has health ok and no error") {

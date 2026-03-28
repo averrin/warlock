@@ -9,17 +9,15 @@ settings = {
 	init_script = "scripts/init.lua",
 	init_states = { "data/init.state" },
 	current_state = "save/current.state",
-	tileset = "tilesets/boxy",
-	seed = 873130520,
-	location_type = "MIX",
-	margin = 8,
-
-	light = {
-		alpha_per_d = 10,
-		alpha_blend_inc = 0.5,
-		flick_delay = 200,
-		blend_mode = "blend",
-		max_bright = 220,
+	spendable_pool = {
+		["Frame Parts"]      = 1000,
+		["Ultralight Structures"]       = 1000,
+		["Electronic Parts"] = 1000,
+		["Science Packs"]    = 1000,
+		["Repair Packs"]     = 1000,
+		["Advanced Chips"]    = 1000,
+		["Next Gen Composits"]     = 1000,
+		["Holographic Chips"]     = 1000,
 	},
 }
 

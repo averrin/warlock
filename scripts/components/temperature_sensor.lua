@@ -19,12 +19,13 @@ return {
 	},
 	state = ComponentState.ACTIVE,
 	size = ComponentSize.S,
+	spendable_cost = { ["Electronic Parts"] = 10 },
 	api = {
 		getComponentTemperature = function(component)
-			return component.data.attributes["temp"]:GetFinalValue()
+			return attr(component, "temp")
 		end,
 		getFrameTemperature = function()
-			return frame.data.attributes["temp"]:GetFinalValue()
+			return attr(frame, "temp")
 		end,
 		getEnvTemperature = function()
 			return environment.temperature

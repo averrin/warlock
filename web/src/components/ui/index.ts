@@ -1,9 +1,12 @@
 export * from "./constants";
 export * from "./styles";
-export * from "./Badge";
+export { Badge, fmtId, copyToClipboard } from "./Badge";
 export * from "./IconButton";
 export * from "./CollapsibleSection";
 export * from "./NumberField";
+export * from "./DictEditor";
 export * from "./TextField";
 export * from "./SelectField";
 export * from "./TransformEditor";
+export * from "./componentSlots";
+export * from "./CardExpandControl";

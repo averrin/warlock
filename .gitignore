@@ -1,5 +1,7 @@
 build*
 .worktrees/
-.claude
+.claude/*
+!.claude/skills/
 web/node_modules
 web/dist
+web/.vite
