@@ -26,7 +26,7 @@ nlohmann::json serializeResearchList(GameManager& gm) {
     }
 
     nlohmann::json requires_j = nlohmann::json::array();
-    for (const auto& r : node.requires) {
+    for (const auto& r : node.prereqs) {
       requires_j.push_back(r);
     }
 

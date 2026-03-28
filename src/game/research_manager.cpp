@@ -43,7 +43,7 @@ void ResearchManager::load(sol::state &lua, const fs::path &scripts_path) {
       }
     };
 
-    parse_string_list(spec["requires"], node.requires);
+    parse_string_list(spec["requires"], node.prereqs);
     parse_string_list(spec["unlocks"], node.unlocks);
     parse_string_list(spec["unlocks_recipes"], node.unlocks_recipes);
 
@@ -55,7 +55,7 @@ void ResearchManager::load(sol::state &lua, const fs::path &scripts_path) {
 
   // Auto-unlock nodes that are free and have no prerequisites
   for (const auto &[name, node] : nodes_) {
-    if (node.cost.empty() && node.requires.empty()) {
+    if (node.cost.empty() && node.prereqs.empty()) {
       unlocked_.insert(name);
     }
   }
@@ -94,7 +94,7 @@ bool ResearchManager::isUnlocked(const std::string &name) const {
 bool ResearchManager::prerequisitesMet(const std::string &name) const {
   auto it = nodes_.find(name);
   if (it == nodes_.end()) return false;
-  for (const auto &req : it->second.requires) {
+  for (const auto &req : it->second.prereqs) {
     if (!isUnlocked(req)) return false;
   }
   return true;

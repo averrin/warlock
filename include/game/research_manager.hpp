@@ -15,7 +15,7 @@ public:
     std::string description;
     std::string icon;
     std::map<std::string, int> cost;
-    std::vector<std::string> requires;
+    std::vector<std::string> prereqs;
     std::vector<std::string> unlocks;
     std::vector<std::string> unlocks_recipes;
   };
