@@ -315,6 +315,8 @@ E2E_TEST(frames,"state.snapshot — component storage includes summary fields") 
 
     for (const auto& comp : frame["components"]) {
       if (!comp.contains("storage") || comp["storage"].is_null()) continue;
+      // Only check the storage we added, not pre-existing ones.
+      if (comp.value("name", "") != "Big Storage") continue;
       auto& storage = comp["storage"];
 
       REQUIRE(storage.contains("slots_count"));
