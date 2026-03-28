@@ -59,10 +59,18 @@ jobs:
     - name: Build
       run: cmake --build build --config Release --parallel $(nproc)
 
-    - name: Run tests
+    - name: Run unit & serialization tests
       working-directory: build
       run: ctest --output-on-failure --verbose
 
     - name: Run e2e tests
-      if: success() && hashFiles('build/warlock_e2e') != ''
-      run: ./build/warlock_e2e
+      run: |
+        find build -name warlock_e2e -type f | head -5
+        E2E=$(find build -name warlock_e2e -type f | head -1)
+        if [ -z "$E2E" ]; then
+          echo "::error::warlock_e2e binary not found"
+          exit 1
+        fi
+        echo "Running: $E2E"
+        chmod +x "$E2E"
+        "$E2E"

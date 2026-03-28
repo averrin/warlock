@@ -38,6 +38,7 @@
 #include <game/frame_world.hpp>
 #include <game/oracle.hpp>
 #include <game/well_known_entities.hpp>
+#include <game/components/frame.hpp>
 
 namespace fs = std::filesystem;
 using namespace std::chrono_literals;
@@ -77,6 +78,11 @@ struct TestHarness::Impl {
                        sol::lib::table, sol::lib::math, sol::lib::os);
     injectLogger(lua, luaLog);
 
+    // Add project root to Lua's package.path so require("scripts/...") works
+    // regardless of the working directory the binary is launched from.
+    std::string cur = lua["package"]["path"];
+    lua["package"]["path"] = cur + ";" + path.string() + "/?.lua";
+
     // Provide a minimal 'app' table so scripts/gui.lua can access app.PATH
     auto app_table = lua.create_named_table("app");
     app_table["APP_NAME"] = std::string("warlock-test");
@@ -114,6 +120,21 @@ struct TestHarness::Impl {
       throw;
     }
     gm.setPaused(true);
+
+    // Reset SpendablePool to config values so tests always start with full
+    // resources, regardless of what init.state contained.
+    {
+      auto& state = entt::locator<State>::value();
+      auto& wk = entt::locator<WellKnownEntities>::value();
+      if (wk.economy != entt::null && state.registry.valid(wk.economy) &&
+          state.registry.all_of<SpendablePool>(wk.economy)) {
+        sol::optional<std::map<std::string, int64_t>> pool_cfg =
+            lua["settings"]["spendable_pool"];
+        if (pool_cfg) {
+          state.registry.get<SpendablePool>(wk.economy).amounts = *pool_cfg;
+        }
+      }
+    }
 
     auto& rpc = entt::locator<rpc::Server>::emplace(port_hint);
     rpc_ptr = &rpc;
