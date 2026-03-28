@@ -33,6 +33,9 @@ using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 #include <game/data_link.hpp>
 #include <game/systems/thermal.hpp>
 #include <game/systems/tweening.hpp>
+#include <game/systems/map_generator.hpp>
+#include <game/mapgen_loader.hpp>
+#include <game/components/resource_patch.hpp>
 #include <game/systems/wireless_connection.hpp>
 #include <rpc/dto.hpp>
 #include <rpc/server.hpp>
@@ -1143,6 +1146,22 @@ void GameManager::start() {
   fs::path PATH = entt::monostate<"path"_hs>{};
   log.setParent(nullptr);
   log.setAsync(true);
+
+  // Auto-generate map for new games (no patches yet)
+  {
+    auto &current_state_pre = entt::locator<State>::value();
+    if (current_state_pre.registry.view<ResourcePatch>().size() == 0) {
+      log.info("No patches found — generating initial map");
+      MapGenLoader mapgen_loader;
+      mapgen_loader.load((PATH / "scripts" / "mapgen").string(), lua);
+      MapGenerator gen;
+      auto result = gen.generate(mapgen_loader.config(), mapgen_loader.biomes(),
+                                  mapgen_loader.features(), current_state_pre.registry, lua);
+      log.var("Map seed", std::to_string(result.seed_used));
+      log.var("Patches placed", result.patches_placed);
+    }
+  }
+
   auto label = "Location generation";
   log.start(label);
   auto &current_state = entt::locator<State>::value();
