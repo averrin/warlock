@@ -137,6 +137,50 @@ Systems run in this order (defined in `GameManager::start()`). Order matters for
 6. **CodeExecutionSystem** — Lua script execution (sees stable power/thermal)
 7. **ItemsSystem** — Inventory/crafting (depends on component state)
 
+## Research System
+
+Research nodes unlock components and recipes as players progress. Scripts live in `scripts/research/`.
+
+### Lua Format (`scripts/research/<name>.lua`)
+```lua
+return {
+  name = "Node Name",              -- unique key used throughout the system
+  description = "What it enables",
+  icon = "icon-name.png",          -- from game-icons.net, white, no bg
+  cost = {                         -- spendable resources consumed on unlock
+    ["Electronic Parts"] = 40,
+    ["Advanced Chips"] = 10,
+  },
+  requires = { "Prerequisite Node" },  -- names of nodes that must be unlocked first
+  unlocks = { "Component Name" },      -- component types hidden until this is unlocked
+  unlocks_recipes = { "Recipe Name" }, -- recipes hidden in machine UIs until unlocked
+}
+```
+
+### Rules
+- `cost = {}` **and** `requires = {}` → **auto-unlocked on game load** (no player action needed)
+- Components absent from all `unlocks` lists → always visible/available
+- Components listed in any `unlocks` → locked until the owning research node is unlocked
+- `unlocks_recipes` gates recipes from appearing in machine selectors
+- `requires` is checked at unlock time — prerequisites must all be unlocked first
+- Costs are consumed from the spendable pool via `tryConsumeSpendable` (same pool as frame/component costs)
+
+### Current Tree
+```
+Nexus Core (free) ──┬─► Basic Power ──────────────┬─► Thermal Management
+                    │     └─► Power Generation ───┼─► Wireless Systems
+                    │           └─► Advanced Computing ─► Mobility
+                    └─► Data Networking ──────────┬─► Advanced Production
+                          └─► Logistics           └─► Wireless Systems
+```
+
+### Adding a Research Node
+1. Create `scripts/research/<snake_case>.lua` with the table above
+2. Add its `name` to the `requires` list of any nodes that should depend on it
+3. Move component names from other nodes' `unlocks` (or add new ones) as needed
+4. Move recipe names from other nodes' `unlocks_recipes` (or add new ones) as needed
+5. No C++ changes needed — `ResearchManager::load()` auto-discovers all `.lua` files in the directory
+
 ## Adding a New Component (Lua)
 
 1. Create `scripts/components/mycomponent.lua`:

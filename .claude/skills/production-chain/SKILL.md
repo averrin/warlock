@@ -139,6 +139,9 @@ One `.lua` in `scripts/patches/`. The `item` field must exactly match an item na
 ### 5. Create recipes
 One `.lua` per recipe in `scripts/recipes/`. Mining recipes have `inputs = {}` and `available = { "Miner" }`. Processing recipes specify machine in `available`. Multiple recipes can target the same machine — player selects which to run.
 
+### 5a. Gate recipes behind research (if appropriate)
+New recipes are visible in machines from the start unless listed in a research node's `unlocks_recipes`. If the recipe requires advanced tech or is part of a mid/late-game chain, add its name to the matching research node in `scripts/research/`. Example: `Advanced Production` gates all base production recipes. Check `scripts/research/` to find the right node or create a new one with the `/research` skill.
+
 ### 6. Wire up spendable costs (if new spendable)
 - C++ frame costs: `include/game/frame_costs.hpp` — `frame_cost_for_size()`
 - TS frame costs: `web/src/game/economy.ts` — `FRAME_SIZE_COSTS`
