@@ -68,7 +68,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: warlock_e2e
-        path: build/warlock_e2e
+        path: build/tests/warlock_e2e
         if-no-files-found: warn
         retention-days: 1
 
@@ -84,10 +84,10 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: warlock_e2e
-        path: build
+        path: build/tests
 
     - name: Run e2e tests
-      working-directory: build
+      working-directory: build/tests
       run: |
         chmod +x warlock_e2e
         ./warlock_e2e
