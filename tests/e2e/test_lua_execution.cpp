@@ -52,21 +52,22 @@ E2E_TEST(lua,"lua exec: code.sources returns non-empty source map") {
   CHECK(result["sources"].size() > 0);
 }
 
-E2E_TEST(lua,"lua exec: code.sources contains Core component") {
+E2E_TEST(lua,"lua exec: code.sources contains Nexus component") {
+  // "Core" is now gated behind Data Networking research; "Nexus" is unlocked from the start.
   TestHarness h;
   RpcClient client;
   client.connect(h.ws_url());
 
   auto result = client.call("code.sources");
-  bool has_core = false;
+  bool has_nexus = false;
   for (auto& [name, code] : result["sources"].items()) {
-    if (name.find("core") != std::string::npos || name.find("Core") != std::string::npos) {
-      has_core = true;
+    if (name == "Nexus") {
+      has_nexus = true;
       CHECK(code.is_string());
       CHECK(code.get<std::string>().size() > 0);
     }
   }
-  CHECK(has_core);
+  CHECK(has_nexus);
 }
 
 // ─── code.completion ─────────────────────────────────────────────────────────

@@ -29,6 +29,7 @@
 #include <rpc/handlers/state_handler.hpp>
 #include <rpc/handlers/items_handler.hpp>
 #include <rpc/handlers/storage_handler.hpp>
+#include <rpc/handlers/research_handler.hpp>
 #include <rpc/event_bridge.hpp>
 #include <ixwebsocket/IXNetSystem.h>
 #include <game/meta_data.hpp>
@@ -125,6 +126,7 @@ struct TestHarness::Impl {
     rpc::registerCodeHandlers(rpc);
     rpc::registerItemsHandlers(rpc);
     rpc::registerStorageHandlers(rpc);
+    rpc::registerResearchHandlers(rpc);
     rpc::registerStateHandlers(rpc);
     rpc::initEventBridge(rpc);
 
