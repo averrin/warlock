@@ -21,30 +21,20 @@ CPMAddPackage(
   GITHUB_REPOSITORY ThePhD/sol2
   GIT_TAG v3.3.0
 )
-find_program(GIT_EXECUTABLE NAMES git REQUIRED)
-set(_sol2_gcc15_patch "${PROJECT_SOURCE_DIR}/cmake/patches/sol2-gcc15-optional-tref.patch")
 file(READ "${sol2_SOURCE_DIR}/include/sol/optional_implementation.hpp" _sol2_optional_hpp)
 if(_sol2_optional_hpp MATCHES "T& emplace\\(Args&&\\.\\.\\. args\\) noexcept")
-  # CPM may download sol2 as a zip archive (no .git directory). git apply requires
-  # a git repository, so initialise a temporary one if needed.
-  if(NOT EXISTS "${sol2_SOURCE_DIR}/.git")
-    execute_process(
-      COMMAND "${GIT_EXECUTABLE}" init
-      WORKING_DIRECTORY "${sol2_SOURCE_DIR}"
-      RESULT_VARIABLE _git_init_rc
-      OUTPUT_QUIET ERROR_QUIET
-    )
-    if(NOT _git_init_rc EQUAL 0)
-      message(FATAL_ERROR "sol2: git init in ${sol2_SOURCE_DIR} failed (exit ${_git_init_rc})")
-    endif()
-  endif()
-  execute_process(
-    COMMAND "${GIT_EXECUTABLE}" apply --ignore-whitespace "${_sol2_gcc15_patch}"
-    WORKING_DIRECTORY "${sol2_SOURCE_DIR}"
-    RESULT_VARIABLE _sol2_patch_rc
+  # Patch sol2 for GCC 15 compatibility using cmake string replacement.
+  # This avoids any dependency on git or patch utilities (CPM may download
+  # sol2 as a zip archive with no .git directory).
+  string(REPLACE
+    "\t\ttemplate <class... Args>\n\t\tT& emplace(Args&&... args) noexcept {\n\t\t\tstatic_assert(std::is_constructible<T, Args&&...>::value, \"T must be constructible with Args\");\n\n\t\t\t*this = nullopt;\n\t\t\tthis->construct(std::forward<Args>(args)...);\n\t\t}"
+    "\t\tT& emplace(T& arg) noexcept {\n\t\t\t*this = nullopt;\n\t\t\tm_value = std::addressof(arg);\n\t\t\treturn **this;\n\t\t}"
+    _sol2_optional_patched "${_sol2_optional_hpp}"
   )
-  if(NOT _sol2_patch_rc EQUAL 0)
-    message(FATAL_ERROR "sol2: applying ${_sol2_gcc15_patch} failed (exit ${_sol2_patch_rc})")
+  if(_sol2_optional_patched STREQUAL _sol2_optional_hpp)
+    message(FATAL_ERROR "sol2: GCC15 patch string not found in optional_implementation.hpp")
   endif()
+  file(WRITE "${sol2_SOURCE_DIR}/include/sol/optional_implementation.hpp" "${_sol2_optional_patched}")
+  message(STATUS "sol2: applied GCC 15 optional_implementation.hpp patch")
 endif()
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC "${sol2_SOURCE_DIR}/include")
