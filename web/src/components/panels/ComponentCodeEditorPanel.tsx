@@ -133,6 +133,22 @@ export function ComponentCodeEditorPanel({
   const canSaveSource = mode === "source" && defEditorSupported && sourcesSupported && !!sourceName;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const suggestedFileName = useMemo(() => {
+    const parts: string[] = [];
+    if (frameId != null) {
+      const frame = frames.find((f) => f.id === frameId);
+      if (frame?.name) parts.push(frame.name);
+      parts.push(String(frameId));
+    }
+    if (componentId != null) {
+      const frame = frames.find((f) => f.id === frameId);
+      const comp = frame?.components?.find((c) => c.id === componentId);
+      if (comp?.name) parts.push(comp.name);
+    }
+    parts.push(attrKey);
+    return parts.join("-").replace(/[^a-zA-Z0-9_-]/g, "_") + ".lua";
+  }, [frameId, componentId, attrKey, frames]);
+
   const handleSaveToFile = useCallback(() => {
     const blob = new Blob([code], { type: "text/x-lua" });
 
@@ -141,7 +157,7 @@ export function ComponentCodeEditorPanel({
       void (async () => {
         try {
           const handle = await (window as unknown as { showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker({
-            suggestedName: `${attrKey ?? "code"}.lua`,
+            suggestedName: suggestedFileName,
             types: [{ description: "Lua files", accept: { "text/x-lua": [".lua"] } }],
           });
           const writable = await handle.createWritable();
@@ -160,11 +176,11 @@ export function ComponentCodeEditorPanel({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${attrKey ?? "code"}.lua`;
+    a.download = suggestedFileName;
     a.click();
     URL.revokeObjectURL(url);
     setStatus("Exported to file"); setStatusOk(true);
-  }, [code, attrKey]);
+  }, [code, suggestedFileName]);
 
   const handleLoadFromFile = useCallback(() => {
     // Try File System Access API first (Chromium browsers)
