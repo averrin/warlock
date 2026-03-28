@@ -63,31 +63,14 @@ jobs:
       working-directory: build
       run: ctest --output-on-failure --verbose
 
-    - name: Upload e2e binary
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: warlock_e2e
-        path: build/tests/warlock_e2e
-        if-no-files-found: warn
-        retention-days: 1
-
-  e2e:
-    name: E2E Tests
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Download e2e binary
-      uses: actions/download-artifact@v4
-      with:
-        name: warlock_e2e
-        path: build/tests
-
     - name: Run e2e tests
-      working-directory: build/tests
       run: |
-        chmod +x warlock_e2e
-        ./warlock_e2e
+        find build -name warlock_e2e -type f | head -5
+        E2E=$(find build -name warlock_e2e -type f | head -1)
+        if [ -z "$E2E" ]; then
+          echo "::error::warlock_e2e binary not found"
+          exit 1
+        fi
+        echo "Running: $E2E"
+        chmod +x "$E2E"
+        "$E2E"
