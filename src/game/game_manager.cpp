@@ -749,6 +749,9 @@ void GameManager::loadData(bool forceFromInit) {
   if (research) {
     research->loadUnlocked(PATH / "save");
   }
+  if (objectives) {
+    objectives->loadState(PATH / "save");
+  }
   log.stop("Loading State");
   startJob->progress += 5;
 
@@ -848,9 +851,14 @@ void GameManager::saveData() {
     // Use saveStateToFile to write the live registry (not stale store data)
     loader.saveStateToFile(state, state.stores.front()->path.string());
   }
-  if (research) {
+  {
     fs::path PATH = entt::monostate<"path"_hs>{};
-    research->saveUnlocked(PATH / "save");
+    if (research) {
+      research->saveUnlocked(PATH / "save");
+    }
+    if (objectives) {
+      objectives->saveState(PATH / "save");
+    }
   }
   log.stop(label);
 
@@ -1164,6 +1172,18 @@ void GameManager::start() {
   research = std::make_shared<ResearchManager>();
   research->load(lua, PATH / "scripts/research");
 
+  objectives = std::make_shared<ObjectiveManager>();
+  objectives->load(lua, PATH / "scripts/objectives");
+
+  lua.new_usertype<ObjectiveManager>(
+      "ObjectiveManager", "new", sol::no_constructor,
+      "isCompleted", &ObjectiveManager::isCompleted,
+      "complete", [this](ObjectiveManager &om, const std::string &id) {
+        om.complete(id, *this);
+      },
+      "reset", &ObjectiveManager::reset);
+  lua.set("objectives", objectives.get());
+
   ensureSpendableKeysFromItems();
   emitSpendablePool();
 
@@ -1359,6 +1379,10 @@ void GameManager::serve() {
       }
     }
     lastUpdate = hr_clock::now();
+
+    if (tick_count_ % 60 == 0 && objectives) {
+      objectives->evaluate(*this);
+    }
 
     {
       auto &emitter = entt::locator<event_emitter>::value();

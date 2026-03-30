@@ -85,6 +85,11 @@ struct spendable_pool_changed_event {
   std::map<std::string, int64_t> amounts;
 };
 
+struct objective_completed_event {
+  std::string id;
+  std::string name;
+};
+
 namespace wl {
 struct relation {
   std::vector<entt::entity> children;

@@ -143,6 +143,17 @@ void initEventBridge(Server& server) {
     )
   );
 
+  emitter.connect<objective_completed_event>(
+    std::function<void(objective_completed_event&, const event_emitter&)>(
+      [&server](objective_completed_event& event, const event_emitter&) {
+        server.broadcast("objective.completed", {
+          {"id", event.id},
+          {"name", event.name}
+        });
+      }
+    )
+  );
+
   emitter.connect<spendable_pool_changed_event>(
     std::function<void(spendable_pool_changed_event&, const event_emitter&)>(
       [&server](spendable_pool_changed_event& event, const event_emitter&) {

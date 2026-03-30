@@ -14,6 +14,7 @@ using hr_clock = std::chrono::high_resolution_clock;
 #include <game/systems/code_execution.hpp>
 #include <game/systems/items.hpp>
 #include <game/research_manager.hpp>
+#include <game/objective_manager.hpp>
 #include <functional>
 #include <mutex>
 #include <queue>
@@ -32,6 +33,7 @@ public:
   std::shared_ptr<CodeExecutionSystem> exec;
   std::shared_ptr<ItemsSystem> items;
   std::shared_ptr<ResearchManager> research;
+  std::shared_ptr<ObjectiveManager> objectives;
 
   void init(LibLog::Logger &parentLog);
   void start();
