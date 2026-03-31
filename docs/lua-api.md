@@ -432,13 +432,65 @@ nex.api.clearMapMarkers()
 -- Read current markers
 local markers = nex.api.getMapMarkers()
 
--- HUD indicator (top bar)
+-- HUD indicator (top bar) — simple text
 nex.api.setGlobalIndicator("heat", "Frame Heat", "72°C", "#ff6600")
+
+-- HUD indicator with widget metadata (optional 5th argument)
+nex.api.setGlobalIndicator("fuel", "Fuel Level", "75", "#22c55e", {
+  widget = "progress",    -- "text" | "progress" | "gauge" | "chart" | "colored_text"
+  min = 0, max = 100,
+  unit = "%", precision = 0
+})
+nex.api.setGlobalIndicator("eff", "Efficiency", "0.85", "#3b82f6", {
+  widget = "gauge", min = 0, max = 1, precision = 2
+})
+nex.api.setGlobalIndicator("power_out", "Output", "450", "#f59e0b", {
+  widget = "chart"        -- accumulates values as sparkline over time
+})
+nex.api.setGlobalIndicator("status", "Status", "OK", "#22c55e", {
+  widget = "colored_text" -- value text rendered in indicator color
+})
+
+-- Remove a global indicator
+nex.api.removeGlobalIndicator("heat")
 
 -- Mouse position (world coordinates)
 local mx = nex.api.getMouseX()
 local my = nex.api.getMouseY()
 ```
+
+### Frame Indicators (Advanced Core)
+
+The Advanced Core component has an indicator API for per-frame indicators.
+These appear in the component's expanded view in the Frame Inspector.
+
+```lua
+local core = locator(frame, ".Advanced Core")
+
+-- Set a frame-scoped indicator (same widget types as global indicators)
+core.api.setIndicator("heat", "Frame Heat", "72", "#ff6600", {
+  widget = "gauge", min = 0, max = 100, unit = "°C"
+})
+core.api.setIndicator("status", "Status", "OK", "#22c55e", {
+  widget = "colored_text"
+})
+core.api.setIndicator("power", "Power", "450", "#3b82f6", {
+  widget = "chart"
+})
+
+-- Remove a frame-scoped indicator
+core.api.removeIndicator("heat")
+```
+
+### Widget Types
+
+| Widget | Description | Key meta fields |
+|--------|------------|----------------|
+| `text` | Label + value (default) | — |
+| `progress` | Label + value + progress bar | `min`, `max`, `unit`, `precision` |
+| `gauge` | Semicircular arc gauge | `min`, `max`, `unit`, `precision` |
+| `chart` | Sparkline time series | — (value accumulated over time) |
+| `colored_text` | Value text rendered in indicator color | — |
 
 ---
 

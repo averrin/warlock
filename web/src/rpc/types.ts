@@ -51,7 +51,7 @@ export interface ItemsListResultDTO {
 }
 
 export interface InspectorMeta {
-  widget?: "select" | "link" | "progress" | "color" | "code" | "list";
+  widget?: "select" | "link" | "progress" | "color" | "code" | "list" | "memory";
   options?: string[];
   link_scope?: "frame" | "world";
   link_filter?: string;
@@ -66,6 +66,23 @@ export interface InspectorMeta {
   label?: string;
   color?: string;
   icon?: string;
+}
+
+export type IndicatorWidget = "text" | "progress" | "gauge" | "chart" | "colored_text";
+
+export interface IndicatorWidgetMeta {
+  widget?: IndicatorWidget;
+  min?: number;
+  max?: number;
+  unit?: string;
+  precision?: number;
+}
+
+export interface IndicatorData {
+  label: string;
+  value: string;
+  color: string;
+  widget_meta?: IndicatorWidgetMeta;
 }
 
 export interface AttributeDTO {

@@ -8,6 +8,7 @@ import type {
   EcsEntityDTO,
   EnvironmentDTO,
   FrameDTO,
+  IndicatorData,
   PowerNetworkDTO,
 } from "../rpc/types";
 import { usePatchStore, Patch } from "./patches";
@@ -104,7 +105,10 @@ interface GameStore {
   selectedFrameIds: number[];
   timeControl: TimeControl;
   markers: GameMarker[];
-  indicators: Record<string, { label: string; value: string; color: string }>;
+  indicators: Record<string, IndicatorData>;
+  frameIndicators: Record<number, Record<string, IndicatorData>>;
+  indicatorHistory: Record<string, number[]>;
+  frameIndicatorHistory: Record<string, number[]>;
   ecsEntities: EcsEntityDTO[];
   environmentHistory: EnvironmentDTO["history"] | null;
   /** Map overlay: server field snapshot (env temp + AoE). */
@@ -271,6 +275,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   timeControl: { paused: false, multiplier: 1 },
   markers: [],
   indicators: {},
+  frameIndicators: {},
+  indicatorHistory: {},
+  frameIndicatorHistory: {},
   ecsEntities: [],
   environmentHistory: null,
   showThermalField: (() => {
@@ -346,16 +353,88 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
 
     client.on("nexus.indicators", (payload: any) => {
-      set((state) => ({
-        indicators: {
-          ...state.indicators,
-          [payload.key]: {
-            label: payload.label,
-            value: payload.value,
-            color: payload.color,
+      set((state) => {
+        const historyUpdate: Record<string, number[]> = {};
+        if (payload.widget_meta?.widget === "chart") {
+          const n = Number(payload.value);
+          if (Number.isFinite(n)) {
+            const prev = state.indicatorHistory[payload.key] ?? [];
+            historyUpdate[payload.key] = [...prev.slice(-59), n];
+          }
+        }
+        return {
+          indicators: {
+            ...state.indicators,
+            [payload.key]: {
+              label: payload.label,
+              value: payload.value,
+              color: payload.color,
+              widget_meta: payload.widget_meta,
+            },
           },
-        },
-      }));
+          indicatorHistory: Object.keys(historyUpdate).length > 0
+            ? { ...state.indicatorHistory, ...historyUpdate }
+            : state.indicatorHistory,
+        };
+      });
+    });
+
+    client.on("nexus.indicators.remove", (payload: any) => {
+      set((state) => {
+        const next = { ...state.indicators };
+        delete next[payload.key];
+        const nextHistory = { ...state.indicatorHistory };
+        delete nextHistory[payload.key];
+        return { indicators: next, indicatorHistory: nextHistory };
+      });
+    });
+
+    client.on("nexus.frame_indicators", (payload: any) => {
+      set((state) => {
+        const frameId = payload.frame_id as number;
+        const histKey = `${frameId}:${payload.key}`;
+        const historyUpdate: Record<string, number[]> = {};
+        if (payload.widget_meta?.widget === "chart") {
+          const n = Number(payload.value);
+          if (Number.isFinite(n)) {
+            const prev = state.frameIndicatorHistory[histKey] ?? [];
+            historyUpdate[histKey] = [...prev.slice(-59), n];
+          }
+        }
+        return {
+          frameIndicators: {
+            ...state.frameIndicators,
+            [frameId]: {
+              ...(state.frameIndicators[frameId] ?? {}),
+              [payload.key]: {
+                label: payload.label,
+                value: payload.value,
+                color: payload.color,
+                widget_meta: payload.widget_meta,
+              },
+            },
+          },
+          frameIndicatorHistory: Object.keys(historyUpdate).length > 0
+            ? { ...state.frameIndicatorHistory, ...historyUpdate }
+            : state.frameIndicatorHistory,
+        };
+      });
+    });
+
+    client.on("nexus.frame_indicators.remove", (payload: any) => {
+      set((state) => {
+        const frameId = payload.frame_id as number;
+        const existing = state.frameIndicators[frameId];
+        if (!existing) return state;
+        const next = { ...existing };
+        delete next[payload.key];
+        const nextHistory = { ...state.frameIndicatorHistory };
+        delete nextHistory[`${frameId}:${payload.key}`];
+        return {
+          frameIndicators: { ...state.frameIndicators, [frameId]: next },
+          frameIndicatorHistory: nextHistory,
+        };
+      });
     });
 
     client.on("spendable.pool", (payload: unknown) => {

@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import type { RpcClient } from "../../rpc/client";
 import type { ComponentDTO, FrameDTO, InspectorMeta } from "../../rpc/types";
 import { useGameStore } from "../../stores/game";
+import { ProgressIndicator } from "../indicators";
 import { useRecipeStore } from "../../stores/recipes";
 import { NumberField, TextField } from "../ui";
 
@@ -561,17 +562,23 @@ function SingleAttribute({
       </div>
     );
   } else if (isProgressWidget) {
-    const prec = insp?.precision;
-    const shown = Number.isFinite(numForProgress)
-      ? formatWithPrecision(numForProgress, prec) + (unit ? ` ${unit}` : "")
-      : "-";
-    mainControl = (
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "1px 0", minWidth: 160 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {labelEl}
-          {ro ? (
-            <span style={{ color: "#e5e7eb", fontSize: 11 }}>{shown}</span>
-          ) : (
+    if (ro) {
+      mainControl = (
+        <ProgressIndicator
+          value={Number.isFinite(numForProgress) ? numForProgress : 0}
+          min={pMin}
+          max={pMax}
+          label={displayLabel}
+          color={rowLabelColor ?? "#3b82f6"}
+          unit={unit || undefined}
+          precision={insp?.precision}
+        />
+      );
+    } else {
+      mainControl = (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "1px 0", minWidth: 160 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {labelEl}
             <input
               type="number"
               value={Number.isFinite(numForProgress) ? numForProgress : 0}
@@ -581,28 +588,28 @@ function SingleAttribute({
               }}
               style={{ ...targetSelectStyle, width: 88 }}
             />
-          )}
-        </div>
-        <div
-          style={{
-            height: 6,
-            borderRadius: 3,
-            background: "#1f2937",
-            overflow: "hidden",
-            border: "1px solid #374151",
-          }}
-        >
+          </div>
           <div
             style={{
-              height: "100%",
-              width: `${progressFrac * 100}%`,
-              background: rowLabelColor ?? "#3b82f6",
-              transition: "width 0.15s ease",
+              height: 6,
+              borderRadius: 3,
+              background: "#1f2937",
+              overflow: "hidden",
+              border: "1px solid #374151",
             }}
-          />
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${progressFrac * 100}%`,
+                background: rowLabelColor ?? "#3b82f6",
+                transition: "width 0.15s ease",
+              }}
+            />
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   } else if (isColorWidget) {
     const hex = normalizeColorHex(typeof rawValue === "string" ? rawValue : "");
     mainControl = (

@@ -156,9 +156,15 @@ sol::table make_nexus_component_api_table(sol::state &lua) {
     return g_nexus_api.getMapMarkers(s);
   };
   t["setGlobalIndicator"] = [](std::string key, std::string label,
-                               std::string value, std::string color) {
+                               std::string value, std::string color,
+                               sol::optional<sol::table> meta) {
+    nlohmann::json jmeta = meta ? sol_table_to_json(*meta) : nlohmann::json{};
     g_nexus_api.setGlobalIndicator(std::move(key), std::move(label),
-                                   std::move(value), std::move(color));
+                                   std::move(value), std::move(color),
+                                   std::move(jmeta));
+  };
+  t["removeGlobalIndicator"] = [](std::string key) {
+    g_nexus_api.removeGlobalIndicator(std::move(key));
   };
   t["getMouseX"] = []() { return g_nexus_api.getMouseX(); };
   t["getMouseY"] = []() { return g_nexus_api.getMouseY(); };
@@ -285,6 +291,22 @@ void inject_storage_api(sol::state_view L, sol::table api, std::shared_ptr<Compo
   };
 }
 
+// Inject indicator methods into a component's api table (for Advanced Core).
+void inject_indicator_api(sol::state_view L, sol::table api,
+                          std::shared_ptr<Component> c, int frame_id) {
+  api["setIndicator"] = [frame_id](std::string key, std::string label,
+                                    std::string value, std::string color,
+                                    sol::optional<sol::table> meta) {
+    nlohmann::json jmeta = meta ? sol_table_to_json(*meta) : nlohmann::json{};
+    g_nexus_api.setFrameIndicator(frame_id, std::move(key), std::move(label),
+                                  std::move(value), std::move(color),
+                                  std::move(jmeta));
+  };
+  api["removeIndicator"] = [frame_id](std::string key) {
+    g_nexus_api.removeFrameIndicator(frame_id, std::move(key));
+  };
+}
+
 } // namespace
 
 void sync_counterpart_attribute_impl(Component& c) {
@@ -386,6 +408,10 @@ void refresh_component_apis_impl(CodeExecutionSystem& exec) {
         sol::table api_tbl = c->api;
         inject_data_link_api(Lv, api_tbl, c);
         inject_storage_api(Lv, api_tbl, c);
+        // Inject indicator API for Advanced Core components.
+        if (c->data.name == "Advanced Core") {
+          inject_indicator_api(Lv, api_tbl, c, frame.data.id);
+        }
         merge_inspector_meta_from_spec(*c, spec);
       } catch (...) {
       }

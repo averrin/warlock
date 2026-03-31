@@ -31,9 +31,30 @@ void NexusApi::removeMapMarker(std::string label) {
   emitter.publish(nexus_remove_marker_event{label});
 }
 
-void NexusApi::setGlobalIndicator(std::string key, std::string label, std::string value, std::string color) {
+void NexusApi::setGlobalIndicator(std::string key, std::string label,
+                                  std::string value, std::string color,
+                                  nlohmann::json widget_meta) {
   auto& emitter = entt::locator<event_emitter>::value();
-  emitter.publish(nexus_indicator_event{key, label, value, color});
+  emitter.publish(nexus_indicator_event{key, label, value, color, std::move(widget_meta)});
+}
+
+void NexusApi::removeGlobalIndicator(std::string key) {
+  auto& emitter = entt::locator<event_emitter>::value();
+  emitter.publish(nexus_remove_indicator_event{std::move(key)});
+}
+
+void NexusApi::setFrameIndicator(int frame_id, std::string key, std::string label,
+                                 std::string value, std::string color,
+                                 nlohmann::json widget_meta) {
+  auto& emitter = entt::locator<event_emitter>::value();
+  emitter.publish(nexus_frame_indicator_event{frame_id, std::move(key), std::move(label),
+                                              std::move(value), std::move(color),
+                                              std::move(widget_meta)});
+}
+
+void NexusApi::removeFrameIndicator(int frame_id, std::string key) {
+  auto& emitter = entt::locator<event_emitter>::value();
+  emitter.publish(nexus_remove_frame_indicator_event{frame_id, std::move(key)});
 }
 
 sol::table NexusApi::getMapMarkers(sol::this_state s) {

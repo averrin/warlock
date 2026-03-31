@@ -133,11 +133,54 @@ void initEventBridge(Server& server) {
   emitter.connect<nexus_indicator_event>(
     std::function<void(nexus_indicator_event&, const event_emitter&)>(
       [&server](nexus_indicator_event& event, const event_emitter&) {
-        server.broadcast("nexus.indicators", {
+        nlohmann::json payload = {
           {"key", event.key},
           {"label", event.label},
           {"value", event.value},
           {"color", event.color}
+        };
+        if (!event.widget_meta.is_null()) {
+          payload["widget_meta"] = event.widget_meta;
+        }
+        server.broadcast("nexus.indicators", payload);
+      }
+    )
+  );
+
+  emitter.connect<nexus_remove_indicator_event>(
+    std::function<void(nexus_remove_indicator_event&, const event_emitter&)>(
+      [&server](nexus_remove_indicator_event& event, const event_emitter&) {
+        server.broadcast("nexus.indicators.remove", {
+          {"key", event.key}
+        });
+      }
+    )
+  );
+
+  emitter.connect<nexus_frame_indicator_event>(
+    std::function<void(nexus_frame_indicator_event&, const event_emitter&)>(
+      [&server](nexus_frame_indicator_event& event, const event_emitter&) {
+        nlohmann::json payload = {
+          {"frame_id", event.frame_id},
+          {"key", event.key},
+          {"label", event.label},
+          {"value", event.value},
+          {"color", event.color}
+        };
+        if (!event.widget_meta.is_null()) {
+          payload["widget_meta"] = event.widget_meta;
+        }
+        server.broadcast("nexus.frame_indicators", payload);
+      }
+    )
+  );
+
+  emitter.connect<nexus_remove_frame_indicator_event>(
+    std::function<void(nexus_remove_frame_indicator_event&, const event_emitter&)>(
+      [&server](nexus_remove_frame_indicator_event& event, const event_emitter&) {
+        server.broadcast("nexus.frame_indicators.remove", {
+          {"frame_id", event.frame_id},
+          {"key", event.key}
         });
       }
     )

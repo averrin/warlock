@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useGameStore } from "../../stores/game";
 import { useRpcClient } from "../../hooks/useRpc";
 import { Panel } from "./Panel";
+import { IndicatorRenderer } from "../indicators";
 
 export function GlobalIndicatorsPanel() {
   const rpcClient = useRpcClient();
@@ -68,21 +69,7 @@ export function GlobalIndicatorsPanel() {
               <div style={{ color: "#6b7280", fontSize: 11 }}>No indicators</div>
             ) : (
               Object.entries(indicators).map(([key, indicator]) => (
-                <div
-                  key={key}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "4px 8px",
-                    background: "#1e293b",
-                    borderRadius: 4,
-                    borderLeft: `4px solid ${indicator.color || "#3b82f6"}`,
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ color: "#94a3b8" }}>{indicator.label}</span>
-                  <span style={{ color: "#e5e7eb", fontWeight: 600 }}>{indicator.value}</span>
-                </div>
+                <IndicatorRenderer key={key} indicator={indicator} historyKey={key} />
               ))
             )}
           </div>

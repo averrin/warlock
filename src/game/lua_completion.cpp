@@ -69,7 +69,8 @@ void appendKeysForObject(sol::object obj, std::vector<std::string>& out) {
         "data",           "api",            "state",          "size",       "require",
         "conflict",       "activate",       "deactivate",     "storage",    "sendRaw",
         "send",           "injectRaw",      "injectPacket",   "readRaw",    "read",
-        "getCounterpart", "queueDepthRaw",  "queueDepthPacket"};
+        "getCounterpart", "queueDepthRaw",  "queueDepthPacket",
+        "setIndicator",   "removeIndicator"};
     appendCStringKeys(keys, sizeof(keys) / sizeof(keys[0]), out);
     return;
   }
@@ -117,7 +118,8 @@ void appendKeysForObject(sol::object obj, std::vector<std::string>& out) {
   }
   if (obj.is<NexusApi*>()) {
     static const char* keys[] = {"showToast", "setMapMarker", "clearMapMarkers", "removeMapMarker",
-                                 "getMapMarkers", "setGlobalIndicator", "getMouseX", "getMouseY"};
+                                 "getMapMarkers", "setGlobalIndicator", "removeGlobalIndicator",
+                                 "getMouseX", "getMouseY"};
     appendCStringKeys(keys, sizeof(keys) / sizeof(keys[0]), out);
     return;
   }

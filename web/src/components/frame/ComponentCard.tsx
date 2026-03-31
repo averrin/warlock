@@ -8,6 +8,20 @@ import { ComponentControls } from "./ComponentControls";
 import { PropulsionMoveControls } from "./PropulsionMoveControls";
 import { ComponentAttributes } from "./ComponentAttributes";
 import { StoragePanelWithSubscription } from "../storage/StoragePanel";
+import { IndicatorRenderer } from "../indicators";
+
+function FrameIndicatorsSection({ frameId }: { frameId: number }) {
+  const frameIndicators = useGameStore((s) => s.frameIndicators[frameId]);
+  if (!frameIndicators || Object.keys(frameIndicators).length === 0) return null;
+  return (
+    <div style={{ display: "grid", gap: 4 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af" }}>Indicators</div>
+      {Object.entries(frameIndicators).map(([key, ind]) => (
+        <IndicatorRenderer key={key} indicator={ind} historyKey={`${frameId}:${key}`} />
+      ))}
+    </div>
+  );
+}
 
 type Props = {
   component: ComponentDTO;
@@ -506,6 +520,9 @@ export function ComponentCard({ component, frameId, rpcClient }: Props) {
           )}
           {component.storage && (
             <StoragePanelWithSubscription frameId={frameId} componentId={component.id} mode="full" rpcClient={rpcClient} />
+          )}
+          {component.name === "Advanced Core" && (
+            <FrameIndicatorsSection frameId={frameId} />
           )}
         </>
       )}
